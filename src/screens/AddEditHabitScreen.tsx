@@ -21,6 +21,8 @@ import {
   HabitFrequency,
 } from '../types/habit';
 import { HABIT_PALETTES } from '../theme/colors';
+import { isValidReminderTime } from '../utils/notificationUtils';
+
 
 interface AddEditHabitScreenProps {
   route: any;
@@ -54,6 +56,14 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
 
   const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
 
+  const quickReminderTimes = [
+    { time: '06:30', label: '06:30 ص' },
+    { time: '08:00', label: '08:00 ص' },
+    { time: '13:30', label: '01:30 م' },
+    { time: '18:00', label: '06:00 م' },
+    { time: '21:30', label: '09:30 م' },
+  ];
+
   const toggleDay = (dayIndex: number) => {
     if (frequencyDays.includes(dayIndex)) {
       if (frequencyDays.length === 1) {
@@ -73,8 +83,19 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
       return;
     }
 
+    if (hasReminder) {
+      if (!isValidReminderTime(reminderTime)) {
+        Alert.alert(
+          'تنبيه',
+          'يرجى إدخال وقت صحيح للتنبيه بصيغة 24 ساعة (مثال: 08:30 أو 20:00)'
+        );
+        return;
+      }
+    }
+
     const parsedTarget = parseInt(targetCount, 10);
     const validTarget = isNaN(parsedTarget) || parsedTarget < 1 ? 1 : parsedTarget;
+
 
     if (isEditing && existingHabit) {
       await updateHabit({
@@ -348,26 +369,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           </Text>
 
           <View style={styles.targetRow}>
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <TextInput
-                value={unit}
-                onChangeText={setUnit}
-                placeholder="الوحدة (مرة، دقيقة...)"
-                placeholderTextColor={theme.textMuted}
-                style={[
-                  styles.input,
-                  typography.body,
-                  {
-                    color: theme.text,
-                    borderColor: theme.border,
-                    borderRadius: radius.sm,
-                    backgroundColor: theme.background,
-                    minHeight: touchTarget,
-                  },
-                ]}
-              />
-            </View>
-
+            {/* Number on right in RTL */}
             <View style={{ width: 80 }}>
               <TextInput
                 value={targetCount}
@@ -382,6 +384,28 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                     borderRadius: radius.sm,
                     backgroundColor: theme.background,
                     textAlign: 'center',
+                    minHeight: touchTarget,
+                  },
+                ]}
+              />
+            </View>
+
+            {/* Unit on left in RTL */}
+            <View style={{ flex: 1 }}>
+              <TextInput
+                value={unit}
+                onChangeText={setUnit}
+                placeholder="الوحدة (مرة، دقيقة...)"
+                placeholderTextColor={theme.textMuted}
+                style={[
+                  styles.input,
+                  typography.body,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    borderRadius: radius.sm,
+                    backgroundColor: theme.background,
+                    textAlign: 'right',
                     minHeight: touchTarget,
                   },
                 ]}
@@ -448,27 +472,62 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           </View>
 
           {hasReminder && (
-            <TextInput
-              value={reminderTime}
-              onChangeText={setReminderTime}
-              placeholder="08:00"
-              placeholderTextColor={theme.textMuted}
-              style={[
-                styles.input,
-                typography.body,
-                {
-                  color: theme.text,
-                  borderColor: theme.border,
-                  borderRadius: radius.sm,
-                  backgroundColor: theme.background,
-                  textAlign: 'center',
-                  minHeight: touchTarget,
-                  marginTop: 10,
-                },
-              ]}
-            />
+            <View style={{ marginTop: 10 }}>
+              <TextInput
+                value={reminderTime}
+                onChangeText={setReminderTime}
+                placeholder="08:00"
+                placeholderTextColor={theme.textMuted}
+                style={[
+                  styles.input,
+                  typography.body,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    borderRadius: radius.sm,
+                    backgroundColor: theme.background,
+                    textAlign: 'center',
+                    minHeight: touchTarget,
+                  },
+                ]}
+              />
+
+              <View style={styles.quickReminderRow}>
+                {quickReminderTimes.map((item) => (
+                  <Pressable
+                    key={item.time}
+                    onPress={() => setReminderTime(item.time)}
+                    style={[
+                      styles.unitPill,
+                      {
+                        backgroundColor:
+                          reminderTime === item.time ? theme.text : theme.background,
+                        borderColor: theme.border,
+                        borderRadius: radius.sm,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        typography.caption,
+                        {
+                          color:
+                            reminderTime === item.time
+                              ? theme.background
+                              : theme.textSecondary,
+                          fontSize: 11,
+                        },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
           )}
         </Card>
+
 
         {/* Save Button */}
         <View style={{ marginTop: spacing.md }}>
@@ -553,12 +612,19 @@ const styles = StyleSheet.create({
   targetRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
+    gap: 8,
   },
   quickUnitsRow: {
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 6,
     marginTop: 10,
+  },
+  quickReminderRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
   },
   unitPill: {
     paddingHorizontal: 10,
@@ -575,3 +641,4 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
 });
+

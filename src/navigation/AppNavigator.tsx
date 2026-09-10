@@ -14,6 +14,8 @@ import { StatisticsScreen } from '../screens/StatisticsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { AddEditHabitScreen } from '../screens/AddEditHabitScreen';
 import { HabitDetailsScreen } from '../screens/HabitDetailsScreen';
+import { ArchivedHabitsScreen } from '../screens/ArchivedHabitsScreen';
+
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -134,7 +136,15 @@ export const AppNavigator: React.FC = () => {
             animation: 'slide_from_right',
           }}
         />
+        <Stack.Screen
+          name="ArchivedHabits"
+          component={ArchivedHabitsScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
 };
+

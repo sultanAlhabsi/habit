@@ -15,7 +15,19 @@ import {
   getPreference,
   setPreference,
   archiveHabitRecord,
+  getAllPreferences,
+  importDatabaseRecords,
 } from '../services/database';
+import {
+  scheduleHabitReminder,
+  cancelHabitReminders,
+  rescheduleAllHabitReminders,
+} from '../services/notificationService';
+import {
+  BackupPayload,
+  createBackupPayload,
+  mergeBackupData,
+} from '../services/backupService';
 import { ThemeMode } from '../theme/ThemeContext';
 
 interface HabitState {
@@ -26,6 +38,7 @@ interface HabitState {
   filter: 'all' | 'pending' | 'completed';
   themeMode: ThemeMode;
   hapticsEnabled: boolean;
+  notificationsEnabled: boolean;
 
   // Actions
   init: () => Promise<void>;
@@ -33,14 +46,18 @@ interface HabitState {
   setFilter: (filter: 'all' | 'pending' | 'completed') => void;
   setThemeMode: (mode: ThemeMode) => void;
   toggleHaptics: () => void;
+  toggleNotifications: () => Promise<void>;
   addHabit: (data: Omit<Habit, 'id' | 'createdAt'>) => Promise<Habit>;
   updateHabit: (habit: Habit) => Promise<void>;
   deleteHabit: (habitId: string) => Promise<void>;
   toggleHabitActive: (habitId: string) => Promise<void>;
   archiveHabit: (habitId: string, archive?: boolean) => Promise<void>;
+  restoreHabit: (habitId: string) => Promise<void>;
   toggleCheckin: (habitId: string, date?: string) => Promise<boolean>;
   seedData: () => Promise<void>;
   resetAllData: () => Promise<void>;
+  exportBackup: () => Promise<BackupPayload>;
+  importBackup: (backup: BackupPayload, mode: 'replace' | 'merge') => Promise<void>;
 }
 
 export const useHabitStore = create<HabitState>((set, get) => ({
@@ -51,22 +68,31 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   filter: 'all',
   themeMode: 'system',
   hapticsEnabled: true,
+  notificationsEnabled: true,
 
   init: async () => {
     try {
       set({ isLoading: true });
       await initDatabase();
-      const [habits, checkins, hapticsPref] = await Promise.all([
+      const [habits, checkins, hapticsPref, notifPref] = await Promise.all([
         fetchAllHabits(),
         fetchAllCheckins(),
         getPreference('haptics_enabled', 'true'),
+        getPreference('notifications_enabled', 'true'),
       ]);
+
+      const notificationsEnabled = notifPref !== 'false';
+
       set({
         habits,
         checkins,
         hapticsEnabled: hapticsPref !== 'false',
+        notificationsEnabled,
         isLoading: false,
       });
+
+      // Synchronize notifications with system schedule
+      await rescheduleAllHabitReminders(habits, notificationsEnabled);
     } catch (err) {
       console.error('[Store] Init error:', err);
       set({ isLoading: false });
@@ -91,6 +117,13 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     setPreference('haptics_enabled', String(nextVal));
   },
 
+  toggleNotifications: async () => {
+    const nextVal = !get().notificationsEnabled;
+    set({ notificationsEnabled: nextVal });
+    await setPreference('notifications_enabled', String(nextVal));
+    await rescheduleAllHabitReminders(get().habits, nextVal);
+  },
+
   addHabit: async (data) => {
     const newHabit: Habit = {
       ...data,
@@ -101,6 +134,11 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     // Optimistic store update
     set((state) => ({ habits: [...state.habits, newHabit] }));
     await saveHabitRecord(newHabit);
+
+    if (get().notificationsEnabled && newHabit.reminderTime) {
+      await scheduleHabitReminder(newHabit);
+    }
+
     return newHabit;
   },
 
@@ -109,6 +147,12 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       habits: state.habits.map((h) => (h.id === habit.id ? habit : h)),
     }));
     await saveHabitRecord(habit);
+
+    if (get().notificationsEnabled && habit.isActive && !habit.archivedAt && habit.reminderTime) {
+      await scheduleHabitReminder(habit);
+    } else {
+      await cancelHabitReminders(habit.id);
+    }
   },
 
   deleteHabit: async (habitId: string) => {
@@ -116,6 +160,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       habits: state.habits.filter((h) => h.id !== habitId),
       checkins: state.checkins.filter((c) => c.habitId !== habitId),
     }));
+    await cancelHabitReminders(habitId);
     await deleteHabitRecord(habitId);
   },
 
@@ -132,6 +177,12 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       habits: state.habits.map((h) => (h.id === habitId ? updated : h)),
     }));
     await saveHabitRecord(updated);
+
+    if (get().notificationsEnabled && updated.isActive && !updated.archivedAt && updated.reminderTime) {
+      await scheduleHabitReminder(updated);
+    } else {
+      await cancelHabitReminders(habitId);
+    }
   },
 
   archiveHabit: async (habitId: string, archive = true) => {
@@ -148,6 +199,16 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       habits: state.habits.map((h) => (h.id === habitId ? updated : h)),
     }));
     await archiveHabitRecord(habitId, archive);
+
+    if (archive) {
+      await cancelHabitReminders(habitId);
+    } else if (get().notificationsEnabled && updated.reminderTime) {
+      await scheduleHabitReminder(updated);
+    }
+  },
+
+  restoreHabit: async (habitId: string) => {
+    await get().archiveHabit(habitId, false);
   },
 
   toggleCheckin: async (habitId: string, targetDate?: string) => {
@@ -203,11 +264,44 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       fetchAllCheckins(),
     ]);
     set({ habits, checkins, isLoading: false });
+    await rescheduleAllHabitReminders(habits, get().notificationsEnabled);
   },
 
   resetAllData: async () => {
     set({ isLoading: true });
     await resetDatabase();
     set({ habits: [], checkins: [], isLoading: false });
+    await rescheduleAllHabitReminders([], false);
+  },
+
+  exportBackup: async () => {
+    const meta = await getAllPreferences();
+    return createBackupPayload(get().habits, get().checkins, meta);
+  },
+
+  importBackup: async (backup: BackupPayload, mode: 'replace' | 'merge') => {
+    set({ isLoading: true });
+
+    let nextHabits: Habit[] = [];
+    let nextCheckins: HabitCheckin[] = [];
+
+    if (mode === 'replace') {
+      nextHabits = [...backup.habits];
+      nextCheckins = [...backup.checkins];
+    } else {
+      const merged = mergeBackupData(get().habits, get().checkins, backup);
+      nextHabits = merged.habits;
+      nextCheckins = merged.checkins;
+    }
+
+    await importDatabaseRecords(nextHabits, nextCheckins, mode);
+
+    set({
+      habits: nextHabits,
+      checkins: nextCheckins,
+      isLoading: false,
+    });
+
+    await rescheduleAllHabitReminders(nextHabits, get().notificationsEnabled);
   },
 }));

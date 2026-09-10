@@ -111,7 +111,116 @@ Export was successful! (0 errors, 0 warnings)
 
 ---
 
-### 6. خطة التحسين للدورة القادمة (Cycle 2)
-1. **إشعارات التذكير المحلية (Local Push Notifications):** تفعيل وتوثيق تذكيرات الأوقات المحددة للعادة باستخدام `expo-notifications`.
-2. **شاشة العادات المؤرشفة (Archived Habits Management):** إضافة قسم أو فلتر للوصول إلى العادات المؤرشفة وإمكانية استرجاعها أو حذفها نهائياً.
-3. **تصدير واستيراد النسخ الاحتياطي (Backup & Restore):** توفير خيار تصدير بيانات العادات وسجلات الإنجاز بصيغة JSON لمساعدة المستخدم على نقل بياناته بأمان.
+## الدورة الثانية (Cycle 2) - نظام الإشعارات المحلية، إدارة الأرشيف، النسخ الاحتياطي والاستعادة، وتصحيحات RTL
+- **التاريخ:** 10 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة الثانية
+ركزت هذه الدورة على تحويل تطبيق "إنجاز" من تطبيق تتبع محلي صامت إلى مساعد شخصي متفاعل يحافظ على استمرارية المستخدم وبياناته، من خلال:
+1. **تفعيل نظام التذكيرات المحلية الذكية (Local Push Notifications)** باستخدام `expo-notifications`.
+2. **إنشاء شاشة ونظام إدارة متكامل للعادات المؤرشفة (Archived Habits Management)**.
+3. **بناء خدمة النسخ الاحتياطي والاستعادة (JSON Data Backup & Restore)** بآليتي الدمج الذكي والاستبدال الكامل.
+4. **تصحيح ترتيب مدخلات الهدف اليومي في الواجهة العربية (RTL Fix)** وتوفير أوقات تنبيه جاهزة.
+5. **توسيع حزمة الاختبارات المؤتمتة** لتشمل خدمات الإشعارات والنسخ الاحتياطي بجانب الحسابات الرياضية.
+
+---
+
+### 2. التغييرات والإضافات المنجزة
+
+#### أ. نظام التنبيهات والإشعارات المحلية (`notificationUtils.ts` & `notificationService.ts`):
+1. **دوال الفحص والتحليل الصارم (`src/utils/notificationUtils.ts`):**
+   - بناء دوال نقية لا تعتمد على الـ Runtime لفحص صيغ الوقت بنظام 24 ساعة (`isValidReminderTime`) وتفكيكها إلى ساعات ودقائق (`parseReminderTime`).
+   - دالة `formatReminderTimeArabic` لتنسيق الوقت عربياً بنظام 12 ساعة (مثال: `08:30 ص` أو `06:00 م`).
+   - خوارزمية `generateHabitReminderTriggers` لتحويل جدول كل عادة (يومي أو أيام محددة من الأسبوع) إلى محددات تكرار متوافقة مع محرك Expo (`SchedulableTriggerInputTypes.DAILY` و `WEEKLY`)، مع تحويل الفهرس العربي (الأحد=0) إلى معيار Expo (الأحد=1).
+2. **محرك جدولة الإشعارات (`src/services/notificationService.ts`):**
+   - إعداد معالج الإشعارات أثناء عمل التطبيق في الواجهة (`setNotificationHandler`).
+   - إنشاء قناة إشعارات نظام أندرويد الرسمية (`habit-reminders`) بصوت وتنبيه وأولوية مرتفعة.
+   - جدولة التذكيرات تلقائياً للعادات النشطة عند إضافتها أو تعديلها، وإلغائها فور إيقاف العادة أو أرشفتها أو حذفها.
+   - دالة إرسال إشعار تجريبي فوري (`sendTestNotification`) لاختبار سلامة الأذونات والتنبيهات.
+
+#### ب. شاشة ونظام العادات المؤرشفة (`ArchivedHabitsScreen.tsx`):
+1. **شاشة متخصصة للأرشيف:**
+   - استعراض العادات المؤرشفة في بطاقات أنيقة توضح تاريخ الأرشفة، إجمالي الإنجازات المحققة، وأطول سلسلة مسجلة.
+   - أزرار مباشرة للاستعادة الفورية إلى القائمة النشطة (`restoreHabit`) أو الحذف النهائي من قاعدة البيانات (`deleteHabit`).
+   - إمكانية الضغط على البطاقة للانتقال إلى شاشة التفاصيل الكاملة والتقويم الحراري.
+   - حالة فارغة (Empty State) معبرة عند عدم وجود عادات مؤرشفة.
+2. **التكامل مع شاشتي التفاصيل والإعدادات:**
+   - شارة توضيحية أعلى `HabitDetailsScreen` للعادات المؤرشفة وزر أرشفة/استعادة واضح.
+   - صف تنقل في `SettingsScreen` يعرض عدد العادات المؤرشفة الحالي مع سهم انتقال مخصص للـ RTL.
+   - تسجيل المسار رسمياً في `RootStackParamList` و `AppNavigator.tsx`.
+
+#### ج. النسخ الاحتياطي والاستعادة (`backupUtils.ts` & `backupService.ts`):
+1. **هيكل بيانات موحد وآمن (Envelope Schema v1):**
+   - حزمة JSON تحتوي على رقم الإصدار، واسم التطبيق (`enjaz-habits`)، وتاريخ التصدير، وقائمة العادات، وسجلات الإنجاز، والتفضيلات الشخصية.
+2. **فحص وصلاحية البيانات الصارمة (`validateBackupJson`):**
+   - التحقق من سلامة النص والتأكد من مطابقة الكائنات، ووجود الحقول الإلزامية لكل عادة وسجل إنجاز لمنع انهيار التطبيق من الملفات التالفة.
+3. **الدمج الذكي ومنع التكرار (`mergeBackupData`):**
+   - دمج العادات الجديدة مع الحالية بدون تكرار.
+   - مقارنة سجلات الإنجاز لنفس العادة والتاريخ والاعتماد على السجل ذي التحديث الأحدث (`updatedAt`).
+4. **واجهة التصدير والاستيراد:**
+   - تصدير فوري ومباشر عبر نافذة المشاركة الأصلية لنظام التشغيل (`Share.share`).
+   - نافذة استيراد تفاعلية داخل `SettingsScreen` تتيح للمستخدم لصق النص واختيار آلية الاستعادة: (الدمج الذكي أو الاستبدال الكامل).
+   - تنفيذ عملية الاستيراد في قاعدة بيانات SQLite عبر `importDatabaseRecords` مع دعم كامل لنمط التخزين الاحتياطي في الذاكرة.
+
+#### د. تحسينات الواجهة وتجربة المستخدم RTL (`AddEditHabitScreen.tsx`):
+1. **تصحيح ترتيب حقول الهدف اليومي:**
+   - في الواجهة العربية الموجهة من اليمين لليسار، تم ترتيب حقول الإدخال لتظهر بصرياً: `[العدد] [الوحدة]` (مثال: `[ 1 ] [ مرة ]`) باستخدام `gap: 8` بدلاً من هوامش الاتجاه المعاكس.
+2. **أزرار التذكير السريعة:**
+   - إضافة خيارات سريعة شائعة لاختيار وقت التنبيه بلمسة واحدة (`06:30 ص`، `08:00 ص`، `01:30 م`، `06:00 م`، `09:30 م`).
+   - التحقق الفوري من صحة إدخال الوقت قبل الحفظ وإظهار تنبيه توجيهي في حال وجود خطأ بصيغة الوقت.
+
+---
+
+### 3. الاختبارات والتحقق البرمجي
+
+تمت إضافة وتوسيع حزم الاختبارات لتصل إلى **21 اختبار وحدة مؤتمت**:
+- **`tests/habitUtils.test.ts` (9 اختبارات):** اختبارات السلاسل ونسب الإنجاز واستحقاق الأيام.
+- **`tests/notificationUtils.test.ts` (7 اختبارات):** التحقق من صيغ الوقت، وفصل الساعات والدقائق، والتنسيق العربي، وتحويل أيام الأسبوع إلى معيار Expo، وتوليد المشغلات لجميع أنواع التردد.
+- **`tests/backupUtils.test.ts` (5 اختبارات):** بناء الحزمة القياسية، التحقق من صحة JSON، رفض الحزم التالفة وغير المطابقة، والدمج الذكي بدون تكرار وتحديث السجلات بالأحدث.
+
+```bash
+# نتائج تشغيل حزمة الاختبارات الكاملة:
+✔ isHabitDueOnDate: daily habit is due every day after creation (15.9ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (5.3ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (1.8ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (2.0ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (9.0ms)
+✔ calculateHabitStats: increments streak when today is completed (8.9ms)
+✔ calculateHabitStats: paused habit retains historical stats (5.8ms)
+✔ calculateOverallStats: computes accurate rates and weekly adherence (11.3ms)
+✔ formatArabicDate: formats correctly in Arabic (1.8ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (6.1ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (4.3ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (1.1ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.8ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.4ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (1.1ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (0.9ms)
+✔ createBackupPayload: constructs standard schema envelope (8.7ms)
+✔ validateBackupJson: validates well-formed JSON string (1.7ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.5ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.7ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (6.4ms)
+ℹ tests 21 | suites 0 | pass 21 | fail 0 | cancelled 0 | duration_ms 558ms
+
+# نتائج الفحص الثابت للأنواع (TypeScript):
+npm run typecheck -> tsc --noEmit -> 0 errors!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة الثانية
+1. **فصل المعالجة الصرفة عن مشغلات Native (`backupUtils.ts` و `notificationUtils.ts`):** تم عزل منطق التحقق والدمج وتوليد المشغلات في ملفات دوال نقية (Pure Functions) منفصلة عن مشغلات النظام (`expo-notifications` و `Share`). هذا مكّن تشغيل اختبارات شاملة وسريعة عبر Node Test Runner دون الحاجة لمحاكاة (Mocking) معقدة لبيئات الهواتف.
+2. **المزامنة التلقائية للإشعارات مع دورة حياة العادة في Zustand:** تم ربط استدعاءات `scheduleHabitReminder` و `cancelHabitReminder` مباشرة داخل أفعال الـ Store (`addHabit`, `updateHabit`, `deleteHabit`, `archiveHabit`, `toggleHabitActive`) لضمان عدم وجود أي إشعار يتيم أو غير متزامن مع حالة العادة.
+3. **نافذة استيراد النسخ الاحتياطي عبر Modal تفاعلي بدلاً من `Alert.prompt`:** نظراً لأن `Alert.prompt` مقتصرة على منصة iOS فقط، تم بناء Modal مخصص ومتجاوب يدعم لصق النصوص الكبيرة على أندرويد و iOS معاً بسلاسة تامة.
+
+---
+
+### 5. الرؤية المستقبلية (Cycle 3)
+1. **تحديات أو أهداف أسبوعية وشهرية (Habit Challenges / Milestones):** إتاحة ربط العادة بهدف دوري أسبوعي/شهري لتشجيع الاستمرارية وتقديم أوسمة إنجاز مصغرة.
+2. **تصفية متقدمة في شاشة الإحصائيات:** إضافة إمكانية المقارنة بين فترات زمنية سابقة ومتابعة معدل الالتزام لكل شهر على حدة.
+3. **تحسينات إضافية على إمكانية الوصول (Accessibility & Screen Readers):** تدقيق علامات `accessibilityLabel` لجميع المكونات لتيسير الاستخدام لذوي الاحتياجات الخاصة.
+

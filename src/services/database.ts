@@ -365,3 +365,63 @@ export const archiveHabitRecord = async (habitId: string, archive: boolean): Pro
   );
 };
 
+export const getAllPreferences = async (): Promise<Record<string, string>> => {
+  const db = await getDB();
+  if (!db) {
+    return { ...memoryMeta };
+  }
+  try {
+    const rows = await db.getAllAsync<{ key: string; value: string }>('SELECT key, value FROM meta');
+    const result: Record<string, string> = {};
+    rows.forEach((r) => {
+      result[r.key] = r.value;
+    });
+    return result;
+  } catch (err) {
+    console.warn('[Database] Error getting all preferences:', err);
+    return { ...memoryMeta };
+  }
+};
+
+export const importDatabaseRecords = async (
+  habits: Habit[],
+  checkins: HabitCheckin[],
+  mode: 'replace' | 'merge'
+): Promise<void> => {
+  const db = await getDB();
+  if (!db) {
+    if (mode === 'replace') {
+      memoryHabits = [...habits];
+      memoryCheckins = [...checkins];
+    } else {
+      habits.forEach((h) => {
+        const idx = memoryHabits.findIndex((x) => x.id === h.id);
+        if (idx >= 0) memoryHabits[idx] = h;
+        else memoryHabits.push(h);
+      });
+      checkins.forEach((c) => {
+        const idx = memoryCheckins.findIndex((x) => x.habitId === c.habitId && x.date === c.date);
+        if (idx >= 0) memoryCheckins[idx] = c;
+        else memoryCheckins.push(c);
+      });
+    }
+    return;
+  }
+
+  if (mode === 'replace') {
+    await db.execAsync(`
+      DELETE FROM checkins;
+      DELETE FROM habits;
+    `);
+  }
+
+  for (const habit of habits) {
+    await saveHabitRecord(habit);
+  }
+
+  for (const checkin of checkins) {
+    await saveCheckinRecord(checkin);
+  }
+};
+
+

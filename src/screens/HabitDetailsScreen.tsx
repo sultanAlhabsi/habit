@@ -30,7 +30,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { theme, spacing, typography, touchTarget } = useTheme();
-  const { habits, checkins, toggleCheckin, toggleHabitActive, deleteHabit } = useHabitStore();
+  const { habits, checkins, toggleCheckin, toggleHabitActive, deleteHabit, archiveHabit } = useHabitStore();
 
   const habitId = route.params?.habitId;
   const habit = habits.find((h) => h.id === habitId);
@@ -48,6 +48,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     );
   }
 
+  const isArchived = Boolean(habit.archivedAt);
   const todayStr = dayjs().format('YYYY-MM-DD');
   const isCompletedToday = checkins.some(
     (c) => c.habitId === habit.id && c.date === todayStr && c.completed
@@ -61,14 +62,36 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
   const stats = calculateHabitStats(habit, checkins);
 
-  const handleDeleteConfirm = () => {
+  const handleArchiveConfirm = () => {
     Alert.alert(
-      'حذف العادة',
-      `هل أنت متأكد من حذف عادة "${habit.name}"؟`,
+      'أرشفة العادة',
+      `هل تريد نقل عادة "${habit.name}" إلى الأرشيف؟ سيتم إيقاف التذكيرات مع الاحتفاظ بكافة السجلات والإحصائيات.`,
       [
         { text: 'إلغاء', style: 'cancel' },
         {
-          text: 'حذف',
+          text: 'أرشفة',
+          onPress: async () => {
+            await archiveHabit(habit.id, true);
+            navigation.goBack();
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRestore = async () => {
+    await archiveHabit(habit.id, false);
+    Alert.alert('تمت الاستعادة', `تمت استعادة عادة "${habit.name}" إلى قائمتك اليومية.`);
+  };
+
+  const handleDeleteConfirm = () => {
+    Alert.alert(
+      'حذف العادة',
+      `هل أنت متأكد من حذف عادة "${habit.name}" نهائيًا؟ سيتم حذف كافة السجلات التابعة لها ولا يمكن التراجع.`,
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'حذف نهائي',
           style: 'destructive',
           onPress: async () => {
             await deleteHabit(habit.id);
@@ -111,6 +134,30 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
           paddingBottom: insets.bottom + 40,
         }}
       >
+        {/* Archived Banner if applicable */}
+        {isArchived ? (
+          <View
+            style={[
+              styles.archivedBanner,
+              {
+                backgroundColor: theme.cardSecondary,
+                borderColor: theme.border,
+                marginBottom: spacing.sm,
+              },
+            ]}
+          >
+            <Ionicons name="archive-outline" size={18} color={theme.textSecondary} />
+            <Text
+              style={[
+                typography.sub,
+                { color: theme.textSecondary, marginRight: 8, flex: 1, textAlign: 'right' },
+              ]}
+            >
+              هذه العادة في الأرشيف (تم إيقاف تذكيراتها اليومية)
+            </Text>
+          </View>
+        ) : null}
+
         {/* Habit Summary Card */}
         <Card style={[styles.heroCard, { marginBottom: spacing.base }]}>
           <View style={styles.heroTopRow}>
@@ -140,7 +187,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   : `أيام محددة (${habit.frequencyDays.length} أيام)`}
                 {' • '}
                 الهدف: {habit.targetCount} {habit.unit}
-                {!habit.isActive && ' • متوقفة مؤقتًا'}
+                {isArchived ? ' • مؤرشفة' : !habit.isActive ? ' • متوقفة مؤقتًا' : ''}
               </Text>
             </View>
 
@@ -153,14 +200,16 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             </View>
           </View>
 
-          {/* Clean Today Check Toggle */}
-          <View style={{ marginTop: spacing.md }}>
-            <Button
-              title={isCompletedToday ? 'مكتملة اليوم ✓' : 'تسجيل إنجاز اليوم'}
-              variant={isCompletedToday ? 'outline' : 'primary'}
-              onPress={() => toggleCheckin(habit.id, todayStr)}
-            />
-          </View>
+          {/* Clean Today Check Toggle (if not archived) */}
+          {!isArchived ? (
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                title={isCompletedToday ? 'مكتملة اليوم ✓' : 'تسجيل إنجاز اليوم'}
+                variant={isCompletedToday ? 'outline' : 'primary'}
+                onPress={() => toggleCheckin(habit.id, todayStr)}
+              />
+            </View>
+          ) : null}
         </Card>
 
         {/* 4 Stats Grid */}
@@ -175,15 +224,32 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
         {/* Quiet Actions */}
         <View style={styles.actionsContainer}>
-          <Button
-            title={habit.isActive ? 'إيقاف مؤقت للعادة' : 'استئناف العادة'}
-            variant="outline"
-            onPress={() => toggleHabitActive(habit.id)}
-            style={{ marginBottom: spacing.sm }}
-          />
+          {isArchived ? (
+            <Button
+              title="استعادة العادة من الأرشيف"
+              variant="primary"
+              onPress={handleRestore}
+              style={{ marginBottom: spacing.sm }}
+            />
+          ) : (
+            <>
+              <Button
+                title={habit.isActive ? 'إيقاف مؤقت للعادة' : 'استئناف العادة'}
+                variant="outline"
+                onPress={() => toggleHabitActive(habit.id)}
+                style={{ marginBottom: spacing.sm }}
+              />
+              <Button
+                title="أرشفة العادة"
+                variant="outline"
+                onPress={handleArchiveConfirm}
+                style={{ marginBottom: spacing.sm }}
+              />
+            </>
+          )}
 
           <Button
-            title="حذف العادة"
+            title={isArchived ? 'حذف نهائي للعادة' : 'حذف العادة'}
             variant="destructive"
             onPress={handleDeleteConfirm}
           />
@@ -223,4 +289,13 @@ const styles = StyleSheet.create({
   actionsContainer: {
     marginTop: 4,
   },
+  archivedBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
 });
+

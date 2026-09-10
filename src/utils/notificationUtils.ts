@@ -1,0 +1,127 @@
+import type { Habit } from '../types/habit';
+
+
+export interface ReminderTriggerDescriptor {
+  identifier: string;
+  type: 'daily' | 'weekly';
+  hour: number;
+  minute: number;
+  weekday?: number; // 1 = Sunday, 7 = Saturday
+}
+
+/**
+ * Parses a time string in "HH:mm" format into hour and minute components.
+ * Returns null if the format is invalid or values are out of bounds.
+ */
+export const parseReminderTime = (
+  timeStr?: string | null
+): { hour: number; minute: number } | null => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+
+  const trimmed = timeStr.trim();
+  if (!/^\d{1,2}:\d{2}$/.test(trimmed)) return null;
+
+  const parts = trimmed.split(':');
+  const hour = parseInt(parts[0], 10);
+  const minute = parseInt(parts[1], 10);
+
+  if (isNaN(hour) || isNaN(minute)) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+  return { hour, minute };
+};
+
+/**
+ * Checks whether a reminder time string is strictly valid.
+ */
+export const isValidReminderTime = (timeStr?: string | null): boolean => {
+  return parseReminderTime(timeStr) !== null;
+};
+
+/**
+ * Formats hour and minute into "HH:mm" string.
+ */
+export const formatReminderTime = (hour: number, minute: number): string => {
+  const h = Math.max(0, Math.min(23, hour)).toString().padStart(2, '0');
+  const m = Math.max(0, Math.min(59, minute)).toString().padStart(2, '0');
+  return `${h}:${m}`;
+};
+
+/**
+ * Formats a 24-hour time string into a friendly Arabic string (e.g. "08:30 ص" or "08:15 م").
+ */
+export const formatReminderTimeArabic = (timeStr?: string | null): string => {
+  if (!timeStr) return '';
+  const parsed = parseReminderTime(timeStr);
+  if (!parsed) return timeStr;
+
+  const { hour, minute } = parsed;
+  const isPM = hour >= 12;
+  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+  const period = isPM ? 'م' : 'ص';
+  const m = minute.toString().padStart(2, '0');
+  const h = displayHour.toString().padStart(2, '0');
+
+  return `${h}:${m} ${period}`;
+};
+
+/**
+ * Maps app day index (0: Sun, 1: Mon, ..., 6: Sat)
+ * to Expo Notifications Calendar/Weekly weekday (1: Sun, 2: Mon, ..., 7: Sat).
+ */
+export const mapDayIndexToExpoWeekday = (dayIndex: number): number => {
+  const normalized = ((dayIndex % 7) + 7) % 7;
+  return normalized + 1;
+};
+
+/**
+ * Generates notification trigger descriptors for a habit.
+ * Returns an empty array if habit is inactive, archived, or lacks a valid reminder time.
+ */
+export const generateHabitReminderTriggers = (
+  habit: Habit
+): ReminderTriggerDescriptor[] => {
+  if (!habit.isActive || habit.archivedAt || !habit.reminderTime) {
+    return [];
+  }
+
+  const parsed = parseReminderTime(habit.reminderTime);
+  if (!parsed) return [];
+
+  const { hour, minute } = parsed;
+
+  if (habit.frequency === 'daily') {
+    return [
+      {
+        identifier: `habit_${habit.id}_daily`,
+        type: 'daily',
+        hour,
+        minute,
+      },
+    ];
+  }
+
+  if (
+    habit.frequency === 'specific_days' &&
+    Array.isArray(habit.frequencyDays) &&
+    habit.frequencyDays.length > 0
+  ) {
+    return habit.frequencyDays.map((dayIdx) => ({
+      identifier: `habit_${habit.id}_d${dayIdx}`,
+      type: 'weekly',
+      weekday: mapDayIndexToExpoWeekday(dayIdx),
+      hour,
+      minute,
+    }));
+  }
+
+  // Fallback for weekly_target or general schedule
+  return [
+    {
+      identifier: `habit_${habit.id}_daily`,
+      type: 'daily',
+      hour,
+      minute,
+    },
+  ];
+};
