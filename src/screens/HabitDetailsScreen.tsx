@@ -6,6 +6,7 @@ import {
   ScrollView,
   Alert,
   Pressable,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,10 +19,15 @@ import { Button } from '../components/common/Button';
 import { ProgressBar } from '../components/common/ProgressBar';
 import { HabitHeatmap } from '../components/details/HabitHeatmap';
 import { HabitStatGrid } from '../components/details/HabitStatGrid';
+import { StreakMilestoneCard } from '../components/details/StreakMilestoneCard';
+import { HabitConsistencyCard } from '../components/details/HabitConsistencyCard';
 import {
   calculateHabitStats,
   getHabitCategory,
   getHabitStreakStatus,
+  calculateStreakMilestone,
+  calculateHabitConsistencyPattern,
+  formatHabitStatsForShare,
 } from '../utils/habitUtils';
 
 interface HabitDetailsScreenProps {
@@ -80,6 +86,17 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   const stats = calculateHabitStats(habit, checkins);
   const category = getHabitCategory(habit.icon);
   const streakStatus = getHabitStreakStatus(habit, checkins, todayStr);
+  const milestoneInfo = calculateStreakMilestone(stats.currentStreak);
+  const consistencyPattern = calculateHabitConsistencyPattern(habit, checkins, todayStr);
+
+  const handleShare = async () => {
+    try {
+      const shareMessage = formatHabitStatsForShare(habit, stats, milestoneInfo);
+      await Share.share({ message: shareMessage });
+    } catch {
+      // Gracefully handle dismissed share dialog
+    }
+  };
 
   const handleArchiveConfirm = () => {
     Alert.alert(
@@ -127,21 +144,40 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         subtitle={habit.name}
         onBackPress={() => navigation.goBack()}
         rightAction={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="تعديل العادة"
-            onPress={() => navigation.navigate('AddEditHabit', { habitId: habit.id })}
-            style={({ pressed }) => [
-              styles.headerEditBtn,
-              {
-                minWidth: touchTarget,
-                minHeight: touchTarget,
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Ionicons name="pencil-outline" size={20} color={theme.text} />
-          </Pressable>
+          <View style={styles.headerRightActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مشاركة إنجاز العادة"
+              onPress={handleShare}
+              style={({ pressed }) => [
+                styles.headerActionBtn,
+                {
+                  minWidth: touchTarget,
+                  minHeight: touchTarget,
+                  opacity: pressed ? 0.6 : 1,
+                  marginLeft: 4,
+                },
+              ]}
+            >
+              <Ionicons name="share-social-outline" size={20} color={theme.text} />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تعديل العادة"
+              onPress={() => navigation.navigate('AddEditHabit', { habitId: habit.id })}
+              style={({ pressed }) => [
+                styles.headerActionBtn,
+                {
+                  minWidth: touchTarget,
+                  minHeight: touchTarget,
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="pencil-outline" size={20} color={theme.text} />
+            </Pressable>
+          </View>
         }
       />
 
@@ -401,6 +437,15 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         {/* 4 Stats Grid */}
         <HabitStatGrid stats={stats} habitColor={habit.color} unit={habit.unit} />
 
+        {/* Behavioral Psychology Streak Milestone Tier */}
+        <StreakMilestoneCard milestoneInfo={milestoneInfo} habitColor={habit.color} />
+
+        {/* Day-of-Week Consistency Pattern */}
+        <HabitConsistencyCard
+          consistencyPattern={consistencyPattern}
+          habitColor={habit.color}
+        />
+
         {/* Heatmap Calendar */}
         <HabitHeatmap
           completedDates={completedDates}
@@ -453,6 +498,14 @@ const styles = StyleSheet.create({
   },
   notFoundCenter: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerRightActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  headerActionBtn: {
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -125,3 +125,38 @@ export interface MonthAdherenceStats {
   activeHabitsCount: number;
 }
 
+export interface StreakMilestoneTier {
+  id: string;
+  name: string;
+  days: number;
+  icon: string;
+  description: string;
+}
+
+export interface StreakMilestoneInfo {
+  currentStreak: number;
+  currentTier: StreakMilestoneTier;
+  nextMilestone: {
+    tier: StreakMilestoneTier;
+    remainingDays: number;
+  } | null;
+  progressPercent: number; // 0 - 100
+  isTopTier: boolean;
+}
+
+export interface HabitDayDistribution {
+  dayIndex: number; // 0: Sun, ..., 6: Sat
+  dayName: string;
+  dayShort: string;
+  dueCount: number;
+  completedCount: number;
+  rate: number; // 0 - 100
+}
+
+export interface HabitConsistencyPattern {
+  days: HabitDayDistribution[];
+  bestDay: HabitDayDistribution | null;
+  weakestDay: HabitDayDistribution | null;
+  insightMessage: string;
+}
+

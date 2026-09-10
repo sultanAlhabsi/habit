@@ -7,7 +7,21 @@ import type {
   DayAdherence,
   HabitSortOption,
   MonthAdherenceStats,
+  StreakMilestoneTier,
+  StreakMilestoneInfo,
+  HabitDayDistribution,
+  HabitConsistencyPattern,
 } from '../types/habit';
+
+export const DAYS_OF_WEEK_AR = [
+  { index: 0, name: 'الأحد', short: 'أحد' },
+  { index: 1, name: 'الإثنين', short: 'إثن' },
+  { index: 2, name: 'الثلاثاء', short: 'ثلا' },
+  { index: 3, name: 'الأربعاء', short: 'أرب' },
+  { index: 4, name: 'الخميس', short: 'خمي' },
+  { index: 5, name: 'الجمعة', short: 'جمع' },
+  { index: 6, name: 'السبت', short: 'سبت' },
+];
 
 export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روتين', 'روحانية', 'تطوير'] as const;
 export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
@@ -728,6 +742,256 @@ export const formatMonthlySummaryForShare = (stats: MonthAdherenceStats): string
     `• إجمالي الإنجازات: ${stats.totalCompletions} إنجاز 🎯`,
     `• الأيام المكتملة 100%: ${stats.perfectDaysCount} ${stats.perfectDaysCount === 1 ? 'يوم' : 'أيام'} 🌟`,
     `• العادات النشطة: ${stats.activeHabitsCount}`,
+    '',
+    'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
+  ].join('\n');
+};
+
+/**
+ * Habit formation milestones based on behavioral psychology
+ */
+export const STREAK_MILESTONES: StreakMilestoneTier[] = [
+  {
+    id: 'tier_0',
+    name: 'بداية الرحلة',
+    days: 0,
+    icon: 'flag-outline',
+    description: 'الخطوات الأولى نحو بناء روتين يومي راسخ',
+  },
+  {
+    id: 'tier_3',
+    name: 'انطلاقة واعدة',
+    days: 3,
+    icon: 'flash-outline',
+    description: 'تجاوز حاجز البداية والانطلاق بقوة وثبات',
+  },
+  {
+    id: 'tier_7',
+    name: 'أسبوع متواصل',
+    days: 7,
+    icon: 'ribbon-outline',
+    description: 'إتمام 7 أيام متتالية وبناء الزخم الإيجابي',
+  },
+  {
+    id: 'tier_14',
+    name: 'تثبيت المسار',
+    days: 14,
+    icon: 'shield-checkmark-outline',
+    description: 'أسبوعان كاملان من الثبات ومقاومة التكاسل',
+  },
+  {
+    id: 'tier_21',
+    name: 'بناء العادة',
+    days: 21,
+    icon: 'flame-outline',
+    description: 'تجاوز مرحلة التكوين الكلاسيكية وترسيخ العادة',
+  },
+  {
+    id: 'tier_30',
+    name: 'شهر الإنجاز',
+    days: 30,
+    icon: 'trophy-outline',
+    description: 'شهر كامل من الانضباط الذاتي والإرادة القوية',
+  },
+  {
+    id: 'tier_66',
+    name: 'العادة التلقائية',
+    days: 66,
+    icon: 'sparkles-outline',
+    description: 'الوصول لمرحلة التلقائية العصبية وثبات السلوك',
+  },
+  {
+    id: 'tier_100',
+    name: 'احتراف وإتقان',
+    days: 100,
+    icon: 'diamond-outline',
+    description: 'نادي المئة، تحولت العادة إلى جزء أصيل من هويتك',
+  },
+];
+
+/**
+ * Calculates current streak milestone tier, next target, and progress percentage
+ */
+export const calculateStreakMilestone = (currentStreak: number): StreakMilestoneInfo => {
+  const safeStreak = Math.max(0, currentStreak || 0);
+
+  let currentTierIndex = 0;
+  for (let i = 0; i < STREAK_MILESTONES.length; i++) {
+    if (safeStreak >= STREAK_MILESTONES[i].days) {
+      currentTierIndex = i;
+    } else {
+      break;
+    }
+  }
+
+  const currentTier = STREAK_MILESTONES[currentTierIndex];
+  const nextTier =
+    currentTierIndex < STREAK_MILESTONES.length - 1
+      ? STREAK_MILESTONES[currentTierIndex + 1]
+      : null;
+
+  if (!nextTier) {
+    return {
+      currentStreak: safeStreak,
+      currentTier,
+      nextMilestone: null,
+      progressPercent: 100,
+      isTopTier: true,
+    };
+  }
+
+  const baseDays = currentTier.days;
+  const targetDays = nextTier.days;
+  const tierSpan = targetDays - baseDays;
+  const achievedInTier = safeStreak - baseDays;
+  const progressPercent =
+    tierSpan > 0 ? Math.min(100, Math.max(0, Math.round((achievedInTier / tierSpan) * 100))) : 0;
+  const remainingDays = Math.max(0, targetDays - safeStreak);
+
+  return {
+    currentStreak: safeStreak,
+    currentTier,
+    nextMilestone: {
+      tier: nextTier,
+      remainingDays,
+    },
+    progressPercent,
+    isTopTier: false,
+  };
+};
+
+/**
+ * Calculates consistency and completion pattern across the 7 days of the week (Sunday to Saturday)
+ */
+export const calculateHabitConsistencyPattern = (
+  habit: Habit,
+  allCheckins: HabitCheckin[],
+  referenceDate?: string | dayjs.Dayjs
+): HabitConsistencyPattern => {
+  const today = (referenceDate ? dayjs(referenceDate) : dayjs()).startOf('day');
+  const createdDate = dayjs(habit.createdAt).startOf('day');
+
+  // Filter completed checkins for this habit up to today
+  const habitCompletedCheckins = allCheckins.filter(
+    (c) => c.habitId === habit.id && c.completed && !dayjs(c.date).startOf('day').isAfter(today)
+  );
+
+  let earliestDate = createdDate;
+  habitCompletedCheckins.forEach((c) => {
+    const d = dayjs(c.date).startOf('day');
+    if (d.isBefore(earliestDate)) {
+      earliestDate = d;
+    }
+  });
+
+  const dueCounts = [0, 0, 0, 0, 0, 0, 0];
+  const completedCounts = [0, 0, 0, 0, 0, 0, 0];
+  const completedDates = new Set(habitCompletedCheckins.map((c) => c.date));
+
+  const totalDays = Math.max(1, today.diff(earliestDate, 'day') + 1);
+  for (let i = 0; i < totalDays; i++) {
+    const curDate = earliestDate.add(i, 'day');
+    const curStr = curDate.format('YYYY-MM-DD');
+    const dayOfWeek = curDate.day(); // 0 = Sun, ..., 6 = Sat
+
+    const isDue = isHabitDueOnDate(habit, curStr, false);
+    const isCompleted = completedDates.has(curStr);
+
+    if (isDue) {
+      dueCounts[dayOfWeek]++;
+    }
+    if (isCompleted) {
+      completedCounts[dayOfWeek]++;
+    }
+  }
+
+  const days: HabitDayDistribution[] = DAYS_OF_WEEK_AR.map((d) => {
+    const due = dueCounts[d.index];
+    const completed = completedCounts[d.index];
+    const effectiveDue = Math.max(due, completed);
+    const rate = effectiveDue > 0 ? Math.round((completed / effectiveDue) * 100) : 0;
+
+    return {
+      dayIndex: d.index,
+      dayName: d.name,
+      dayShort: d.short,
+      dueCount: effectiveDue,
+      completedCount: completed,
+      rate: Math.min(100, Math.max(0, rate)),
+    };
+  });
+
+  // If no checkins have been recorded yet for this habit
+  if (habitCompletedCheckins.length === 0) {
+    return {
+      days,
+      bestDay: null,
+      weakestDay: null,
+      insightMessage: 'سجل إنجازاتك خلال الأيام القادمة لبناء نمط الالتزام الأسبوعي الخاص بك.',
+    };
+  }
+
+  // Evaluate active scheduled days with data
+  const daysWithDue = days.filter((d) => d.dueCount > 0);
+
+  let bestDay: HabitDayDistribution | null = null;
+  let weakestDay: HabitDayDistribution | null = null;
+
+  if (daysWithDue.length > 0) {
+    const sorted = [...daysWithDue].sort(
+      (a, b) => b.rate - a.rate || b.completedCount - a.completedCount
+    );
+    if (sorted[0].completedCount > 0 || sorted[0].rate > 0) {
+      bestDay = sorted[0];
+    }
+
+    const lowest = [...daysWithDue].sort(
+      (a, b) => a.rate - b.rate || a.completedCount - b.completedCount
+    );
+    if (lowest[0].rate < (bestDay?.rate ?? 100)) {
+      weakestDay = lowest[0];
+    }
+  }
+
+  let insightMessage = '';
+  if (daysWithDue.length === 0 || (!bestDay && !weakestDay)) {
+    insightMessage = 'سجل إنجازاتك خلال الأيام القادمة لبناء نمط الالتزام الأسبوعي الخاص بك.';
+  } else if (bestDay && !weakestDay && bestDay.rate === 100) {
+    insightMessage = 'ما شاء الله! التزام ممتاز ومثالي بنسبة 100% في جميع الأيام المجدولة.';
+  } else if (bestDay && weakestDay) {
+    insightMessage = `أفضل أيام التزامك هو يوم ${bestDay.dayName} بنسبة (${bestDay.rate}%)، بينما يقل الإنجاز في يوم ${weakestDay.dayName} (${weakestDay.rate}%).`;
+  } else if (bestDay) {
+    insightMessage = `يوم ${bestDay.dayName} هو أكثر أيامك التزامًا بهذه العادة بنسبة (${bestDay.rate}%).`;
+  } else {
+    insightMessage = 'استمر في تسجيل إنجازاتك لاكتشاف نمط انضباطك الأسبوعي.';
+  }
+
+  return {
+    days,
+    bestDay,
+    weakestDay,
+    insightMessage,
+  };
+};
+
+/**
+ * Format single habit achievement summary for native sharing
+ */
+export const formatHabitStatsForShare = (
+  habit: Habit,
+  stats: HabitStats,
+  milestone: StreakMilestoneInfo
+): string => {
+  const streakUnit = stats.currentStreak === 1 ? 'يوم' : stats.currentStreak <= 10 ? 'أيام' : 'يوم';
+  const bestStreakUnit = stats.bestStreak === 1 ? 'يوم' : stats.bestStreak <= 10 ? 'أيام' : 'يوم';
+
+  return [
+    `🎯 إنجازي في عادة: ${habit.name}`,
+    `• السلسلة الحالية: ${stats.currentStreak} ${streakUnit} متتالية 🔥`,
+    `• أطول سلسلة: ${stats.bestStreak} ${bestStreakUnit} 🏆`,
+    `• مرحلة الالتزام: ${milestone.currentTier.name} (${milestone.currentTier.days} يوم)`,
+    `• إجمالي الإنجازات: ${stats.totalCompletions} ${habit.unit}`,
+    `• نسبة الالتزام: ${stats.completionRate}%`,
     '',
     'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
   ].join('\n');

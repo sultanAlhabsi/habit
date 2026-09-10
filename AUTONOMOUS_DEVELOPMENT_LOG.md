@@ -759,6 +759,114 @@ npm run typecheck -> tsc --noEmit -> 0 errors!
 2. **مرونة التاريخ المرجعي في حساب السلاسل (`Reference Date in Habit Stats`):** بدلاً من افتراض وقت التشغيل الحالي دائماً، تم تحديث `calculateHabitStats` لقبول تاريخ مرجعي، مما مكّن فرز العادات بحسب السلسلة نسبة لأي يوم يتم تصفحه وليس فقط اليوم الفعلي.
 3. **توليد النافذة الزمنية الديناميكية في شريط الأيام (`Adaptive Center Date Window`):** الحفاظ على سرعة التمرير والتنقل بالاعتماد على مصفوفة محددة من 15 يوماً تتمركز تلقائياً حول اليوم المختار في حال بعده عن تاريخ اليوم، مما يمنع انقطاع المؤشر البصري.
 
+---
+
+## الدورة الثامنة (Cycle 8) - محطات تكوين العادات السلوكية (Behavioral Formation Milestones)، نمط الالتزام الأسبوعي وتصدير إنجازات العادة
+
+### 1. تحليل المتطلبات ونقاط التحسين المكتشفة
+1. **محطات تكوين العادات النفسية (Habit Formation Tiers):**
+   - افتقار شاشة تفاصيل العادة إلى محطات تحفيزية متدرجة تعتمد على علم النفس السلوكي لتشجيع المستخدم على الاستمرار (مثل كسر حاجز البداية في 3 أيام، وزخم الأسبوع الأول 7 أيام، وتثبيت المسار 14 يوماً، ومرحلة تكوين العادة 21 يوماً، وشهر الانضباط 30 يوماً، وعتبة التلقائية العصبية 66 يوماً، ونادي المئة 100 يوم).
+2. **غياب تحليل نمط الالتزام وتوزيع أيام الأسبوع (Day-of-Week Consistency Pattern):**
+   - يحتاج المستخدم لمعرفة الأيام التي يميل فيها إلى الانضباط أو التكاسل (من الأحد إلى السبت) لضبط جدوله وروتينه اليومي.
+3. **غياب إمكانية مشاركة إنجاز عادة محددة:**
+   - كانت المشاركة تقتصر على ملخص الإنجاز العام فقط، دون إمكانية مشاركة إنجازات عادة منفردة وسلسلتها الحالية ورتبتها المحققة.
+
+---
+
+### 2. التغييرات والإضافات المنجزة
+
+#### أ. الأنواع والواجهات البرمجية (`src/types/habit.ts`):
+- إضافة واجهات `StreakMilestoneTier` و `StreakMilestoneInfo` لتمثيل محطات التكوين ونسبة التقدم نحو المحطة التالية.
+- إضافة واجهات `HabitDayDistribution` و `HabitConsistencyPattern` لتمثيل توزيع نسب الإنجاز حسب أيام الأسبوع (من الأحد إلى السبت).
+
+#### ب. المحرك المنطقي الرياضي (`src/utils/habitUtils.ts`):
+- تعريف مصفوفة المحطات السلوكية `STREAK_MILESTONES` (من 0 إلى 100+ يوم) مع أوصاف ورتب محفزة باللغة العربية.
+- دالة نقية `calculateStreakMilestone(currentStreak)` لحساب الرتبة الحالية، والهدف القادم، والأيام المتبقية، ونسبة التقدم المئوية نحو المحطة التالية.
+- دالة نقية `calculateHabitConsistencyPattern(habit, allCheckins, referenceDate)` لتحليل نسبة الإنجاز والفرص لكل يوم من أيام الأسبوع وتحديد أفضل الأيام وأقلها التزاماً وتوليد نصيحة سلوكية دقيقة.
+- دالة نقية `formatHabitStatsForShare(habit, stats, milestone)` لصياغة نص ملخص أنيق لإنجازات العادة للمشاركة عبر وسائل التواصل وتطبيقات المراسلة.
+
+#### ج. المكونات البصرية الجديدة (`src/components/details/`):
+- إنشاء مكون `StreakMilestoneCard`:
+  - بطاقة تحفيزية تعرض اسم الرتبة الحالية وشارتها ووصفها السلوكي.
+  - شريط تقدم تفاعلي نحو المحطة التالية مع بيان الأيام المتبقية بدقة.
+  - شارة احتفالية خاصة عند بلوغ أعلى رتبة (نادي المئة 100+ يوم).
+- إنشاء مكون `HabitConsistencyCard`:
+  - مخطط أعمدة رأسية يوضح نسبة الإنجاز لكل يوم من أيام الأسبوع الـ 7.
+  - تمييز اليوم الأكثر التزاماً بشارة خاصة ولون نجاح مميز.
+  - مربع إرشادي يحلل سلوك المستخدم ويقدم نصيحة تفاعلية بناءً على بياناته.
+
+#### د. شاشة تفاصيل العادة (`src/screens/HabitDetailsScreen.tsx`):
+- دمج بطاقة محطات تكوين العادة وبطاقة نمط الالتزام الأسبوعي.
+- إضافة زر مشاركة مباشر في شريط العنوان العلوي (Header) يتيح للمستخدم مشاركة ملخص إنجاز العادة بنقرة واحدة عبر `Share.share`.
+
+---
+
+### 3. نتائج الاختبارات وفحص البناء والجودة
+- **عدد الاختبارات:** 45 اختباراً شاملاً (إضافة 4 اختبارات جديدة تغطي حساب محطات التكوين وتوزيع الأيام وصياغة المشاركة).
+- **نسبة النجاح:** 100% (45 pass, 0 fail).
+- **فحص الأنواع الصارم (TypeScript):** 0 أخطاء (`tsc --noEmit`).
+- **حزم الإنتاج لمنصة Android:** نجاح تصدير الحزمة الإنتاجية بالكامل (1491 موديول تم تجميعها بسلاسة دون تحذيرات أو أخطاء).
+
+```bash
+# نتائج اختبارات Node Test Runner الكاملة:
+✔ createBackupPayload: constructs standard schema envelope (7.4ms)
+✔ validateBackupJson: validates well-formed JSON string (1.6ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.4ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.5ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.8ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (16.6ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (1.6ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (0.8ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (1.4ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (7.8ms)
+✔ calculateHabitStats: increments streak when today is completed (4.1ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (3.8ms)
+✔ calculateHabitStats: paused habit retains historical stats (4.3ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.3ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (4.2ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (1.6ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (10.0ms)
+✔ formatArabicDate: formats correctly in Arabic (0.5ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (0.7ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.3ms)
+✔ calculateCheckinProgress: calculates progress, percentage, and completion status accurately (0.7ms)
+✔ getNextProgressCount: clamps increment and decrement safely within [0, targetCount] (0.4ms)
+✔ formatDailySummaryForShare: generates formatted Arabic summary for native sharing (1.0ms)
+✔ formatDailySummaryForShare: handles day with no due habits gracefully (0.3ms)
+✔ formatOverallStatsForShare: generates clean Arabic overall milestones report (27.3ms)
+✔ normalizeArabicNumerals: converts Eastern Arabic and Persian numerals to Western digits (1.3ms)
+✔ getHabitCategory: accurately maps icons to categories (0.4ms)
+✔ getHabitStreakStatus: determines correct streak status on completed, rest, and pending days (0.8ms)
+✔ sortHabits: sorts habits according to pending_first, reminder_time, streak, and default (69.4ms)
+✔ calculateMonthAdherence: computes correct metrics for a full month (3.1ms)
+✔ calculateMonthAdherence: handles empty habits list safely without NaN or division by zero (0.8ms)
+✔ formatMonthlySummaryForShare: formats month summary correctly for native sharing (0.4ms)
+✔ calculateStreakMilestone: computes correct tier and remaining days for streak progression (0.6ms)
+✔ calculateHabitConsistencyPattern: calculates adherence distribution across all 7 days of the week (2.1ms)
+✔ calculateHabitConsistencyPattern: handles new habit with no completions gracefully (0.5ms)
+✔ formatHabitStatsForShare: creates detailed Arabic share text for a specific habit (0.5ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (7.1ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (4.0ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (1.0ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.8ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.7ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (1.0ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (1.2ms)
+✔ parseReminderTime: supports Arabic-Indic and Persian numeral strings (2.2ms)
+ℹ tests 45 | suites 0 | pass 45 | fail 0 | cancelled 0 | duration_ms 599ms
+
+# فحص أنواع TypeScript:
+npm run typecheck -> tsc --noEmit -> 0 errors!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة الثامنة
+1. **التوافق التام مع بيئة Node Test Runner الخالية من المحاكاة (Zero Native Dependencies in Utilities):** الحفاظ على نقاء دوال `habitUtils.ts` بعدم استيراد أي مكتبات أصلية لـ React Native، مما سمح بتشغيل الاختبارات الفائقة السرعة في أقل من 600 ميلي ثانية.
+2. **قواعد العد والإعراب العربي الدقيق في النصوص:** مراعاة صيغ التمييز العددي في صياغة نصوص المشاركة (مثل "يوم" و"أيام" بحسب السلسلة والأيام المتبقية) لتقديم تجربة استخدام عربية رفيعة المستوى.
+3. **تصميم واجهات متكيفة وسهلة القراءة:** استخدام أعمدة نسبية رأسية تفاعلية تتكيف مع ألوان العادة وثيم النظام الفاتح والداكن بدقة متناهية.
+
 
 
 

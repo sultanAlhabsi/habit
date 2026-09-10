@@ -21,6 +21,10 @@ import {
   sortHabits,
   calculateMonthAdherence,
   formatMonthlySummaryForShare,
+  calculateStreakMilestone,
+  calculateHabitConsistencyPattern,
+  formatHabitStatsForShare,
+  STREAK_MILESTONES,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -789,6 +793,117 @@ test('formatMonthlySummaryForShare: formats month summary correctly for native s
   assert.ok(message.includes('48'));
   assert.ok(message.includes('18'));
   assert.ok(message.includes('تطبيق إنجاز'));
+});
+
+test('calculateStreakMilestone: computes correct tier and remaining days for streak progression', () => {
+  // 0 days streak (starting out)
+  const m0 = calculateStreakMilestone(0);
+  assert.equal(m0.currentTier.id, 'tier_0');
+  assert.equal(m0.currentTier.name, 'بداية الرحلة');
+  assert.equal(m0.nextMilestone?.tier.id, 'tier_3');
+  assert.equal(m0.nextMilestone?.remainingDays, 3);
+  assert.equal(m0.progressPercent, 0);
+  assert.equal(m0.isTopTier, false);
+
+  // 5 days streak (between 3 and 7: 5 - 3 = 2 out of 4 days = 50%)
+  const m5 = calculateStreakMilestone(5);
+  assert.equal(m5.currentTier.id, 'tier_3');
+  assert.equal(m5.currentTier.name, 'انطلاقة واعدة');
+  assert.equal(m5.nextMilestone?.tier.id, 'tier_7');
+  assert.equal(m5.nextMilestone?.remainingDays, 2);
+  assert.equal(m5.progressPercent, 50);
+
+  // 21 days streak (exact milestone hit)
+  const m21 = calculateStreakMilestone(21);
+  assert.equal(m21.currentTier.id, 'tier_21');
+  assert.equal(m21.currentTier.name, 'بناء العادة');
+  assert.equal(m21.nextMilestone?.tier.id, 'tier_30');
+  assert.equal(m21.nextMilestone?.remainingDays, 9);
+  assert.equal(m21.progressPercent, 0);
+
+  // 66 days streak (automaticity)
+  const m66 = calculateStreakMilestone(66);
+  assert.equal(m66.currentTier.id, 'tier_66');
+  assert.equal(m66.currentTier.name, 'العادة التلقائية');
+  assert.equal(m66.nextMilestone?.tier.id, 'tier_100');
+  assert.equal(m66.nextMilestone?.remainingDays, 34);
+
+  // 120 days streak (top tier: 100+ club)
+  const m120 = calculateStreakMilestone(120);
+  assert.equal(m120.currentTier.id, 'tier_100');
+  assert.equal(m120.currentTier.name, 'احتراف وإتقان');
+  assert.equal(m120.nextMilestone, null);
+  assert.equal(m120.progressPercent, 100);
+  assert.equal(m120.isTopTier, true);
+});
+
+test('calculateHabitConsistencyPattern: calculates adherence distribution across all 7 days of the week', () => {
+  const habit = createMockHabit({
+    id: 'habit-dist',
+    frequency: 'daily',
+    createdAt: '2026-05-01T00:00:00.000Z',
+  });
+
+  // Checkins for May 2026: May 3 (Sunday), May 4 (Monday), May 10 (Sunday), May 11 (Monday)
+  // Let's create specific checkins
+  const checkins: HabitCheckin[] = [
+    { id: 'c1', habitId: 'habit-dist', date: '2026-05-03', count: 1, completed: true, updatedAt: '' }, // Sunday (day 0)
+    { id: 'c2', habitId: 'habit-dist', date: '2026-05-10', count: 1, completed: true, updatedAt: '' }, // Sunday (day 0)
+    { id: 'c3', habitId: 'habit-dist', date: '2026-05-04', count: 1, completed: true, updatedAt: '' }, // Monday (day 1)
+  ];
+
+  // Evaluate up to May 14, 2026
+  const pattern = calculateHabitConsistencyPattern(habit, checkins, '2026-05-14');
+
+  assert.equal(pattern.days.length, 7);
+  // Sunday is index 0
+  const sun = pattern.days.find((d) => d.dayIndex === 0);
+  assert.ok(sun);
+  assert.equal(sun.completedCount, 2);
+  assert.ok(sun.dueCount >= 2);
+
+  // Monday is index 1
+  const mon = pattern.days.find((d) => d.dayIndex === 1);
+  assert.ok(mon);
+  assert.equal(mon.completedCount, 1);
+
+  // Best day should be identified
+  assert.ok(pattern.bestDay);
+  assert.ok(pattern.insightMessage.length > 0);
+});
+
+test('calculateHabitConsistencyPattern: handles new habit with no completions gracefully', () => {
+  const habit = createMockHabit({
+    id: 'habit-empty-dist',
+    frequency: 'daily',
+    createdAt: '2026-06-01T00:00:00.000Z',
+  });
+
+  const pattern = calculateHabitConsistencyPattern(habit, [], '2026-06-01');
+  assert.equal(pattern.days.length, 7);
+  assert.equal(pattern.bestDay, null);
+  assert.ok(pattern.insightMessage.includes('سجل إنجازاتك'));
+});
+
+test('formatHabitStatsForShare: creates detailed Arabic share text for a specific habit', () => {
+  const habit = createMockHabit({ name: 'المشي الصباحي', unit: 'خطوة' });
+  const stats = {
+    currentStreak: 12,
+    bestStreak: 25,
+    totalCompletions: 40,
+    completionRate: 85,
+    totalDueDays: 47,
+  };
+  const milestone = calculateStreakMilestone(12);
+
+  const text = formatHabitStatsForShare(habit, stats, milestone);
+  assert.ok(text.includes('المشي الصباحي'));
+  assert.ok(text.includes('12 يوم متتالية'));
+  assert.ok(text.includes('25 يوم'));
+  assert.ok(text.includes('أسبوع متواصل'));
+  assert.ok(text.includes('40 خطوة'));
+  assert.ok(text.includes('85%'));
+  assert.ok(text.includes('تطبيق إنجاز'));
 });
 
 
