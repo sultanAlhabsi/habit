@@ -5,7 +5,11 @@ import {
   isHabitDueOnDate,
   calculateHabitStats,
   calculateOverallStats,
+  calculateWeekAdherence,
+  hasEverHadPerfectDay,
+  getHabitsForDate,
   formatArabicDate,
+  formatWeekRangeArabic,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -134,6 +138,37 @@ test('calculateHabitStats: increments streak when today is completed', () => {
   assert.equal(stats.totalCompletions, 2);
 });
 
+test('calculateHabitStats: ignores future date checkins and calculates capped completion rate', () => {
+  const habit = createMockHabit();
+  const tomorrow = dayjs().add(1, 'day').format('YYYY-MM-DD');
+  const today = dayjs().format('YYYY-MM-DD');
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c-future',
+      habitId: habit.id,
+      date: tomorrow,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+    {
+      id: 'c-today',
+      habitId: habit.id,
+      date: today,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+
+  const stats = calculateHabitStats(habit, checkins);
+  // Tomorrow's checkin must be ignored
+  assert.equal(stats.totalCompletions, 1);
+  assert.equal(stats.currentStreak, 1);
+  assert.ok(stats.completionRate <= 100);
+});
+
 test('calculateHabitStats: paused habit retains historical stats', () => {
   const habit = createMockHabit({ isActive: false });
   const today = dayjs().format('YYYY-MM-DD');
@@ -165,16 +200,130 @@ test('calculateHabitStats: paused habit retains historical stats', () => {
   assert.ok(stats.completionRate > 0);
 });
 
-test('calculateOverallStats: computes accurate rates and weekly adherence', () => {
+test('getHabitsForDate: returns active due habits and preserved completed paused habits', () => {
+  const activeHabit = createMockHabit({ id: 'h-active', isActive: true });
+  const pausedHabit = createMockHabit({ id: 'h-paused', isActive: false });
+  const pastDate = dayjs().subtract(3, 'day').format('YYYY-MM-DD');
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c-paused',
+      habitId: 'h-paused',
+      date: pastDate,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+
+  // For pastDate: both activeHabit (due) and pausedHabit (was completed on that day) must be returned
+  const results = getHabitsForDate([activeHabit, pausedHabit], checkins, pastDate);
+  assert.equal(results.length, 2);
+  assert.ok(results.some((h) => h.id === 'h-active'));
+  assert.ok(results.some((h) => h.id === 'h-paused'));
+
+  // For today (where pausedHabit has no checkin): pausedHabit must NOT be returned
+  const today = dayjs().format('YYYY-MM-DD');
+  const todayResults = getHabitsForDate([activeHabit, pausedHabit], checkins, today);
+  assert.equal(todayResults.length, 1);
+  assert.equal(todayResults[0].id, 'h-active');
+});
+
+test('calculateWeekAdherence: identifies future days, today, and adherence rates', () => {
+  const habit = createMockHabit({ frequency: 'daily' });
+  const today = dayjs();
+  const todayStr = today.format('YYYY-MM-DD');
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: habit.id,
+      date: todayStr,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+
+  const week = calculateWeekAdherence([habit], checkins, todayStr);
+  assert.equal(week.length, 7);
+
+  const todayItem = week.find((d) => d.date === todayStr);
+  assert.ok(todayItem);
+  assert.equal(todayItem.isToday, true);
+  assert.equal(todayItem.isFuture, false);
+  assert.equal(todayItem.completedCount, 1);
+  assert.equal(todayItem.rate, 100);
+
+  // Check future days
+  const futureItems = week.filter((d) => dayjs(d.date).isAfter(today.startOf('day')));
+  futureItems.forEach((item) => {
+    assert.equal(item.isFuture, true);
+    assert.equal(item.rate, 0);
+  });
+});
+
+test('hasEverHadPerfectDay: correctly detects past 100% completion days', () => {
+  const habit1 = createMockHabit({ id: 'h1' });
+  const habit2 = createMockHabit({ id: 'h2' });
+  const pastDate = dayjs().subtract(5, 'day').format('YYYY-MM-DD');
+
+  // Only habit 1 completed: not perfect
+  const partialCheckins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: 'h1',
+      date: pastDate,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+  assert.equal(hasEverHadPerfectDay([habit1, habit2], partialCheckins), false);
+
+  // Both completed: perfect day!
+  const fullCheckins: HabitCheckin[] = [
+    ...partialCheckins,
+    {
+      id: 'c2',
+      habitId: 'h2',
+      date: pastDate,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+  assert.equal(hasEverHadPerfectDay([habit1, habit2], fullCheckins), true);
+});
+
+test('calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence', () => {
   const habit1 = createMockHabit({ id: 'h1' });
   const habit2 = createMockHabit({ id: 'h2' });
   const today = dayjs().format('YYYY-MM-DD');
+  const pastDate = dayjs().subtract(4, 'day').format('YYYY-MM-DD');
 
   const checkins: HabitCheckin[] = [
     {
       id: 'c1',
       habitId: 'h1',
       date: today,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+    // Past perfect day
+    {
+      id: 'c2',
+      habitId: 'h1',
+      date: pastDate,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+    {
+      id: 'c3',
+      habitId: 'h2',
+      date: pastDate,
       count: 1,
       completed: true,
       updatedAt: dayjs().toISOString(),
@@ -187,6 +336,7 @@ test('calculateOverallStats: computes accurate rates and weekly adherence', () =
   assert.equal(overall.todayTotalCount, 2);
   assert.equal(overall.todayCompletedCount, 1);
   assert.equal(overall.todayCompletionRate, 50);
+  assert.equal(overall.hasEverHadPerfectDay, true);
   assert.equal(overall.weeklyAdherence.length, 7);
 });
 
@@ -194,4 +344,11 @@ test('formatArabicDate: formats correctly in Arabic', () => {
   const formatted = formatArabicDate('2026-09-10');
   assert.ok(formatted.includes('10'));
   assert.ok(formatted.includes('سبتمبر'));
+});
+
+test('formatWeekRangeArabic: formats range with Arabic month and year', () => {
+  const range = formatWeekRangeArabic('2026-09-10');
+  assert.ok(range.includes('سبتمبر'));
+  assert.ok(range.includes('2026'));
+  assert.ok(range.includes('-'));
 });

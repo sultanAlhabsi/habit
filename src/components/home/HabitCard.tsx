@@ -13,6 +13,7 @@ interface HabitCardProps {
   habit: Habit;
   isCompleted: boolean;
   streak: number;
+  isFuture?: boolean;
   onToggleCheckin: () => void;
   onPressDetails: () => void;
 }
@@ -21,6 +22,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   habit,
   isCompleted,
   streak,
+  isFuture = false,
   onToggleCheckin,
   onPressDetails,
 }) => {
@@ -48,9 +50,14 @@ export const HabitCard: React.FC<HabitCardProps> = ({
       <View style={styles.cardContent}>
         {/* Right side in RTL: Checkmark Circle */}
         <Pressable
+          disabled={isFuture}
           accessibilityRole="checkbox"
-          accessibilityState={{ checked: isCompleted }}
-          accessibilityLabel={`تسجيل إتمام ${habit.name}`}
+          accessibilityState={{ checked: isCompleted, disabled: isFuture }}
+          accessibilityLabel={
+            isFuture
+              ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
+              : `تسجيل إتمام ${habit.name}`
+          }
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={onToggleCheckin}
           style={({ pressed }) => [
@@ -58,7 +65,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             {
               minWidth: touchTarget,
               minHeight: touchTarget,
-              opacity: pressed ? 0.6 : 1,
+              opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
             },
           ]}
         >
@@ -66,7 +73,11 @@ export const HabitCard: React.FC<HabitCardProps> = ({
             style={[
               styles.checkCircle,
               {
-                borderColor: isCompleted ? theme.primary : theme.textMuted,
+                borderColor: isCompleted
+                  ? theme.primary
+                  : isFuture
+                  ? theme.border
+                  : theme.textMuted,
                 backgroundColor: isCompleted ? theme.primary : 'transparent',
               },
             ]}

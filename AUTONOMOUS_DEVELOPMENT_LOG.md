@@ -219,8 +219,110 @@ npm run typecheck -> tsc --noEmit -> 0 errors!
 
 ---
 
-### 5. الرؤية المستقبلية (Cycle 3)
+### 5. الرؤية المستقبلية (Cycle 3 وما بعدها)
 1. **تحديات أو أهداف أسبوعية وشهرية (Habit Challenges / Milestones):** إتاحة ربط العادة بهدف دوري أسبوعي/شهري لتشجيع الاستمرارية وتقديم أوسمة إنجاز مصغرة.
 2. **تصفية متقدمة في شاشة الإحصائيات:** إضافة إمكانية المقارنة بين فترات زمنية سابقة ومتابعة معدل الالتزام لكل شهر على حدة.
 3. **تحسينات إضافية على إمكانية الوصول (Accessibility & Screen Readers):** تدقيق علامات `accessibilityLabel` لجميع المكونات لتيسير الاستخدام لذوي الاحتياجات الخاصة.
+
+---
+
+## الدورة الثالثة (Cycle 3) - تحصين الإحصائيات، ديمومة الأوسمة، التصفح الأسبوعي، وحفظ التاريخ الماضي
+- **التاريخ:** 10 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة الثالثة
+ركزت هذه الدورة على معالجة دقيقة للثغرات الحسابية والمنطقية، وتعزيز تجربة المستخدم البصرية والتحفيزية:
+1. **معالجة تسريب التاريخ (Data Leak) في شاشة الإحصائيات:** منع تسريب التاريخ المحدد من الشاشة الرئيسية إلى مؤشرات الأداء الحالية (KPIs).
+2. **تحقيق ديمومة الأوسمة ومحطات الالتزام (Milestone Permanence):** تحويل وسام "اليوم المكتمل" والأوسمة الأخرى لتعتمد على الإنجاز التاريخي التراكمي، بحيث لا يفقد المستخدم وسامه بحلول منتصف الليل.
+3. **منع الإنجاز المستقبلي وتصحيح الرسم البياني:** حظر تسجيل إنجاز لتواريخ مستقبلية في المتجر والواجهة، وتمييز الأيام القادمة في الرسم البياني بعلامة انتظار `-` بدلاً من إظهارها كإخفاق بنسبة 0%.
+4. **الحفاظ على تاريخ العادات المتوقفة (Paused Habits History):** منع اختفاء العادات المنجزة تاريخياً عند تصفح الأيام السابقة في حال تم إيقافها مؤقتاً لاحقاً.
+5. **إتاحة تصفح الأسابيع السابقة (Weekly Navigation):** تمكين المستخدم من استعراض الالتزام الأسبوعي للأسابيع الماضية ومقارنة الأداء.
+6. **إضافة زر العودة السريعة لليوم وبطاقة الاحتفال بالإنجاز الكامل.**
+7. **إضافة عدادات التقدم للمحطات والأوسمة الجديدة ("الخطوة الأولى" و"نادي المئة").**
+
+---
+
+### 2. التغييرات والإضافات المنجزة
+
+#### أ. إصلاحات الحسابات والمنطق الرياضي (`habitUtils.ts`):
+1. **دالة `hasEverHadPerfectDay`:** فحص السجل التراكمي للتأكد مما إذا كان المستخدم قد أنجز 100% من عاداته المجدولة في أي يوم سابق، لحفظ وسام "يوم مكتمل" بشكل دائم.
+2. **دالة `getHabitsForDate`:** جلب العادات النشطة المستحقة لليوم المحدد، بالإضافة إلى أي عادة كانت منجزة في ذلك اليوم حتى لو تم إيقافها لاحقاً (مع استبعاد العادات المؤرشفة قبل ذلك التاريخ).
+3. **دالة `calculateWeekAdherence` مع دعم الأيام المستقبلية:** تمييز اليوم الحالي (`isToday`)، والأيام المستقبلية (`isFuture`) بحيث لا تحتسب نسبة إخفاق للأيام التي لم تأتِ بعد.
+4. **دالة `formatWeekRangeArabic`:** تنسيق نطاقات الأسابيع عربياً بدقة مع مراعاة الانتقال بين الشهور (مثال: `10 - 16 سبتمبر 2026`).
+5. **تصحيح الفرص المحتسبة (`effectiveOpportunities`):** تصحيح احتساب نسبة الإنجاز عند إتمام عادة في يوم إجازة غير مجدول (`Math.max(totalDueDays, totalCompletions)`).
+6. **تجاهل التواريخ المستقبلية في حساب السلاسل:** تصفية أي سجل يحمل تاريخاً مستقبلياً لضمان دقة السلاسل الحالية والقصوى.
+
+#### ب. المتجر والتحكم بالبيانات (`useHabitStore.ts`):
+1. **حظر تسجيل الإنجاز المستقبلي في `toggleCheckin`:** رفض تسجيل إنجاز إذا كان التاريخ يتجاوز تاريخ اليوم الحالي (`isAfter(today)`).
+2. **طلب أذونات الإشعارات عند التفعيل في `toggleNotifications`:** فحص الأذونات عبر `requestNotificationPermissions()` فور تفعيل التنبيهات من الإعدادات.
+
+#### ج. واجهة المستخدم وتجربة التفاعل:
+1. **`WeeklyChart.tsx`:**
+   - إضافة زري تنقل بين الأسابيع (الأسبوع السابق والتالي حتى الأسبوع الحالي).
+   - تمييز اليوم الحالي بنقطة ملونة وعنوان عريض.
+   - إظهار علامة `-` للأيام المستقبلية بدلاً من نسبة 0%.
+2. **`BadgeList.tsx`:**
+   - شارة إجمالية بعدد المحطات المفتوحة (مثال: `٤ من ٨ محطات`).
+   - مؤشرات نصية لتقدم كل وسام مغلق (مثال: `٤/٧ أيام` أو `٢٤/٥٠ إنجاز`).
+   - إضافة وسام "الخطوة الأولى" (أول إنجاز) ووسام "نادي المئة" (100 إنجاز).
+3. **`DailyProgressCard.tsx` و `HomeScreen.tsx`:**
+   - زر مصغر "اليوم" للقفز السريع إلى تاريخ اليوم عند استعراض تواريخ ماضية أو قادمة.
+   - بطاقة احتفالية ملهمة عند إتمام 100% من عادات اليوم الحالي.
+   - تعطيل زر تسجيل الإنجاز في بطاقة العادة `HabitCard` عند استعراض تواريخ مستقبلية مع تلميح وصولي ملائم.
+4. **`StatisticsScreen.tsx`:**
+   - معالجة تسريب التاريخ عبر تثبيت احتساب مؤشرات اليوم على تاريخ اليوم الفعلي `dayjs().format('YYYY-MM-DD')`.
+   - استبعاد العادات المؤرشفة من قائمة أكثر العادات التزاماً لحصرها على العادات النشطة فقط.
+
+---
+
+### 3. الاختبارات والتحقق البرمجي
+
+تم توسيع حزمة الاختبارات المؤتمتة لتصل إلى **26 اختبار وحدة**:
+```bash
+# نتائج تشغيل حزمة الاختبارات الكاملة:
+✔ createBackupPayload: constructs standard schema envelope (5.6ms)
+✔ validateBackupJson: validates well-formed JSON string (1.2ms)
+✔ validateBackupJson: rejects malformed or invalid backups (0.9ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.0ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.0ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (15.9ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (2.3ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (0.9ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (1.4ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (5.9ms)
+✔ calculateHabitStats: increments streak when today is completed (6.8ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (4.7ms)
+✔ calculateHabitStats: paused habit retains historical stats (3.8ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.3ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (4.6ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (1.8ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (11.5ms)
+✔ formatArabicDate: formats correctly in Arabic (0.7ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (4.0ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (2.8ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (0.7ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.5ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (0.9ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (0.7ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (0.6ms)
+ℹ tests 26 | suites 0 | pass 26 | fail 0 | duration_ms 475ms
+
+# نتائج الفحص الثابت للأنواع (TypeScript):
+npm run typecheck -> tsc --noEmit -> 0 errors!
+
+# نتائج بناء الحزمة لبيئة أندرويد (Hermes Export):
+Android Bundled 6327ms index.ts (1488 modules) -> 0 errors, 0 warnings!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة الثالثة
+1. **الحفاظ على ديمومة البيانات التحفيزية (Gamification Invariance):** يجب ألا يتراجع المستخدم في مكتسباته التحفيزية بمجرد مرور منتصف الليل. اعتماد الدوال التاريخية التراكمية يوفر تجربة إيجابية ومحفزة.
+2. **حماية السجلات من التلاعب أو الخطأ الزمني:** منع تسجيل الإنجازات المستقبلية على مستوى واجهة المستخدم ومستوى المتجر معاً (Defense in Depth) يحافظ على سلامة حسابات السلاسل ونسب الإنجاز.
+3. **التنقل الزمني الصرف دون تغيير حالة التطبيق الرئيسية:** التنقل بين الأسابيع في شاشة الإحصائيات تم تصميمه كحالة محلية (`useState`) تعتمد على إزاحة الأسابيع (`weekOffset`)، مما يفصل تصفح الإحصائيات الأسبوعية عن التاريخ المحدد في الشاشة الرئيسية.
+
 

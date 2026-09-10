@@ -22,6 +22,7 @@ import {
   scheduleHabitReminder,
   cancelHabitReminders,
   rescheduleAllHabitReminders,
+  requestNotificationPermissions,
 } from '../services/notificationService';
 import {
   BackupPayload,
@@ -119,6 +120,9 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   toggleNotifications: async () => {
     const nextVal = !get().notificationsEnabled;
+    if (nextVal) {
+      await requestNotificationPermissions();
+    }
     set({ notificationsEnabled: nextVal });
     await setPreference('notifications_enabled', String(nextVal));
     await rescheduleAllHabitReminders(get().habits, nextVal);
@@ -213,6 +217,12 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   toggleCheckin: async (habitId: string, targetDate?: string) => {
     const date = targetDate || get().selectedDate;
+
+    // Disallow checkins for future dates
+    if (dayjs(date).startOf('day').isAfter(dayjs().startOf('day'))) {
+      return false;
+    }
+
     const existingCheckin = get().checkins.find(
       (c) => c.habitId === habitId && c.date === date && c.completed
     );

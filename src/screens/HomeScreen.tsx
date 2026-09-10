@@ -8,17 +8,19 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import dayjs from 'dayjs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
+import { Header } from '../components/common/Header';
 import { DateStrip } from '../components/home/DateStrip';
 import { DailyProgressCard } from '../components/home/DailyProgressCard';
 import { HabitCard } from '../components/home/HabitCard';
 import { EmptyState } from '../components/common/EmptyState';
 import {
-  calculateHabitStats,
   calculateOverallStats,
-  isHabitDueOnDate,
+  calculateHabitStats,
+  getHabitsForDate,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -27,18 +29,22 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const { theme, spacing, radius, typography, touchTarget } = useTheme();
+  const { theme, radius, spacing, typography, touchTarget } = useTheme();
 
   const {
     habits,
     checkins,
     selectedDate,
-    isLoading,
     filter,
+    isLoading,
     setSelectedDate,
     setFilter,
     toggleCheckin,
   } = useHabitStore();
+
+  const todayStr = dayjs().format('YYYY-MM-DD');
+  const isToday = selectedDate === todayStr;
+  const isFutureDate = dayjs(selectedDate).startOf('day').isAfter(dayjs().startOf('day'));
 
   if (isLoading) {
     return (
@@ -51,8 +57,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   // Calculate overall stats for selected date
   const overallStats = calculateOverallStats(habits, checkins, selectedDate);
 
-  // Filter habits for selected date
-  const dueHabits = habits.filter((h) => isHabitDueOnDate(h, selectedDate));
+  // Relevant habits for selected date (active due habits + paused habits completed on this date)
+  const dueHabits = getHabitsForDate(habits, checkins, selectedDate);
 
   const filteredHabits = dueHabits.filter((h) => {
     const isCompleted = checkins.some(
@@ -116,7 +122,35 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           completedCount={overallStats.todayCompletedCount}
           totalCount={overallStats.todayTotalCount}
           completionRate={overallStats.todayCompletionRate}
+          isToday={isToday}
+          onPressToday={() => setSelectedDate(todayStr)}
         />
+
+        {/* Celebratory Banner when all habits completed for today */}
+        {isToday && overallStats.todayTotalCount > 0 && overallStats.todayCompletionRate === 100 && (
+          <View
+            style={[
+              styles.celebrationCard,
+              {
+                backgroundColor: theme.primaryLight,
+                borderColor: theme.primary,
+                borderRadius: radius.md,
+                marginHorizontal: spacing.base,
+                marginBottom: spacing.md,
+              },
+            ]}
+          >
+            <Ionicons name="sparkles" size={20} color={theme.primary} style={{ marginLeft: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.subMedium, { color: theme.primary, textAlign: 'right' }]}>
+                أحسنت! أتممت جميع عاداتك لليوم بنجاح 🎉
+              </Text>
+              <Text style={[typography.caption, { color: theme.textSecondary, marginTop: 2, textAlign: 'right' }]}>
+                حافظ على هذا الزخم والاستمرارية لبناء عادات راسخة.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Quiet Filter Tabs */}
         <View style={[styles.filterRow, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
@@ -124,7 +158,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             const isSelected = filter === tab;
             const labels = {
               all: `الكل (${dueHabits.length})`,
-              pending: `المتبقية (${dueHabits.length - overallStats.todayCompletedCount})`,
+              pending: `المتبقية (${Math.max(0, dueHabits.length - overallStats.todayCompletedCount)})`,
               completed: `المكتملة (${overallStats.todayCompletedCount})`,
             };
 
@@ -196,6 +230,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 habit={habit}
                 isCompleted={isCompleted}
                 streak={stats.currentStreak}
+                isFuture={isFutureDate}
                 onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                 onPressDetails={() =>
                   navigation.navigate('HabitDetails', { habitId: habit.id })
@@ -239,5 +274,11 @@ const styles = StyleSheet.create({
   filterTab: {
     paddingHorizontal: 4,
     alignItems: 'center',
+  },
+  celebrationCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
   },
 });

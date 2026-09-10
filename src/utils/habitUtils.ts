@@ -41,15 +41,16 @@ export const calculateHabitStats = (
   habit: Habit,
   allCheckins: HabitCheckin[]
 ): HabitStats => {
+  const today = dayjs().startOf('day');
+  const todayStr = today.format('YYYY-MM-DD');
+
+  // Filter valid completed checkins up to today (ignore any accidental future dates)
   const habitCheckins = allCheckins.filter(
-    (c) => c.habitId === habit.id && c.completed
+    (c) => c.habitId === habit.id && c.completed && !dayjs(c.date).startOf('day').isAfter(today)
   );
 
   const completedDates = new Set(habitCheckins.map((c) => c.date));
   const totalCompletions = completedDates.size;
-
-  const today = dayjs().startOf('day');
-  const todayStr = today.format('YYYY-MM-DD');
   const createdDate = dayjs(habit.createdAt).startOf('day');
 
   // Find earliest relevant date (created date or earliest checkin)
@@ -129,8 +130,10 @@ export const calculateHabitStats = (
     bestStreak = currentStreak;
   }
 
+  // Effective opportunities includes both due days and off-day completions
+  const effectiveOpportunities = Math.max(totalDueDays, totalCompletions);
   const completionRate =
-    totalDueDays > 0 ? Math.round((totalCompletions / totalDueDays) * 100) : 0;
+    effectiveOpportunities > 0 ? Math.round((totalCompletions / effectiveOpportunities) * 100) : 0;
 
   return {
     currentStreak,
@@ -142,6 +145,115 @@ export const calculateHabitStats = (
 };
 
 /**
+ * Get relevant habits for a specific date:
+ * Returns active habits due on that date, PLUS any paused habit that was actually completed on that date.
+ */
+export const getHabitsForDate = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[],
+  dateStr: string
+): Habit[] => {
+  const targetDate = dayjs(dateStr).startOf('day');
+
+  return habits.filter((h) => {
+    // If habit was archived prior to this date, skip
+    if (h.archivedAt && targetDate.isAfter(dayjs(h.archivedAt).startOf('day'))) {
+      return false;
+    }
+
+    // Is it due today while active?
+    if (isHabitDueOnDate(h, dateStr, true)) {
+      return true;
+    }
+
+    // Or was it already completed on this past date?
+    const wasCompletedOnDate = allCheckins.some(
+      (c) => c.habitId === h.id && c.date === dateStr && c.completed
+    );
+
+    return wasCompletedOnDate;
+  });
+};
+
+/**
+ * Calculate 7-day adherence for any week (Sunday to Saturday) around a reference date
+ */
+export const calculateWeekAdherence = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[],
+  referenceDate: string | dayjs.Dayjs
+): DayAdherence[] => {
+  const ref = dayjs(referenceDate);
+  const today = dayjs().startOf('day');
+  const startOfWeek = ref.startOf('week'); // Sunday
+  const completedCheckins = allCheckins.filter((c) => c.completed);
+
+  const dayNamesArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const dayShortArabic = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'];
+
+  const weeklyAdherence: DayAdherence[] = [];
+
+  for (let i = 0; i < 7; i++) {
+    const day = startOfWeek.add(i, 'day');
+    const dStr = day.format('YYYY-MM-DD');
+    const dayIdx = day.day();
+    const isToday = day.isSame(today, 'day');
+    const isFuture = day.isAfter(today, 'day');
+
+    const dueHabits = habits.filter((h) => isHabitDueOnDate(h, dStr, false));
+    const completed = dueHabits.filter((h) =>
+      completedCheckins.some((c) => c.habitId === h.id && c.date === dStr)
+    ).length;
+
+    const rate =
+      isFuture || dueHabits.length === 0
+        ? 0
+        : Math.round((completed / dueHabits.length) * 100);
+
+    weeklyAdherence.push({
+      dayName: dayNamesArabic[dayIdx],
+      dayShort: dayShortArabic[dayIdx],
+      date: dStr,
+      dayIndex: dayIdx,
+      completedCount: completed,
+      totalCount: dueHabits.length,
+      rate,
+      isFuture,
+      isToday,
+    });
+  }
+
+  return weeklyAdherence;
+};
+
+/**
+ * Check if the user has ever achieved 100% completion on any past day
+ */
+export const hasEverHadPerfectDay = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[]
+): boolean => {
+  if (habits.length === 0 || allCheckins.length === 0) return false;
+
+  const completedCheckins = allCheckins.filter((c) => c.completed);
+  const distinctDates = Array.from(new Set(completedCheckins.map((c) => c.date)));
+
+  for (const dateStr of distinctDates) {
+    const dueHabits = habits.filter((h) => isHabitDueOnDate(h, dateStr, false));
+    if (dueHabits.length > 0) {
+      const allCompleted = dueHabits.every((h) =>
+        completedCheckins.some((c) => c.habitId === h.id && c.date === dateStr)
+      );
+      if (allCompleted) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+/**
  * Calculate overall progress for Home & Statistics screens
  */
 export const calculateOverallStats = (
@@ -149,16 +261,16 @@ export const calculateOverallStats = (
   allCheckins: HabitCheckin[],
   selectedDate: string
 ): OverallStats => {
-  const activeHabits = habits.filter((h) => h.isActive);
+  const activeHabits = habits.filter((h) => h.isActive && !h.archivedAt);
   const completedCheckins = allCheckins.filter((c) => c.completed);
 
-  // Checkins for the selected date
-  const dueTodayHabits = activeHabits.filter((h) => isHabitDueOnDate(h, selectedDate, true));
-  const todayCompletedCount = dueTodayHabits.filter((h) =>
+  // Relevant habits for the selected date
+  const relevantHabits = getHabitsForDate(habits, allCheckins, selectedDate);
+  const todayCompletedCount = relevantHabits.filter((h) =>
     completedCheckins.some((c) => c.habitId === h.id && c.date === selectedDate)
   ).length;
 
-  const todayTotalCount = dueTodayHabits.length;
+  const todayTotalCount = relevantHabits.length;
   const todayCompletionRate =
     todayTotalCount > 0 ? Math.round((todayCompletedCount / todayTotalCount) * 100) : 0;
 
@@ -171,36 +283,8 @@ export const calculateOverallStats = (
     }
   });
 
-  // Calculate 7-day adherence for current week
-  const dayNamesArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
-  const dayShortArabic = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'];
-
-  const today = dayjs();
-  const startOfWeek = today.startOf('week'); // Sunday
-  const weeklyAdherence: DayAdherence[] = [];
-
-  for (let i = 0; i < 7; i++) {
-    const day = startOfWeek.add(i, 'day');
-    const dStr = day.format('YYYY-MM-DD');
-    const dayIdx = day.day();
-
-    const dueHabits = habits.filter((h) => isHabitDueOnDate(h, dStr, false));
-    const completed = dueHabits.filter((h) =>
-      completedCheckins.some((c) => c.habitId === h.id && c.date === dStr)
-    ).length;
-
-    const rate = dueHabits.length > 0 ? Math.round((completed / dueHabits.length) * 100) : 0;
-
-    weeklyAdherence.push({
-      dayName: dayNamesArabic[dayIdx],
-      dayShort: dayShortArabic[dayIdx],
-      date: dStr,
-      dayIndex: dayIdx,
-      completedCount: completed,
-      totalCount: dueHabits.length,
-      rate,
-    });
-  }
+  const weeklyAdherence = calculateWeekAdherence(habits, allCheckins, selectedDate);
+  const perfectDayAchieved = hasEverHadPerfectDay(habits, allCheckins);
 
   return {
     totalHabits: habits.length,
@@ -210,6 +294,7 @@ export const calculateOverallStats = (
     todayTotalCount,
     bestOverallStreak,
     totalCheckinsEver: completedCheckins.length,
+    hasEverHadPerfectDay: perfectDayAchieved,
     weeklyAdherence,
   };
 };
@@ -231,5 +316,26 @@ export const formatArabicDate = (dateStr: string): string => {
   const monthName = arabicMonths[d.month()];
 
   return `${dayName}، ${dayNum} ${monthName}`;
+};
+
+/**
+ * Format week date range in Arabic
+ * e.g. "10 - 16 سبتمبر 2026"
+ */
+export const formatWeekRangeArabic = (referenceDate: string | dayjs.Dayjs): string => {
+  const ref = dayjs(referenceDate);
+  const start = ref.startOf('week');
+  const end = ref.endOf('week');
+
+  const arabicMonths = [
+    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
+  ];
+
+  if (start.month() === end.month()) {
+    return `${start.date()} - ${end.date()} ${arabicMonths[start.month()]} ${start.year()}`;
+  } else {
+    return `${start.date()} ${arabicMonths[start.month()]} - ${end.date()} ${arabicMonths[end.month()]} ${start.year()}`;
+  }
 };
 

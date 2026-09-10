@@ -1,26 +1,45 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import dayjs from 'dayjs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
 import { Card } from '../components/common/Card';
 import { WeeklyChart } from '../components/stats/WeeklyChart';
 import { BadgeList } from '../components/stats/BadgeList';
-import { calculateHabitStats, calculateOverallStats } from '../utils/habitUtils';
+import {
+  calculateHabitStats,
+  calculateOverallStats,
+  calculateWeekAdherence,
+  formatWeekRangeArabic,
+} from '../utils/habitUtils';
 
 export const StatisticsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { theme, spacing, typography } = useTheme();
-  const { habits, checkins, selectedDate } = useHabitStore();
+  const { habits, checkins } = useHabitStore();
 
-  const overall = calculateOverallStats(habits, checkins, selectedDate);
+  const [weekOffset, setWeekOffset] = useState(0);
 
-  const rankedHabits = [...habits]
+  const todayStr = dayjs().format('YYYY-MM-DD');
+  const overall = calculateOverallStats(habits, checkins, todayStr);
+
+  const chartReferenceDate = dayjs().add(weekOffset, 'week');
+  const weeklyAdherence = calculateWeekAdherence(habits, checkins, chartReferenceDate);
+  const weekLabel = weekOffset === 0 ? 'الأسبوع الحالي' : formatWeekRangeArabic(chartReferenceDate);
+
+  // Exclude archived habits from active leaderboard
+  const activeHabits = habits.filter((h) => !h.archivedAt && h.isActive);
+  const rankedHabits = [...activeHabits]
     .map((h) => ({
       habit: h,
       stats: calculateHabitStats(h, checkins),
     }))
-    .sort((a, b) => b.stats.currentStreak - a.stats.currentStreak || b.stats.completionRate - a.stats.completionRate);
+    .sort(
+      (a, b) =>
+        b.stats.currentStreak - a.stats.currentStreak ||
+        b.stats.completionRate - a.stats.completionRate
+    );
 
   const kpis = [
     { title: 'إنجاز اليوم', value: `${overall.todayCompletionRate}%` },
@@ -81,20 +100,26 @@ export const StatisticsScreen: React.FC = () => {
           </View>
         </Card>
 
-        {/* Weekly Adherence Chart */}
-        <WeeklyChart data={overall.weeklyAdherence} />
+        {/* Weekly Adherence Chart with Week Navigation */}
+        <WeeklyChart
+          data={weeklyAdherence}
+          weekLabel={weekLabel}
+          onPrevWeek={() => setWeekOffset((prev) => prev - 1)}
+          onNextWeek={() => setWeekOffset((prev) => Math.min(0, prev + 1))}
+          hasNextWeek={weekOffset < 0}
+        />
 
         {/* Habits Leaderboard */}
         <Card style={{ padding: spacing.base, marginBottom: spacing.base }}>
           <View style={{ marginBottom: 12 }}>
             <Text style={[typography.h3, { color: theme.text, textAlign: 'right' }]}>
-              الالتزام بالعادات
+              الالتزام بالعادات النشطة
             </Text>
           </View>
 
           {rankedHabits.length === 0 ? (
             <Text style={[typography.sub, { color: theme.textMuted, textAlign: 'center', marginVertical: 8 }]}>
-              لا توجد عادات مسجلة
+              لا توجد عادات نشطة مسجلة
             </Text>
           ) : (
             rankedHabits.map((item, index) => (
@@ -133,6 +158,7 @@ export const StatisticsScreen: React.FC = () => {
           bestStreak={overall.bestOverallStreak}
           totalCheckins={overall.totalCheckinsEver}
           todayRate={overall.todayCompletionRate}
+          hasEverHadPerfectDay={overall.hasEverHadPerfectDay}
         />
       </ScrollView>
     </View>

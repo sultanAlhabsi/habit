@@ -41,6 +41,7 @@ export interface OverallStats {
   todayTotalCount: number;
   bestOverallStreak: number;
   totalCheckinsEver: number;
+  hasEverHadPerfectDay: boolean;
   weeklyAdherence: DayAdherence[];
 }
 
@@ -52,6 +53,8 @@ export interface DayAdherence {
   completedCount: number;
   totalCount: number;
   rate: number; // 0-100
+  isFuture: boolean;
+  isToday: boolean;
 }
 
 export interface HabitIconOption {
