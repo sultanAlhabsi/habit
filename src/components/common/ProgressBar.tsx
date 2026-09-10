@@ -64,6 +64,7 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     overflow: 'hidden',
+    flexDirection: 'row-reverse',
   },
   fill: {
     height: '100%',

@@ -563,7 +563,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   colorRow: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 10,
   },

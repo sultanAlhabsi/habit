@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -21,6 +22,7 @@ import {
   calculateOverallStats,
   calculateHabitStats,
   getHabitsForDate,
+  filterHabitsByQuery,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -30,6 +32,9 @@ interface HomeScreenProps {
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
 
   const {
     habits,
@@ -59,8 +64,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   // Relevant habits for selected date (active due habits + paused habits completed on this date)
   const dueHabits = getHabitsForDate(habits, checkins, selectedDate);
+  const searchedHabits = searchQuery.trim()
+    ? filterHabitsByQuery(dueHabits, searchQuery)
+    : dueHabits;
 
-  const filteredHabits = dueHabits.filter((h) => {
+  const searchedCompletedCount = searchedHabits.filter((h) =>
+    checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
+  ).length;
+
+  const filteredHabits = searchedHabits.filter((h) => {
     const isCompleted = checkins.some(
       (c) => c.habitId === h.id && c.date === selectedDate && c.completed
     );
@@ -89,22 +101,98 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           </Text>
         </View>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="إضافة عادة جديدة"
-          onPress={() => navigation.navigate('AddEditHabit', {})}
-          style={({ pressed }) => [
-            styles.addHeaderBtn,
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isSearchVisible ? 'إغلاق البحث' : 'البحث عن عادة'}
+            onPress={() => {
+              if (isSearchVisible) {
+                setSearchQuery('');
+                setIsSearchVisible(false);
+              } else {
+                setIsSearchVisible(true);
+              }
+            }}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              {
+                minWidth: touchTarget,
+                minHeight: touchTarget,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name={isSearchVisible ? 'close' : 'search-outline'}
+              size={22}
+              color={theme.text}
+            />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إضافة عادة جديدة"
+            onPress={() => navigation.navigate('AddEditHabit', {})}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              {
+                minWidth: touchTarget,
+                minHeight: touchTarget,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="add" size={24} color={theme.text} />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Expandable Search Input */}
+      {isSearchVisible && (
+        <View
+          style={[
+            styles.searchContainer,
             {
-              minWidth: touchTarget,
-              minHeight: touchTarget,
-              opacity: pressed ? 0.6 : 1,
+              backgroundColor: theme.cardSecondary,
+              borderColor: theme.border,
+              borderRadius: radius.md,
+              marginHorizontal: spacing.base,
+              marginBottom: spacing.sm,
             },
           ]}
         >
-          <Ionicons name="add" size={24} color={theme.text} />
-        </Pressable>
-      </View>
+          <Ionicons
+            name="search-outline"
+            size={18}
+            color={theme.textMuted}
+            style={{ marginLeft: 8 }}
+          />
+          <TextInput
+            placeholder="بحث بالاسم أو الوصف..."
+            placeholderTextColor={theme.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+            style={[
+              typography.body,
+              styles.searchInput,
+              {
+                color: theme.text,
+              },
+            ]}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close-circle" size={18} color={theme.textMuted} />
+            </Pressable>
+          )}
+        </View>
+      )}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -157,9 +245,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           {(['all', 'pending', 'completed'] as const).map((tab) => {
             const isSelected = filter === tab;
             const labels = {
-              all: `الكل (${dueHabits.length})`,
-              pending: `المتبقية (${Math.max(0, dueHabits.length - overallStats.todayCompletedCount)})`,
-              completed: `المكتملة (${overallStats.todayCompletedCount})`,
+              all: `الكل (${searchedHabits.length})`,
+              pending: `المتبقية (${Math.max(0, searchedHabits.length - searchedCompletedCount)})`,
+              completed: `المكتملة (${searchedCompletedCount})`,
             };
 
             return (
@@ -204,7 +292,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             onActionPress={() => navigation.navigate('AddEditHabit', {})}
           />
         ) : filteredHabits.length === 0 ? (
-          filter === 'pending' ? (
+          searchQuery.trim() ? (
+            <EmptyState
+              icon="search-outline"
+              title="لم يتم العثور على نتائج"
+              description={`لا توجد عادات مطابقة للبحث "${searchQuery}"`}
+              actionTitle="مسح البحث"
+              onActionPress={() => setSearchQuery('')}
+            />
+          ) : filter === 'pending' ? (
             <EmptyState
               icon="checkmark-outline"
               title="أتممت عادات اليوم"
@@ -261,9 +357,27 @@ const styles = StyleSheet.create({
   headerTitles: {
     flex: 1,
   },
-  addHeaderBtn: {
+  headerActions: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 4,
+  },
+  headerBtn: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    height: 42,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    textAlign: 'right',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
   },
   filterRow: {
     flexDirection: 'row-reverse',

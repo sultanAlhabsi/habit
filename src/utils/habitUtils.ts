@@ -339,3 +339,17 @@ export const formatWeekRangeArabic = (referenceDate: string | dayjs.Dayjs): stri
   }
 };
 
+/**
+ * Filter habits by search query matching name or description
+ */
+export const filterHabitsByQuery = (habits: Habit[], query: string): Habit[] => {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return habits;
+
+  return habits.filter(
+    (h) =>
+      h.name.toLowerCase().includes(trimmed) ||
+      (h.description && h.description.toLowerCase().includes(trimmed))
+  );
+};
+

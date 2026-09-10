@@ -10,6 +10,7 @@ import {
   getHabitsForDate,
   formatArabicDate,
   formatWeekRangeArabic,
+  filterHabitsByQuery,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -352,3 +353,47 @@ test('formatWeekRangeArabic: formats range with Arabic month and year', () => {
   assert.ok(range.includes('2026'));
   assert.ok(range.includes('-'));
 });
+
+test('filterHabitsByQuery: matches Arabic habit names and descriptions correctly', () => {
+  const h1 = createMockHabit({ id: '1', name: 'شرب الماء', description: 'لترين يومياً' });
+  const h2 = createMockHabit({ id: '2', name: 'قراءة القرآن', description: 'جزء كامل' });
+  const h3 = createMockHabit({ id: '3', name: 'المشي الصباحي', description: '30 دقيقة' });
+  const list = [h1, h2, h3];
+
+  // Empty or spaces query returns all
+  assert.equal(filterHabitsByQuery(list, '').length, 3);
+  assert.equal(filterHabitsByQuery(list, '   ').length, 3);
+
+  // Match by name
+  const waterMatch = filterHabitsByQuery(list, 'ماء');
+  assert.equal(waterMatch.length, 1);
+  assert.equal(waterMatch[0].id, '1');
+
+  // Match by description
+  const quranMatch = filterHabitsByQuery(list, 'جزء');
+  assert.equal(quranMatch.length, 1);
+  assert.equal(quranMatch[0].id, '2');
+
+  // Case-insensitive / partial match
+  const walkMatch = filterHabitsByQuery(list, 'المشي');
+  assert.equal(walkMatch.length, 1);
+  assert.equal(walkMatch[0].id, '3');
+
+  // No match
+  const noMatch = filterHabitsByQuery(list, 'سباحة');
+  assert.equal(noMatch.length, 0);
+});
+
+test('calculateWeekAdherence: handles 0% completion rate without negative or false values', () => {
+  const habit = createMockHabit({ frequency: 'daily' });
+  const pastMonday = dayjs().startOf('week').add(1, 'day'); // Monday
+
+  // No checkins at all for this habit
+  const week = calculateWeekAdherence([habit], [], pastMonday.format('YYYY-MM-DD'));
+  const mondayItem = week.find((d) => d.date === pastMonday.format('YYYY-MM-DD'));
+
+  assert.ok(mondayItem);
+  assert.equal(mondayItem.completedCount, 0);
+  assert.equal(mondayItem.rate, 0);
+});
+

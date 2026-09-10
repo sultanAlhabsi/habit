@@ -44,7 +44,7 @@ export const DateStrip: React.FC<DateStripProps> = ({
         });
       }, 100);
     }
-  }, []);
+  }, [selectedIndex]);
 
   return (
     <View style={[styles.container, { marginBottom: spacing.sm }]}>

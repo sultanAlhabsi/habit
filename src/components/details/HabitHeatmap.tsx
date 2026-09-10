@@ -9,12 +9,14 @@ interface HabitHeatmapProps {
   completedDates: Set<string>;
   habitColor: string;
   onToggleDate: (dateStr: string) => void;
+  readOnly?: boolean;
 }
 
 export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
   completedDates,
   habitColor,
   onToggleDate,
+  readOnly = false,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
   const [currentMonth, setCurrentMonth] = useState(dayjs());
@@ -103,13 +105,13 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
           return (
             <Pressable
               key={dateStr}
-              disabled={isFuture}
+              disabled={isFuture || readOnly}
               onPress={() => onToggleDate(dateStr)}
               style={({ pressed }) => [
                 styles.dayCol,
                 styles.dayCell,
                 {
-                  opacity: isFuture ? 0.2 : pressed ? 0.6 : 1,
+                  opacity: isFuture || readOnly ? (readOnly ? 0.8 : 0.2) : pressed ? 0.6 : 1,
                 },
               ]}
             >
@@ -156,7 +158,9 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
           },
         ]}
       >
-        اضغط على أي يوم للتعديل أو التسجيل
+        {readOnly
+          ? 'العادة في الأرشيف (للقراءة فقط)'
+          : 'اضغط على أي يوم للتعديل أو التسجيل'}
       </Text>
     </Card>
   );

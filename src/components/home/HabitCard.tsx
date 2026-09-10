@@ -152,11 +152,27 @@ export const HabitCard: React.FC<HabitCardProps> = ({
         </View>
 
         {/* Left side in RTL: Quiet Category Icon */}
-        <View style={styles.iconSide}>
+        <View
+          style={[
+            styles.iconContainer,
+            {
+              backgroundColor: isCompleted
+                ? theme.cardSecondary
+                : habit.color
+                ? `${habit.color}15`
+                : theme.cardSecondary,
+              borderRadius: radius.sm,
+            },
+          ]}
+        >
           <Ionicons
             name={(habit.icon as any) || 'ellipse-outline'}
             size={18}
-            color={isCompleted ? theme.textMuted : theme.textSecondary}
+            color={
+              isCompleted
+                ? theme.textMuted
+                : habit.color || theme.textSecondary
+            }
           />
         </View>
       </View>
@@ -194,9 +210,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 3,
   },
-  iconSide: {
-    paddingLeft: 4,
+  iconContainer: {
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 2,
   },
 });

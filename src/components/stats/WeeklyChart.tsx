@@ -65,7 +65,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({
       <View style={styles.chartArea}>
         {data.map((item, index) => {
           const isItemFuture = Boolean(item.isFuture);
-          const barHeight = isItemFuture ? 0 : Math.max(4, (item.rate / 100) * 80);
+          const barHeight = isItemFuture || item.rate === 0 ? 0 : Math.max(4, (item.rate / 100) * 80);
 
           return (
             <View key={index} style={styles.barColumn}>
@@ -97,7 +97,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({
                   },
                 ]}
               >
-                {!isItemFuture && (
+                {!isItemFuture && item.rate > 0 && (
                   <View
                     style={[
                       styles.barFill,

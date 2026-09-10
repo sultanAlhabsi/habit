@@ -325,4 +325,117 @@ Android Bundled 6327ms index.ts (1488 modules) -> 0 errors, 0 warnings!
 2. **حماية السجلات من التلاعب أو الخطأ الزمني:** منع تسجيل الإنجازات المستقبلية على مستوى واجهة المستخدم ومستوى المتجر معاً (Defense in Depth) يحافظ على سلامة حسابات السلاسل ونسب الإنجاز.
 3. **التنقل الزمني الصرف دون تغيير حالة التطبيق الرئيسية:** التنقل بين الأسابيع في شاشة الإحصائيات تم تصميمه كحالة محلية (`useState`) تعتمد على إزاحة الأسابيع (`weekOffset`)، مما يفصل تصفح الإحصائيات الأسبوعية عن التاريخ المحدد في الشاشة الرئيسية.
 
+---
+
+## الدورة الرابعة (Cycle 4) - محرك البحث الفوري، تحصين التقويم المؤرشف، دقة الرسم البياني، وصقل تجربة RTL
+- **التاريخ:** 10 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة الرابعة
+استهدفت هذه الدورة تعزيز وظائف التصفح والإنتاجية، وتصحيح تفاصيل دقيقة في واجهات المستخدم والرسوم البيانية العربية:
+1. **محرك البحث المباشر في الشاشة الرئيسية (Live Habit Search):** توفير بحث سريع وفوري في أسماء ووصف العادات لتسهيل العثور على العادات وإدارتها بسلاسة عند زيادة عدد العادات.
+2. **إصلاح تمثيل الإنجاز الصفري في الرسم البياني الأسبوعي (`WeeklyChart.tsx`):** تصحيح سلوك دالة الرسم البياني التي كانت تظهر شريطاً مصغراً بارتفاع 4px في الأيام ذات النسبة 0%، مما كان يضلل المستخدم بصرياً.
+3. **إصلاح التمرير التلقائي لشريط الأيام (`DateStrip.tsx`):** تصحيح مصفوفة الاعتماديات في شريط الأيام بحيث يستجيب للتنقل البرمجي (مثل الضغط على زر "اليوم" في البطاقة الرئيسية).
+4. **تخصيص وحدة القياس في شبكة إحصائيات العادة (`HabitStatGrid.tsx`):** استخدام الوحدة المخصصة للعادة (`habit.unit`) بدلاً من تثبيت كلمة "مرة".
+5. **تحصين التقويم الحراري للعادات المؤرشفة (`HabitHeatmap.tsx`):** منع تعديل أو تسجيل إنجازات للعادات المؤرشفة وجعل التقويم الحراري للقراءة فقط (`readOnly`) مع إشعار توضيحي.
+6. **تحسين الهوية اللونية للأيقونات (`HabitCard.tsx` و `HabitDetailsScreen.tsx`):** إبراز أيقونة العادة داخل حاوية مخصصة ملوحة بلون العادة بنعومة وهدوء بصري.
+7. **صقل اتجاهات RTL في شريط التقدم ولوحة الألوان (`ProgressBar.tsx` و `AddEditHabitScreen.tsx`):** جعل شريط التقدم يمتلئ من اليمين إلى اليسار ومحاذاة لوحة الألوان للاتجاه العربي.
+8. **رفع التغطية الاختبارية وضمان جودة واستقرار البناء:** إضافة اختبارات مؤتمتة وتأكيد خلو الأخطاء من خلال TypeScript وExpo Hermes Export.
+
+---
+
+### 2. التغييرات والإضافات المنجزة
+
+#### أ. محرك البحث ودوال التصفية (`habitUtils.ts` & `HomeScreen.tsx`):
+1. **دالة البحث الذكي `filterHabitsByQuery`:**
+   - مقارنة النص المدخل مع اسم العادة ووصفها مع تجاهل الفروق في حالة الأحرف والمسافات الزائدة.
+   - دعم التصفح والبحث السلس للكلمات باللغة العربية.
+2. **واجهة البحث المدمجة في الشاشة الرئيسية:**
+   - زر بحث مخصص في الشريط العلوي بجانب زر الإضافة مع معيار الوصولية (`accessibilityRole="button"` و `accessibilityLabel`).
+   - حقل بحث مرن يظهر بنعومة مع التركيز التلقائي (`autoFocus`) وزر مسح سريع عند الكتابة.
+   - تحديث تفاعلي لأرقام تبويبات التصفية (الكل، المتبقية، المكتملة) لتعكس بدقة نتائج البحث الحالية.
+   - حالة مخصصة لعدم وجود نتائج بحث (`EmptyState`) تتيح مسح البحث بضغطة زر واحدة.
+
+#### ب. دقة الرسم البياني وتجاوب الواجهات (`WeeklyChart.tsx` & `DateStrip.tsx`):
+1. **إصلاح النسبة الصفرية في الرسم البياني:**
+   - تعديل شرط حساب ارتفاع العمود: `isItemFuture || item.rate === 0 ? 0 : Math.max(4, (item.rate / 100) * 80)`.
+   - عدم رسم تعبئة العمود (`barFill`) نهائياً في الأيام الصفرية أو المستقبلية.
+2. **التمرير التلقائي لشريط الأيام:**
+   - ربط تمرير `DateStrip` بـ `[selectedIndex]` ليتم التمرير بسلاسة إلى اليوم المحدد سواء تم الاختيار يدوياً أو تم تغيير التاريخ خارجياً.
+
+#### ج. تفاصيل الدقة والحماية في شاشة تفاصيل العادة (`HabitDetailsScreen.tsx` و `HabitStatGrid.tsx` و `HabitHeatmap.tsx`):
+1. **وحدة القياس الديناميكية:**
+   - تمرير `unit={habit.unit}` لشبكة الإحصائيات ليظهر الإجمالي بصيغة مخصصة مثل: `15 دقيقة` أو `20 صفحة` أو `8 أكواب`.
+2. **حظر التعديل على العادات المؤرشفة:**
+   - إضافة خاصية `readOnly` للتقويم الحراري وحظر النقر على الأيام عند أرشفة العادة، مع تغيير النص التوضيحي بالأسفل إلى: "العادة في الأرشيف (للقراءة فقط)".
+3. **أيقونة العادة الأنيقة:**
+   - وضع أيقونة العادة في صندوق مصمم بدرجة شفافية من لون العادة (`${habit.color}18`).
+
+#### د. صقل تفاصيل RTL والهوية البصرية (`ProgressBar.tsx` و `HabitCard.tsx` و `AddEditHabitScreen.tsx`):
+1. **اتجاه شريط التقدم RTL:**
+   - تطبيق `flexDirection: 'row-reverse'` على حاوية `ProgressBar` ليتجه التعبئة المتحركة طبيعياً من اليمين لليسار.
+2. **أيقونة بطاقة العادة:**
+   - تلوين خلفية أيقونة العادة بنعومة وفق لونها لسرعة تمييز العادات في القائمة الرئيسية.
+3. **لوحة الألوان في شاشة الإضافة:**
+   - ضبط `colorRow` على `flexDirection: 'row-reverse'` لتوافق الاتجاه العربي.
+
+---
+
+### 3. الاختبارات والتحقق البرمجي
+
+تمت توسيع حزمة الاختبارات لتصل إلى **28 اختبار وحدة مؤتمت**:
+- **`tests/habitUtils.test.ts` (16 اختباراً):** إضافة اختبارات دالة `filterHabitsByQuery` واختبار معالجة الالتزام الصفري، بالإضافة لاختبارات السلاسل والتاريخ واستحقاق الأيام.
+- **`tests/notificationUtils.test.ts` (7 اختبارات):** التحقق من صيغ التنبيه ومشغلات Expo.
+- **`tests/backupUtils.test.ts` (5 اختبارات):** التحقق من صحة وبناء ودمج النسخ الاحتياطية.
+
+```bash
+# نتائج تشغيل حزمة الاختبارات الكاملة:
+✔ createBackupPayload: constructs standard schema envelope (6.3ms)
+✔ validateBackupJson: validates well-formed JSON string (1.2ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.0ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.0ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.8ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (15.1ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (1.8ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (0.8ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (1.5ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (6.4ms)
+✔ calculateHabitStats: increments streak when today is completed (5.7ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (3.9ms)
+✔ calculateHabitStats: paused habit retains historical stats (3.9ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.1ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (3.9ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (1.7ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (10.0ms)
+✔ formatArabicDate: formats correctly in Arabic (0.5ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (0.7ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.3ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (4.1ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (3.9ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (1.1ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.8ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.4ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (1.1ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (0.9ms)
+ℹ tests 28 | suites 0 | pass 28 | fail 0 | cancelled 0 | duration_ms 499ms
+
+# نتائج الفحص الثابت للأنواع (TypeScript):
+npm run typecheck -> tsc --noEmit -> 0 errors!
+
+# نتائج بناء الحزمة لبيئة أندرويد (Hermes Export):
+Export was successful -> 0 errors, 0 warnings!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة الرابعة
+1. **البحث في الذاكرة بدون استعلامات إضافية (Client-side In-Memory Filtering):** نظراً لأن بيانات العادات محملة ونشطة في متجر Zustand المحدث محلياً، تم بناء البحث كتصفية فورية وسريعة جداً دون الحاجة لـ I/O غير متزامن أو تأخير، مما يوفر تجربة فورية بلا لاغ.
+2. **اتساق أرقام التبويبات مع نتائج البحث:** ضمان أن العدادات الرقمية على تبويبات "الكل"، "المتبقية"، و"المكتملة" تعكس النتائج المفلترة أثناء البحث لتجنب أي تناقض بصري.
+3. **حماية العادات المؤرشفة في جميع الواجهات:** تأكيد مبدأ أن العادة المؤرشفة هي سجل أرشيفي تاريخي لا يقبل التعديل التفاعلي إلا بعد استعادتها صراحة، مما يمنع الأخطاء غير المقصودة.
+
+
 

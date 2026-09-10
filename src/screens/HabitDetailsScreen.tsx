@@ -29,7 +29,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   navigation,
 }) => {
   const insets = useSafeAreaInsets();
-  const { theme, spacing, typography, touchTarget } = useTheme();
+  const { theme, spacing, radius, typography, touchTarget } = useTheme();
   const { habits, checkins, toggleCheckin, toggleHabitActive, deleteHabit, archiveHabit } = useHabitStore();
 
   const habitId = route.params?.habitId;
@@ -192,11 +192,21 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             </View>
 
             <View style={styles.heroIconSide}>
-              <Ionicons
-                name={(habit.icon as any) || 'ellipse-outline'}
-                size={28}
-                color={theme.text}
-              />
+              <View
+                style={[
+                  styles.heroIconBox,
+                  {
+                    backgroundColor: habit.color ? `${habit.color}18` : theme.cardSecondary,
+                    borderRadius: radius.md,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={(habit.icon as any) || 'ellipse-outline'}
+                  size={26}
+                  color={habit.color || theme.text}
+                />
+              </View>
             </View>
           </View>
 
@@ -213,13 +223,14 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         </Card>
 
         {/* 4 Stats Grid */}
-        <HabitStatGrid stats={stats} habitColor={habit.color} />
+        <HabitStatGrid stats={stats} habitColor={habit.color} unit={habit.unit} />
 
         {/* Heatmap Calendar */}
         <HabitHeatmap
           completedDates={completedDates}
           habitColor={habit.color}
-          onToggleDate={(dateStr) => toggleCheckin(habit.id, dateStr)}
+          onToggleDate={(dateStr) => !isArchived && toggleCheckin(habit.id, dateStr)}
+          readOnly={isArchived}
         />
 
         {/* Quiet Actions */}
@@ -285,6 +296,12 @@ const styles = StyleSheet.create({
   },
   heroIconSide: {
     paddingTop: 2,
+  },
+  heroIconBox: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionsContainer: {
     marginTop: 4,
