@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Share } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
 import { Card } from '../components/common/Card';
@@ -12,17 +14,26 @@ import {
   calculateOverallStats,
   calculateWeekAdherence,
   formatWeekRangeArabic,
+  formatOverallStatsForShare,
 } from '../utils/habitUtils';
 
 export const StatisticsScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
-  const { theme, spacing, typography } = useTheme();
+  const { theme, spacing, radius, typography, touchTarget } = useTheme();
   const { habits, checkins } = useHabitStore();
 
   const [weekOffset, setWeekOffset] = useState(0);
 
   const todayStr = dayjs().format('YYYY-MM-DD');
   const overall = calculateOverallStats(habits, checkins, todayStr);
+
+  const handleShareStats = async () => {
+    try {
+      const message = formatOverallStatsForShare(habits, checkins, todayStr);
+      await Share.share({ message });
+    } catch (_) {}
+  };
 
   const chartReferenceDate = dayjs().add(weekOffset, 'week');
   const weeklyAdherence = calculateWeekAdherence(habits, checkins, chartReferenceDate);
@@ -58,13 +69,31 @@ export const StatisticsScreen: React.FC = () => {
             paddingTop: Math.max(insets.top, spacing.base),
             paddingHorizontal: spacing.base,
             paddingBottom: spacing.sm,
-            backgroundColor: theme.background,
+            flexDirection: 'row-reverse',
+            justifyContent: 'space-between',
+            alignItems: 'center',
           },
         ]}
       >
         <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
           الإحصائيات
         </Text>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="مشاركة الإحصائيات"
+          onPress={handleShareStats}
+          style={({ pressed }) => [
+            styles.shareBtn,
+            {
+              minWidth: touchTarget,
+              minHeight: touchTarget,
+              opacity: pressed ? 0.6 : 1,
+            },
+          ]}
+        >
+          <Ionicons name="share-outline" size={21} color={theme.text} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -123,31 +152,57 @@ export const StatisticsScreen: React.FC = () => {
             </Text>
           ) : (
             rankedHabits.map((item, index) => (
-              <View
+              <Pressable
                 key={item.habit.id}
-                style={[
+                accessibilityRole="button"
+                accessibilityLabel={`عرض تفاصيل عادة ${item.habit.name}`}
+                onPress={() =>
+                  navigation.navigate('HabitDetails', { habitId: item.habit.id })
+                }
+                style={({ pressed }) => [
                   styles.rankRow,
                   {
                     borderBottomColor: theme.border,
                     borderBottomWidth: index === rankedHabits.length - 1 ? 0 : 1,
+                    opacity: pressed ? 0.65 : 1,
                   },
                 ]}
               >
                 <View style={styles.rankLeft}>
                   <Text style={[typography.subMedium, { color: theme.text }]}>
-                    {item.stats.currentStreak} يوم
+                    {item.stats.currentStreak} {item.stats.currentStreak === 1 ? 'يوم' : 'أيام'} 🔥
                   </Text>
                 </View>
 
                 <View style={styles.rankRight}>
-                  <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
-                    {item.habit.name}
-                  </Text>
-                  <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
-                    نسبة الالتزام: {item.stats.completionRate}%
-                  </Text>
+                  <View
+                    style={[
+                      styles.rankIconBox,
+                      {
+                        backgroundColor: item.habit.color
+                          ? `${item.habit.color}15`
+                          : theme.cardSecondary,
+                        borderRadius: radius.sm,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={(item.habit.icon as any) || 'ellipse-outline'}
+                      size={16}
+                      color={item.habit.color || theme.textSecondary}
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+                      {item.habit.name}
+                    </Text>
+                    <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
+                      نسبة الالتزام: {item.stats.completionRate}%
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              </Pressable>
             ))
           )}
         </Card>
@@ -172,6 +227,10 @@ const styles = StyleSheet.create({
   header: {
     width: '100%',
   },
+  shareBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   kpiContainer: {
     overflow: 'hidden',
   },
@@ -191,6 +250,15 @@ const styles = StyleSheet.create({
   },
   rankRight: {
     flex: 1,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  rankIconBox: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
   },
   rankLeft: {
     alignItems: 'flex-start',

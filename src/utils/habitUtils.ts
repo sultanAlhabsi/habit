@@ -353,3 +353,134 @@ export const filterHabitsByQuery = (habits: Habit[], query: string): Habit[] => 
   );
 };
 
+export interface CheckinProgress {
+  count: number;
+  currentCount: number;
+  targetCount: number;
+  isCompleted: boolean;
+  progressRatio: number;
+  progressPercent: number;
+}
+
+/**
+ * Calculate progress details for a habit checkin
+ */
+export const calculateCheckinProgress = (
+  habit: Habit,
+  checkin?: HabitCheckin
+): CheckinProgress => {
+  const targetCount = Math.max(1, habit.targetCount || 1);
+  const count = Math.max(0, checkin ? checkin.count : 0);
+  const isCompleted = Boolean(checkin?.completed) || count >= targetCount;
+  const progressRatio = Math.min(1, count / targetCount);
+  const progressPercent = Math.round(progressRatio * 100);
+
+  return {
+    count,
+    currentCount: count,
+    targetCount,
+    isCompleted,
+    progressRatio,
+    progressPercent,
+  };
+};
+
+/**
+ * Calculate the next clamped count for incremental checkins
+ */
+export const getNextProgressCount = (
+  currentCount: number,
+  targetCount: number,
+  direction: 'increment' | 'decrement',
+  step = 1
+): number => {
+  const safeTarget = Math.max(1, targetCount);
+  const safeCurrent = Math.max(0, currentCount);
+
+  if (direction === 'increment') {
+    return Math.min(safeTarget, safeCurrent + step);
+  } else {
+    return Math.max(0, safeCurrent - step);
+  }
+};
+
+/**
+ * Format daily habits progress summary for sharing
+ */
+export const formatDailySummaryForShare = (
+  dateStr: string,
+  habits: Habit[],
+  allCheckins: HabitCheckin[]
+): string => {
+  const dateFormatted = formatArabicDate(dateStr);
+  const dueHabits = getHabitsForDate(habits, allCheckins, dateStr);
+
+  if (dueHabits.length === 0) {
+    return `تطبيق إنجاز | ${dateFormatted}\nلا توجد عادات مجدولة لهذا اليوم.`;
+  }
+
+  const completedList: string[] = [];
+  const pendingList: string[] = [];
+
+  dueHabits.forEach((h) => {
+    const chk = allCheckins.find((c) => c.habitId === h.id && c.date === dateStr);
+    const isCompleted = Boolean(chk?.completed);
+    const count = chk ? chk.count : 0;
+
+    let text = h.name;
+    if (h.targetCount > 1) {
+      text += ` (${count}/${h.targetCount} ${h.unit})`;
+    }
+
+    if (isCompleted) {
+      completedList.push(`✅ ${text}`);
+    } else {
+      pendingList.push(`⏳ ${text}`);
+    }
+  });
+
+  const completionRate = Math.round((completedList.length / dueHabits.length) * 100);
+
+  const sections = [
+    `📊 تقرير إنجاز (${dateFormatted})`,
+    `نسبة الالتزام: ${completionRate}% (${completedList.length} من ${dueHabits.length} مكتملة)`,
+    '',
+  ];
+
+  if (completedList.length > 0) {
+    sections.push('العادات المنجزة:');
+    sections.push(...completedList);
+    sections.push('');
+  }
+
+  if (pendingList.length > 0) {
+    sections.push('العادات المتبقية:');
+    sections.push(...pendingList);
+    sections.push('');
+  }
+
+  sections.push('تم التوثيق عبر تطبيق إنجاز 🎯');
+
+  return sections.join('\n').trim();
+};
+
+/**
+ * Format overall user stats summary for sharing
+ */
+export const formatOverallStatsForShare = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[],
+  todayStr: string
+): string => {
+  const overall = calculateOverallStats(habits, allCheckins, todayStr);
+  return [
+    '🏆 إحصائياتي في تطبيق إنجاز:',
+    `• نسبة إنجاز اليوم: ${overall.todayCompletionRate}%`,
+    `• أعلى سلسلة متتالية: ${overall.bestOverallStreak} يوم 🔥`,
+    `• إجمالي الإنجازات: ${overall.totalCheckinsEver} إنجاز 🎯`,
+    `• العادات النشطة: ${overall.activeHabits} عادات`,
+    '',
+    'تطبيق إنجاز للالتزام وبناء العادات ✨',
+  ].join('\n');
+};
+

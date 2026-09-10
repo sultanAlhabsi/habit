@@ -10,6 +10,7 @@ interface HabitHeatmapProps {
   habitColor: string;
   onToggleDate: (dateStr: string) => void;
   readOnly?: boolean;
+  createdAt?: string;
 }
 
 export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
@@ -17,6 +18,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
   habitColor,
   onToggleDate,
   readOnly = false,
+  createdAt,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
   const [currentMonth, setCurrentMonth] = useState(dayjs());
@@ -33,7 +35,12 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
 
   const weekDays = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'];
 
-  const prevMonth = () => setCurrentMonth((prev) => prev.subtract(1, 'month'));
+  const canGoPrev = !createdAt || currentMonth.isAfter(dayjs(createdAt).startOf('month'));
+  const prevMonth = () => {
+    if (canGoPrev) {
+      setCurrentMonth((prev) => prev.subtract(1, 'month'));
+    }
+  };
   const nextMonth = () => {
     if (currentMonth.isBefore(dayjs(), 'month')) {
       setCurrentMonth((prev) => prev.add(1, 'month'));
@@ -58,7 +65,11 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
           accessibilityRole="button"
           accessibilityLabel="الشهر السابق"
           onPress={prevMonth}
-          style={({ pressed }) => [styles.navBtn, { opacity: pressed ? 0.5 : 1 }]}
+          disabled={!canGoPrev}
+          style={({ pressed }) => [
+            styles.navBtn,
+            { opacity: canGoPrev ? (pressed ? 0.5 : 1) : 0.2 },
+          ]}
         >
           <Ionicons name="chevron-forward" size={18} color={theme.text} />
         </Pressable>
@@ -97,21 +108,40 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
             return <View key={`empty_${idx}`} style={styles.dayCol} />;
           }
 
-          const dateStr = currentMonth.date(dayNum).format('YYYY-MM-DD');
+          const cellDate = currentMonth.date(dayNum).startOf('day');
+          const dateStr = cellDate.format('YYYY-MM-DD');
           const isCompleted = completedDates.has(dateStr);
           const isToday = dateStr === todayStr;
-          const isFuture = currentMonth.date(dayNum).isAfter(dayjs(), 'day');
+          const isFuture = cellDate.isAfter(dayjs().startOf('day'));
+          const isBeforeCreation = createdAt
+            ? cellDate.isBefore(dayjs(createdAt).startOf('day'))
+            : false;
+          const isDisabled = isFuture || readOnly || isBeforeCreation;
 
           return (
             <Pressable
               key={dateStr}
-              disabled={isFuture || readOnly}
+              disabled={isDisabled}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isBeforeCreation
+                  ? `تاريخ سابق لإنشاء العادة (${dateStr})`
+                  : isFuture
+                  ? `تاريخ مستقبلي (${dateStr})`
+                  : `تسجيل ${dateStr}`
+              }
               onPress={() => onToggleDate(dateStr)}
               style={({ pressed }) => [
                 styles.dayCol,
                 styles.dayCell,
                 {
-                  opacity: isFuture || readOnly ? (readOnly ? 0.8 : 0.2) : pressed ? 0.6 : 1,
+                  opacity: isDisabled
+                    ? readOnly
+                      ? 0.8
+                      : 0.2
+                    : pressed
+                    ? 0.6
+                    : 1,
                 },
               ]}
             >

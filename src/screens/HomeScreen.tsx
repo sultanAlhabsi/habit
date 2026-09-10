@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   TextInput,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -23,6 +24,7 @@ import {
   calculateHabitStats,
   getHabitsForDate,
   filterHabitsByQuery,
+  formatDailySummaryForShare,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -45,6 +47,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     setSelectedDate,
     setFilter,
     toggleCheckin,
+    incrementCheckin,
+    decrementCheckin,
   } = useHabitStore();
 
   const todayStr = dayjs().format('YYYY-MM-DD');
@@ -81,6 +85,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     return true; // 'all'
   });
 
+  const handleShareDaily = async () => {
+    try {
+      const message = formatDailySummaryForShare(selectedDate, habits, checkins);
+      await Share.share({ message });
+    } catch (_) {}
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Top Header Bar */}
@@ -102,6 +113,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </View>
 
         <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="مشاركة إنجاز اليوم"
+            onPress={handleShareDaily}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              {
+                minWidth: touchTarget,
+                minHeight: touchTarget,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="share-outline" size={21} color={theme.text} />
+          </Pressable>
+
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={isSearchVisible ? 'إغلاق البحث' : 'البحث عن عادة'}
@@ -315,9 +342,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           )
         ) : (
           filteredHabits.map((habit) => {
-            const isCompleted = checkins.some(
-              (c) => c.habitId === habit.id && c.date === selectedDate && c.completed
+            const checkin = checkins.find(
+              (c) => c.habitId === habit.id && c.date === selectedDate
             );
+            const isCompleted = Boolean(checkin?.completed);
+            const currentCount = checkin ? checkin.count : 0;
             const stats = calculateHabitStats(habit, checkins);
 
             return (
@@ -325,9 +354,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 key={habit.id}
                 habit={habit}
                 isCompleted={isCompleted}
+                currentCount={currentCount}
                 streak={stats.currentStreak}
                 isFuture={isFutureDate}
                 onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
+                onIncrement={() => incrementCheckin(habit.id, selectedDate)}
+                onDecrement={() => decrementCheckin(habit.id, selectedDate)}
                 onPressDetails={() =>
                   navigation.navigate('HabitDetails', { habitId: habit.id })
                 }

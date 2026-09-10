@@ -13,20 +13,29 @@ interface HabitCardProps {
   habit: Habit;
   isCompleted: boolean;
   streak: number;
+  currentCount?: number;
   isFuture?: boolean;
   onToggleCheckin: () => void;
   onPressDetails: () => void;
+  onIncrement?: () => void;
+  onDecrement?: () => void;
 }
 
 export const HabitCard: React.FC<HabitCardProps> = ({
   habit,
   isCompleted,
   streak,
+  currentCount = 0,
   isFuture = false,
   onToggleCheckin,
   onPressDetails,
+  onIncrement,
+  onDecrement,
 }) => {
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
+  const isMultiTarget = habit.targetCount > 1;
+  const safeCount = Math.min(habit.targetCount, Math.max(0, currentCount));
+  const progressRatio = habit.targetCount > 0 ? Math.min(1, safeCount / habit.targetCount) : 0;
 
   return (
     <Pressable
@@ -48,45 +57,130 @@ export const HabitCard: React.FC<HabitCardProps> = ({
       ]}
     >
       <View style={styles.cardContent}>
-        {/* Right side in RTL: Checkmark Circle */}
-        <Pressable
-          disabled={isFuture}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: isCompleted, disabled: isFuture }}
-          accessibilityLabel={
-            isFuture
-              ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
-              : `تسجيل إتمام ${habit.name}`
-          }
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          onPress={onToggleCheckin}
-          style={({ pressed }) => [
-            styles.checkTarget,
-            {
-              minWidth: touchTarget,
-              minHeight: touchTarget,
-              opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.checkCircle,
+        {/* Right side in RTL: Controls */}
+        {isCompleted ? (
+          <Pressable
+            disabled={isFuture}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: true, disabled: isFuture }}
+            accessibilityLabel={
+              isFuture
+                ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
+                : `إلغاء إتمام ${habit.name}`
+            }
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={onToggleCheckin}
+            style={({ pressed }) => [
+              styles.checkTarget,
               {
-                borderColor: isCompleted
-                  ? theme.primary
-                  : isFuture
-                  ? theme.border
-                  : theme.textMuted,
-                backgroundColor: isCompleted ? theme.primary : 'transparent',
+                minWidth: touchTarget,
+                minHeight: touchTarget,
+                opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
               },
             ]}
           >
-            {isCompleted && (
+            <View
+              style={[
+                styles.checkCircle,
+                {
+                  borderColor: theme.primary,
+                  backgroundColor: theme.primary,
+                },
+              ]}
+            >
               <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+            </View>
+          </Pressable>
+        ) : isMultiTarget ? (
+          <View style={styles.multiControlGroup}>
+            <Pressable
+              disabled={isFuture}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isFuture
+                  ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
+                  : `إضافة إنجاز لـ ${habit.name} (${safeCount}/${habit.targetCount})`
+              }
+              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+              onPress={onIncrement || onToggleCheckin}
+              onLongPress={onToggleCheckin}
+              style={({ pressed }) => [
+                styles.checkTarget,
+                {
+                  minWidth: 36,
+                  minHeight: touchTarget,
+                  opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.checkCircle,
+                  {
+                    borderColor: safeCount > 0 ? (habit.color || theme.primary) : theme.textMuted,
+                    backgroundColor: safeCount > 0 ? `${habit.color || theme.primary}18` : 'transparent',
+                  },
+                ]}
+              >
+                {safeCount > 0 ? (
+                  <Ionicons name="add" size={14} color={habit.color || theme.primary} />
+                ) : (
+                  <Ionicons name="add" size={14} color={theme.textMuted} />
+                )}
+              </View>
+            </Pressable>
+
+            {safeCount > 0 && !isFuture && onDecrement && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`إنقاص إنجاز ${habit.name}`}
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                onPress={onDecrement}
+                style={({ pressed }) => [
+                  styles.stepBtn,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.cardSecondary,
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="remove" size={13} color={theme.textSecondary} />
+              </Pressable>
             )}
           </View>
-        </Pressable>
+        ) : (
+          <Pressable
+            disabled={isFuture}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: false, disabled: isFuture }}
+            accessibilityLabel={
+              isFuture
+                ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
+                : `تسجيل إتمام ${habit.name}`
+            }
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            onPress={onToggleCheckin}
+            style={({ pressed }) => [
+              styles.checkTarget,
+              {
+                minWidth: touchTarget,
+                minHeight: touchTarget,
+                opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.checkCircle,
+                {
+                  borderColor: isFuture ? theme.border : theme.textMuted,
+                  backgroundColor: 'transparent',
+                },
+              ]}
+            />
+          </Pressable>
+        )}
 
         {/* Center: Habit Details */}
         <View style={styles.textDetails}>
@@ -103,6 +197,29 @@ export const HabitCard: React.FC<HabitCardProps> = ({
           >
             {habit.name}
           </Text>
+
+          {/* Multi-target Progress Track */}
+          {isMultiTarget && (
+            <View
+              style={[
+                styles.miniProgressTrack,
+                { backgroundColor: theme.cardSecondary, borderRadius: radius.full },
+              ]}
+            >
+              <View
+                style={[
+                  styles.miniProgressFill,
+                  {
+                    width: `${Math.round(progressRatio * 100)}%`,
+                    backgroundColor: isCompleted
+                      ? theme.primary
+                      : habit.color || theme.text,
+                    borderRadius: radius.full,
+                  },
+                ]}
+              />
+            </View>
+          )}
 
           <View style={styles.metaRow}>
             {streak > 0 && (
@@ -124,13 +241,18 @@ export const HabitCard: React.FC<HabitCardProps> = ({
               style={[
                 typography.caption,
                 {
-                  color: theme.textMuted,
+                  color: isCompleted
+                    ? theme.textMuted
+                    : isMultiTarget && safeCount > 0
+                    ? theme.primary
+                    : theme.textMuted,
+                  fontWeight: isMultiTarget && safeCount > 0 ? '600' : '400',
                   textAlign: 'right',
                 },
               ]}
             >
-              {habit.targetCount > 1
-                ? `${habit.targetCount} ${habit.unit}`
+              {isMultiTarget
+                ? `${safeCount} من ${habit.targetCount} ${habit.unit}`
                 : habit.unit}
             </Text>
 
@@ -151,7 +273,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
           </View>
         </View>
 
-        {/* Left side in RTL: Quiet Category Icon */}
+        {/* Left side in RTL: Category Icon */}
         <View
           style={[
             styles.iconContainer,
@@ -194,16 +316,39 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   checkCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  multiControlGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginLeft: 6,
+    gap: 4,
+  },
+  stepBtn: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
   textDetails: {
     flex: 1,
     paddingHorizontal: 6,
+  },
+  miniProgressTrack: {
+    height: 3,
+    width: '100%',
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  miniProgressFill: {
+    height: '100%',
   },
   metaRow: {
     flexDirection: 'row-reverse',

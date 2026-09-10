@@ -11,6 +11,10 @@ import {
   formatArabicDate,
   formatWeekRangeArabic,
   filterHabitsByQuery,
+  calculateCheckinProgress,
+  getNextProgressCount,
+  formatDailySummaryForShare,
+  formatOverallStatsForShare,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -395,5 +399,153 @@ test('calculateWeekAdherence: handles 0% completion rate without negative or fal
   assert.ok(mondayItem);
   assert.equal(mondayItem.completedCount, 0);
   assert.equal(mondayItem.rate, 0);
+});
+
+test('calculateCheckinProgress: calculates progress, percentage, and completion status accurately', () => {
+  const habit = createMockHabit({ targetCount: 5, unit: 'أكواب' });
+
+  // 1. Undefined checkin (0 progress)
+  const p0 = calculateCheckinProgress(habit, undefined);
+  assert.equal(p0.currentCount, 0);
+  assert.equal(p0.targetCount, 5);
+  assert.equal(p0.progressRatio, 0);
+  assert.equal(p0.progressPercent, 0);
+  assert.equal(p0.isCompleted, false);
+
+  // 2. Partial checkin (3 out of 5)
+  const pPartial = calculateCheckinProgress(habit, {
+    id: 'c1',
+    habitId: habit.id,
+    date: '2026-06-15',
+    completed: false,
+    count: 3,
+    createdAt: '2026-06-15T08:00:00.000Z',
+  });
+  assert.equal(pPartial.currentCount, 3);
+  assert.equal(pPartial.targetCount, 5);
+  assert.equal(pPartial.progressRatio, 0.6);
+  assert.equal(pPartial.progressPercent, 60);
+  assert.equal(pPartial.isCompleted, false);
+
+  // 3. Fully completed checkin (5 out of 5)
+  const pFull = calculateCheckinProgress(habit, {
+    id: 'c2',
+    habitId: habit.id,
+    date: '2026-06-15',
+    completed: true,
+    count: 5,
+    createdAt: '2026-06-15T12:00:00.000Z',
+  });
+  assert.equal(pFull.currentCount, 5);
+  assert.equal(pFull.progressRatio, 1);
+  assert.equal(pFull.progressPercent, 100);
+  assert.equal(pFull.isCompleted, true);
+
+  // 4. Overachieved checkin (7 out of 5)
+  const pOver = calculateCheckinProgress(habit, {
+    id: 'c3',
+    habitId: habit.id,
+    date: '2026-06-15',
+    completed: true,
+    count: 7,
+    createdAt: '2026-06-15T14:00:00.000Z',
+  });
+  assert.equal(pOver.currentCount, 7);
+  assert.equal(pOver.progressRatio, 1); // Capped at 1
+  assert.equal(pOver.progressPercent, 100);
+  assert.equal(pOver.isCompleted, true);
+});
+
+test('getNextProgressCount: clamps increment and decrement safely within [0, targetCount]', () => {
+  // Increment
+  assert.equal(getNextProgressCount(0, 5, 'increment', 1), 1);
+  assert.equal(getNextProgressCount(4, 5, 'increment', 1), 5);
+  assert.equal(getNextProgressCount(5, 5, 'increment', 1), 5); // Clamped at target
+
+  // Custom step increment
+  assert.equal(getNextProgressCount(0, 10, 'increment', 4), 4);
+  assert.equal(getNextProgressCount(8, 10, 'increment', 4), 10); // Clamped at 10
+
+  // Decrement
+  assert.equal(getNextProgressCount(5, 5, 'decrement', 1), 4);
+  assert.equal(getNextProgressCount(1, 5, 'decrement', 1), 0);
+  assert.equal(getNextProgressCount(0, 5, 'decrement', 1), 0); // Clamped at 0
+});
+
+test('formatDailySummaryForShare: generates formatted Arabic summary for native sharing', () => {
+  const h1 = createMockHabit({
+    id: 'h1',
+    name: 'شرب الماء',
+    targetCount: 4,
+    unit: 'أكواب',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+  const h2 = createMockHabit({
+    id: 'h2',
+    name: 'قراءة القرآن',
+    targetCount: 1,
+    unit: 'صفحة',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: 'h1',
+      date: '2026-06-15',
+      completed: true,
+      count: 4,
+      createdAt: '2026-06-15T10:00:00.000Z',
+    },
+  ];
+
+  const summary = formatDailySummaryForShare('2026-06-15', [h1, h2], checkins);
+
+  assert.ok(summary.includes('تقرير إنجاز'));
+  assert.ok(summary.includes('العادات المنجزة:'));
+  assert.ok(summary.includes('شرب الماء'));
+  assert.ok(summary.includes('4/4 أكواب'));
+  assert.ok(summary.includes('العادات المتبقية:'));
+  assert.ok(summary.includes('قراءة القرآن'));
+  assert.ok(summary.includes('50%'));
+  assert.ok(summary.includes('تطبيق إنجاز'));
+});
+
+test('formatDailySummaryForShare: handles day with no due habits gracefully', () => {
+  const summary = formatDailySummaryForShare('2026-06-15', [], []);
+  assert.ok(summary.includes('لا توجد عادات مجدولة لهذا اليوم'));
+});
+
+test('formatOverallStatsForShare: generates clean Arabic overall milestones report', () => {
+  const h1 = createMockHabit({
+    id: 'h1',
+    name: 'رياضة',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: 'h1',
+      date: '2026-06-14',
+      completed: true,
+      count: 1,
+      createdAt: '2026-06-14T10:00:00.000Z',
+    },
+    {
+      id: 'c2',
+      habitId: 'h1',
+      date: '2026-06-15',
+      completed: true,
+      count: 1,
+      createdAt: '2026-06-15T10:00:00.000Z',
+    },
+  ];
+
+  const overallText = formatOverallStatsForShare([h1], checkins, '2026-06-15');
+
+  assert.ok(overallText.includes('إحصائياتي في تطبيق إنجاز'));
+  assert.ok(overallText.includes('أعلى سلسلة'));
+  assert.ok(overallText.includes('إجمالي الإنجازات: 2'));
+  assert.ok(overallText.includes('تطبيق إنجاز'));
 });
 

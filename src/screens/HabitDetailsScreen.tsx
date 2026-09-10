@@ -30,7 +30,17 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { theme, spacing, radius, typography, touchTarget } = useTheme();
-  const { habits, checkins, toggleCheckin, toggleHabitActive, deleteHabit, archiveHabit } = useHabitStore();
+  const {
+    habits,
+    checkins,
+    toggleCheckin,
+    incrementCheckin,
+    decrementCheckin,
+    toggleHabitActive,
+    deleteHabit,
+    archiveHabit,
+    restoreHabit,
+  } = useHabitStore();
 
   const habitId = route.params?.habitId;
   const habit = habits.find((h) => h.id === habitId);
@@ -50,9 +60,11 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
   const isArchived = Boolean(habit.archivedAt);
   const todayStr = dayjs().format('YYYY-MM-DD');
-  const isCompletedToday = checkins.some(
-    (c) => c.habitId === habit.id && c.date === todayStr && c.completed
+  const todayCheckin = checkins.find(
+    (c) => c.habitId === habit.id && c.date === todayStr
   );
+  const todayCount = todayCheckin ? todayCheckin.count : 0;
+  const isCompletedToday = Boolean(todayCheckin?.completed);
 
   const completedDates = new Set(
     checkins
@@ -212,13 +224,101 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
           {/* Clean Today Check Toggle (if not archived) */}
           {!isArchived ? (
-            <View style={{ marginTop: spacing.md }}>
-              <Button
-                title={isCompletedToday ? 'مكتملة اليوم ✓' : 'تسجيل إنجاز اليوم'}
-                variant={isCompletedToday ? 'outline' : 'primary'}
-                onPress={() => toggleCheckin(habit.id, todayStr)}
-              />
-            </View>
+            habit.targetCount > 1 ? (
+              <View
+                style={{
+                  marginTop: spacing.md,
+                  paddingTop: spacing.sm,
+                  borderTopWidth: 1,
+                  borderTopColor: theme.border,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row-reverse',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={[typography.subMedium, { color: theme.text }]}>
+                    إنجاز اليوم
+                  </Text>
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: isCompletedToday ? theme.primary : theme.textSecondary,
+                        fontWeight: isCompletedToday ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {todayCount} من {habit.targetCount} {habit.unit} (
+                    {Math.min(100, Math.round((todayCount / habit.targetCount) * 100))}%)
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      title={isCompletedToday ? 'مكتملة بالكامل ✓' : 'إكمال العادة الآن'}
+                      variant={isCompletedToday ? 'outline' : 'primary'}
+                      onPress={() => toggleCheckin(habit.id, todayStr)}
+                    />
+                  </View>
+
+                  <View
+                    style={{
+                      flexDirection: 'row-reverse',
+                      alignItems: 'center',
+                      marginRight: 8,
+                    }}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="زيادة إنجاز اليوم"
+                      onPress={() => incrementCheckin(habit.id, todayStr)}
+                      style={({ pressed }) => [
+                        styles.stepperBtn,
+                        {
+                          backgroundColor: theme.cardSecondary,
+                          borderColor: theme.border,
+                          opacity: pressed ? 0.6 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="add" size={20} color={theme.text} />
+                    </Pressable>
+
+                    <Pressable
+                      disabled={todayCount <= 0}
+                      accessibilityRole="button"
+                      accessibilityLabel="إنقاص إنجاز اليوم"
+                      onPress={() => decrementCheckin(habit.id, todayStr)}
+                      style={({ pressed }) => [
+                        styles.stepperBtn,
+                        {
+                          backgroundColor: theme.cardSecondary,
+                          borderColor: theme.border,
+                          marginRight: 6,
+                          opacity: todayCount <= 0 ? 0.3 : pressed ? 0.6 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="remove" size={20} color={theme.text} />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={{ marginTop: spacing.md }}>
+                <Button
+                  title={isCompletedToday ? 'مكتملة اليوم ✓' : 'تسجيل إنجاز اليوم'}
+                  variant={isCompletedToday ? 'outline' : 'primary'}
+                  onPress={() => toggleCheckin(habit.id, todayStr)}
+                />
+              </View>
+            )
           ) : null}
         </Card>
 
@@ -229,6 +329,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         <HabitHeatmap
           completedDates={completedDates}
           habitColor={habit.color}
+          createdAt={habit.createdAt}
           onToggleDate={(dateStr) => !isArchived && toggleCheckin(habit.id, dateStr)}
           readOnly={isArchived}
         />
@@ -313,6 +414,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  stepperBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

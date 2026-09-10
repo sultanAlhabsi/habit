@@ -55,6 +55,8 @@ interface HabitState {
   archiveHabit: (habitId: string, archive?: boolean) => Promise<void>;
   restoreHabit: (habitId: string) => Promise<void>;
   toggleCheckin: (habitId: string, date?: string) => Promise<boolean>;
+  incrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
+  decrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   seedData: () => Promise<void>;
   resetAllData: () => Promise<void>;
   exportBackup: () => Promise<BackupPayload>;
@@ -217,9 +219,14 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   toggleCheckin: async (habitId: string, targetDate?: string) => {
     const date = targetDate || get().selectedDate;
+    const habit = get().habits.find((h) => h.id === habitId);
+    if (!habit) return false;
 
-    // Disallow checkins for future dates
-    if (dayjs(date).startOf('day').isAfter(dayjs().startOf('day'))) {
+    // Disallow checkins for future dates or dates before habit creation
+    const targetDay = dayjs(date).startOf('day');
+    const today = dayjs().startOf('day');
+    const createdDay = dayjs(habit.createdAt).startOf('day');
+    if (targetDay.isAfter(today) || targetDay.isBefore(createdDay)) {
       return false;
     }
 
@@ -237,13 +244,13 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       await removeCheckinRecord(habitId, date);
       return false; // Became unchecked
     } else {
-      // Add checkin
-      const habit = get().habits.find((h) => h.id === habitId);
+      // Add checkin (full completion with targetCount)
+      const targetCount = Math.max(1, habit.targetCount || 1);
       const newCheckin: HabitCheckin = {
         id: `chk_${habitId}_${date}`,
         habitId,
         date,
-        count: habit ? habit.targetCount : 1,
+        count: targetCount,
         completed: true,
         updatedAt: dayjs().toISOString(),
       };
@@ -259,10 +266,102 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       await saveCheckinRecord(newCheckin);
       if (get().hapticsEnabled) {
         try {
-          Vibration.vibrate(12);
+          Vibration.vibrate(14);
         } catch (_) {}
       }
       return true; // Became checked
+    }
+  },
+
+  incrementCheckin: async (habitId: string, targetDate?: string, step = 1) => {
+    const date = targetDate || get().selectedDate;
+    const habit = get().habits.find((h) => h.id === habitId);
+    if (!habit) return;
+
+    // Disallow checkins for future dates or dates before habit creation
+    const targetDay = dayjs(date).startOf('day');
+    const today = dayjs().startOf('day');
+    const createdDay = dayjs(habit.createdAt).startOf('day');
+    if (targetDay.isAfter(today) || targetDay.isBefore(createdDay)) {
+      return;
+    }
+
+    const existing = get().checkins.find(
+      (c) => c.habitId === habitId && c.date === date
+    );
+    const targetCount = Math.max(1, habit.targetCount || 1);
+    const currentCount = existing ? existing.count : 0;
+    const newCount = Math.min(targetCount, currentCount + Math.max(1, step));
+    const isCompleted = newCount >= targetCount;
+
+    const updatedCheckin: HabitCheckin = {
+      id: existing ? existing.id : `chk_${habitId}_${date}`,
+      habitId,
+      date,
+      count: newCount,
+      completed: isCompleted,
+      updatedAt: dayjs().toISOString(),
+    };
+
+    set((state) => ({
+      checkins: [
+        ...state.checkins.filter(
+          (c) => !(c.habitId === habitId && c.date === date)
+        ),
+        updatedCheckin,
+      ],
+    }));
+    await saveCheckinRecord(updatedCheckin);
+
+    if (get().hapticsEnabled) {
+      try {
+        Vibration.vibrate(isCompleted ? 16 : 8);
+      } catch (_) {}
+    }
+  },
+
+  decrementCheckin: async (habitId: string, targetDate?: string, step = 1) => {
+    const date = targetDate || get().selectedDate;
+    const habit = get().habits.find((h) => h.id === habitId);
+    if (!habit) return;
+
+    const existing = get().checkins.find(
+      (c) => c.habitId === habitId && c.date === date
+    );
+    if (!existing || existing.count <= 0) return;
+
+    const newCount = existing.count - Math.max(1, step);
+
+    if (newCount <= 0) {
+      set((state) => ({
+        checkins: state.checkins.filter(
+          (c) => !(c.habitId === habitId && c.date === date)
+        ),
+      }));
+      await removeCheckinRecord(habitId, date);
+    } else {
+      const targetCount = Math.max(1, habit.targetCount || 1);
+      const updatedCheckin: HabitCheckin = {
+        ...existing,
+        count: newCount,
+        completed: newCount >= targetCount,
+        updatedAt: dayjs().toISOString(),
+      };
+      set((state) => ({
+        checkins: [
+          ...state.checkins.filter(
+            (c) => !(c.habitId === habitId && c.date === date)
+          ),
+          updatedCheckin,
+        ],
+      }));
+      await saveCheckinRecord(updatedCheckin);
+    }
+
+    if (get().hapticsEnabled) {
+      try {
+        Vibration.vibrate(8);
+      } catch (_) {}
     }
   },
 

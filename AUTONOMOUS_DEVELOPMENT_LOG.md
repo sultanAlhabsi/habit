@@ -437,5 +437,104 @@ Export was successful -> 0 errors, 0 warnings!
 2. **اتساق أرقام التبويبات مع نتائج البحث:** ضمان أن العدادات الرقمية على تبويبات "الكل"، "المتبقية"، و"المكتملة" تعكس النتائج المفلترة أثناء البحث لتجنب أي تناقض بصري.
 3. **حماية العادات المؤرشفة في جميع الواجهات:** تأكيد مبدأ أن العادة المؤرشفة هي سجل أرشيفي تاريخي لا يقبل التعديل التفاعلي إلا بعد استعادتها صراحة، مما يمنع الأخطاء غير المقصودة.
 
+---
+
+## الدورة الخامسة (Cycle 5) - محرك الإنجاز التدريجي، قيود تاريخ الإنشاء، مشاركة الإنجاز، وقائمة المتصدرين التفاعلية
+- **التاريخ:** 11 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة الخامسة
+هدفت الدورة الخامسة إلى نقل تجربة المستخدم في تطبيق "إنجاز" إلى مستوى متقدم من الإنتاجية والتحفيز مع إغلاق ثغرات رياضية وتاريخية هامة:
+1. **محرك الإنجاز متعدد المستويات والتدريجي (Multi-Target Incremental Checkins):** دعم العادات الكمية (مثل شرب 8 أكواب ماء، قراءة 20 صفحة، المشي 5 آلاف خطوة) من خلال أزرار زيادة ونقصان متدرجة مع شريط تقدم مصغر، وتأكيد الإكمال التلقائي عند بلوغ الهدف.
+2. **سياج أمان تاريخ إنشاء العادة (Creation Date Safeguards):** منع تسجيل إنجازات في تواريخ سابقة لتاريخ إنشاء العادة (`habit.createdAt`) في كل من المتجر والخريطة الحرارية التقويمية.
+3. **مشاركة الإنجاز والإحصائيات عبر النظام (Native Progress Sharing):** توليد تقارير نصية عربية منسقة بدقة ومزودة بإيموجي للمشاركة المباشرة عبر تطبيقات التواصل (واتساب، تيليجرام، إكس، إلخ).
+4. **قائمة المتصدرين التفاعلية في الإحصائيات (Interactive Habits Leaderboard):** تحويل صفوف أفضل العادات التزاماً إلى عناصر تفاعلية تنقل مباشرة إلى تفاصيل العادة مع تمييزها بأيقونتها ولونها وسلسلتها الحالية.
+5. **توسيع حزمة الاختبارات المؤتمتة:** تغطية جميع خوارزميات التقدم والزيادة التدريجية وصيغ المشاركة لترتفع الاختبارات إلى **33 اختباراً ناجحاً بنسبة 100%**.
+
+---
+
+### 2. التغييرات المنفذة بالتفصيل
+
+#### أ. محرك التقدم والزيادة التدريجية (`src/utils/habitUtils.ts` & `src/store/useHabitStore.ts`):
+1. **دوال التقدم الصافية (Pure Utility Functions):**
+   - `calculateCheckinProgress(habit, checkin)`: حساب دقيق لعدد المرات المنجزة، النسبة المئوية للتقدم (`progressPercent`)، نسبة النطاق `progressRatio`، وحالة الاكتمال المنطقية.
+   - `getNextProgressCount(currentCount, targetCount, direction, step)`: حساب آمن ومحمي بحدود صارمة `[0, targetCount]` يمنع التجاوز السلبي أو الفائض.
+2. **عمليات المتجر المتدرجة (`incrementCheckin` & `decrementCheckin`):**
+   - إضافة `incrementCheckin`: زيادة العداد اليومي بمقدار الخطوة (افتراضياً 1) مع وضع علامة `completed: true` تلقائياً فور الوصول للهدف، وحفظ النتيجة في قاعدة بيانات SQLite مع نبضة اهتزازية احتفالية.
+   - إضافة `decrementCheckin`: إنقاص العداد مع حذفه من قاعدة البيانات إذا وصل إلى 0.
+   - تحديث `toggleCheckin`: منع تسجيل أي إنجاز لتاريخ يسبق `habit.createdAt` أو التواريخ المستقبلية، مع ضبط العداد على كامل `targetCount` عند التفعيل المباشر.
+
+#### ب. بطاقة العادة التكيفية (`src/components/home/HabitCard.tsx`):
+- إذا كان `targetCount > 1`: تعرض البطاقة مجموعة أزرار زيادة ونقصان (`+` و `-`) متوافقة مع اتجاه RTL ومقاس لمس قياسي (40pt) مع نص التقدم `x من y وحدة`، وشريط تقدم أنيق تحت العنوان يمتلئ مع كل نقرة، مع إمكانية الضغط المطول للإكمال الفوري.
+- إذا كان `targetCount === 1`: تحتفظ البطاقة بزر التحقق الدائري السريع والأنيق بنقرة واحدة.
+
+#### ج. الخريطة الحرارية وتفاصيل العادة (`HabitHeatmap.tsx` & `HabitDetailsScreen.tsx`):
+- في `HabitHeatmap`: إضافة خاصية `createdAt` لمنع الرجوع بالأشهر إلى ما قبل شهر إنشاء العادة، وتعطيل الأيام السابقة لتاريخ الإنشاء مع تلوينها بلون معتم وتلميح وصول خاص لذوي الاحتياجات.
+- في `HabitDetailsScreen`: تزويد البطاقة الرئيسية بعناصر تحكم تدريجية في إنجاز اليوم إذا كانت العادة ذات أهداف عددية، وتمرير `habit.createdAt` للتقويم.
+
+#### د. المشاركة وقائمة الإحصائيات (`HomeScreen.tsx` & `StatisticsScreen.tsx`):
+- إضافة دالتي `formatDailySummaryForShare` و `formatOverallStatsForShare` لصياغة رسائل عربية جذابة تحتوي على نسب الإنجاز وقوائم العادات المكتملة والمتبقية.
+- تزويد شاشتي الرئيسية والإحصائيات بزر مشاركة أنيق في شريط الرأس يفتح نافذة المشاركة الأصلية للجهاز (`Share.share`).
+- تحويل قائمة العادات النشطة في شاشة الإحصائيات إلى صفوف قابلة للنقر مع خلفية أيقونة العادة الملونة، تنقل المستخدم بضغطة واحدة إلى شاشة تفاصيل العادة.
+
+---
+
+### 3. الاختبارات والتحقق البرمجي
+
+```bash
+# نتائج تشغيل حزمة الاختبارات الكاملة (33/33 ناجح):
+✔ createBackupPayload: constructs standard schema envelope (8.4ms)
+✔ validateBackupJson: validates well-formed JSON string (1.6ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.0ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.1ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.0ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (17.7ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (1.6ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (0.8ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (1.4ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (6.6ms)
+✔ calculateHabitStats: increments streak when today is completed (6.7ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (4.6ms)
+✔ calculateHabitStats: paused habit retains historical stats (4.2ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.3ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (4.6ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (2.0ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (13.0ms)
+✔ formatArabicDate: formats correctly in Arabic (0.5ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (0.8ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.5ms)
+✔ calculateCheckinProgress: calculates progress, percentage, and completion status accurately (0.8ms)
+✔ getNextProgressCount: clamps increment and decrement safely within [0, targetCount] (0.4ms)
+✔ formatDailySummaryForShare: generates formatted Arabic summary for native sharing (1.1ms)
+✔ formatDailySummaryForShare: handles day with no due habits gracefully (0.4ms)
+✔ formatOverallStatsForShare: generates clean Arabic overall milestones report (31.3ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (5.8ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (4.4ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (1.1ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.8ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.5ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (1.2ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (0.9ms)
+ℹ tests 33 | suites 0 | pass 33 | fail 0 | cancelled 0 | duration_ms 522ms
+
+# فحص أنواع TypeScript الصارم:
+npm run typecheck -> tsc --noEmit -> 0 errors!
+
+# تصدير حزمة الإنتاج لنظام أندرويد (Hermes Bytecode Export):
+npx expo export --platform android -> Exported: dist (1488 modules bundled, 0 errors, 0 warnings)
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة الخامسة
+1. **التعامل مع العادات البسيطة مقابل العادات المتعددة:** الحفاظ على بساطة وسرعة النقرة الواحدة للعادات التقليدية (`targetCount === 1`) حتى لا يتعقد الاستخدام اليومي السريع، مع إظهار أزرار الزيادة وشريط التقدم حصرياً للعادات التي تحتاج عدّاداً متعدد المرات (`targetCount > 1`).
+2. **الحفاظ على سلامة حسابات السلاسل:** شرط احتساب العادة في السلسلة اليومية يظل دائماً مقيداً بـ `completed === true` (أي وصول العداد إلى كامل الهدف)، مما يحمي السلسلة من الاحتساب الزائف بمجرد نقرة جزئية.
+3. **الاعتماد على واجهات المشاركة الأصلية لنظام التشغيل (`Share` API):** استخدام واجهة النظام القياسية دون إضافة مكتبات خارجية ثقيلة، مما يحافظ على خفة التطبيق وسرعته ويتيح للمستخدم حرية إرسال التقرير لأي تطبيق مثبت على جهازه.
+
+
 
 
