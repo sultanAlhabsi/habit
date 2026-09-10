@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
   Share,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -22,6 +23,8 @@ import { EmptyState } from '../components/common/EmptyState';
 import {
   HABIT_CATEGORIES,
   HabitCategory,
+  HABIT_SORT_OPTIONS,
+  HabitSortOption,
 } from '../types/habit';
 import {
   calculateOverallStats,
@@ -31,6 +34,7 @@ import {
   formatDailySummaryForShare,
   isHabitDueOnDate,
   getHabitCategory,
+  sortHabits,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -45,19 +49,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<HabitCategory | 'الكل'>('الكل');
   const [isOffScheduleExpanded, setIsOffScheduleExpanded] = useState(false);
+  const [isSortModalVisible, setIsSortModalVisible] = useState(false);
 
   const {
     habits,
     checkins,
     selectedDate,
     filter,
+    sortOption,
     isLoading,
     setSelectedDate,
     setFilter,
+    setSortOption,
     toggleCheckin,
     incrementCheckin,
     decrementCheckin,
   } = useHabitStore();
+
+  const activeSortItem =
+    HABIT_SORT_OPTIONS.find((s) => s.id === sortOption) || HABIT_SORT_OPTIONS[0];
 
   const todayStr = dayjs().format('YYYY-MM-DD');
   const isToday = selectedDate === todayStr;
@@ -104,6 +114,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     return true; // 'all'
   });
 
+  const sortedFilteredHabits = sortHabits(
+    filteredHabits,
+    sortOption,
+    checkins,
+    selectedDate
+  );
+
   // Off-schedule habits for selected date (when not searching)
   const offScheduleHabits = activeUnarchivedHabits.filter(
     (h) => !dueHabits.some((dh) => dh.id === h.id)
@@ -111,6 +128,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const filteredOffScheduleHabits = selectedCategory === 'الكل'
     ? offScheduleHabits
     : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+
+  const sortedOffScheduleHabits = sortHabits(
+    filteredOffScheduleHabits,
+    sortOption,
+    checkins,
+    selectedDate
+  );
 
   const handleShareDaily = async () => {
     try {
@@ -334,46 +358,82 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           })}
         </ScrollView>
 
-        {/* Quiet Filter Tabs */}
-        <View style={[styles.filterRow, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
-          {(['all', 'pending', 'completed'] as const).map((tab) => {
-            const isSelected = filter === tab;
-            const labels = {
-              all: `الكل (${categoryFilteredHabits.length})`,
-              pending: `المتبقية (${Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)})`,
-              completed: `المكتملة (${categoryCompletedCount})`,
-            };
+        {/* Quiet Filter Tabs & Sort Button */}
+        <View style={[styles.filterBarContainer, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
+          <View style={styles.filterTabsRow}>
+            {(['all', 'pending', 'completed'] as const).map((tab) => {
+              const isSelected = filter === tab;
+              const labels = {
+                all: `الكل (${categoryFilteredHabits.length})`,
+                pending: `المتبقية (${Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)})`,
+                completed: `المكتملة (${categoryCompletedCount})`,
+              };
 
-            return (
-              <Pressable
-                key={tab}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isSelected }}
-                onPress={() => setFilter(tab)}
-                style={({ pressed }) => [
-                  styles.filterTab,
-                  {
-                    borderBottomColor: isSelected ? theme.text : 'transparent',
-                    borderBottomWidth: 1.5,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    typography.caption,
+              return (
+                <Pressable
+                  key={tab}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => setFilter(tab)}
+                  style={({ pressed }) => [
+                    styles.filterTab,
                     {
-                      color: isSelected ? theme.text : theme.textMuted,
-                      fontWeight: isSelected ? '600' : '400',
-                      paddingBottom: 6,
+                      borderBottomColor: isSelected ? theme.text : 'transparent',
+                      borderBottomWidth: 1.5,
+                      opacity: pressed ? 0.7 : 1,
                     },
                   ]}
                 >
-                  {labels[tab]}
-                </Text>
-              </Pressable>
-            );
-          })}
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: isSelected ? theme.text : theme.textMuted,
+                        fontWeight: isSelected ? '600' : '400',
+                        paddingBottom: 6,
+                      },
+                    ]}
+                  >
+                    {labels[tab]}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {/* Sort Selector Button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`ترتيب العادات: ${activeSortItem.label}`}
+            onPress={() => setIsSortModalVisible(true)}
+            style={({ pressed }) => [
+              styles.sortBtn,
+              {
+                backgroundColor: sortOption !== 'default' ? theme.cardSecondary : 'transparent',
+                borderColor: sortOption !== 'default' ? theme.border : theme.border,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name={activeSortItem.icon as any}
+              size={13}
+              color={sortOption !== 'default' ? theme.text : theme.textMuted}
+            />
+            <Text
+              style={[
+                typography.caption,
+                {
+                  color: sortOption !== 'default' ? theme.text : theme.textSecondary,
+                  fontWeight: sortOption !== 'default' ? '600' : '400',
+                  marginRight: 4,
+                  fontSize: 11,
+                },
+              ]}
+            >
+              {activeSortItem.label}
+            </Text>
+          </Pressable>
         </View>
 
         {/* Habits List or Empty States */}
@@ -416,7 +476,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             />
           )
         ) : (
-          filteredHabits.map((habit) => {
+          sortedFilteredHabits.map((habit) => {
             const checkin = checkins.find(
               (c) => c.habitId === habit.id && c.date === selectedDate
             );
@@ -480,7 +540,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             </Pressable>
 
             {isOffScheduleExpanded &&
-              filteredOffScheduleHabits.map((habit) => {
+              sortedOffScheduleHabits.map((habit) => {
                 const checkin = checkins.find(
                   (c) => c.habitId === habit.id && c.date === selectedDate
                 );
@@ -509,6 +569,91 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
+
+      {/* Sort Options Modal */}
+      <Modal
+        visible={isSortModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsSortModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setIsSortModalVisible(false)}
+        >
+          <Pressable
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                borderRadius: radius.lg,
+              },
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[typography.h3, { color: theme.text, textAlign: 'right' }]}>
+                ترتيب العادات
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق نافذة الترتيب"
+                onPress={() => setIsSortModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color={theme.textMuted} />
+              </Pressable>
+            </View>
+
+            {HABIT_SORT_OPTIONS.map((item) => {
+              const isSelected = sortOption === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => {
+                    setSortOption(item.id);
+                    setIsSortModalVisible(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.sortOptionRow,
+                    {
+                      backgroundColor: isSelected ? theme.cardSecondary : 'transparent',
+                      borderRadius: radius.md,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <View style={styles.sortOptionRight}>
+                    <Ionicons
+                      name={item.icon as any}
+                      size={18}
+                      color={isSelected ? theme.text : theme.textMuted}
+                    />
+                    <Text
+                      style={[
+                        typography.sub,
+                        {
+                          color: isSelected ? theme.text : theme.textSecondary,
+                          fontWeight: isSelected ? '700' : '400',
+                          marginRight: 10,
+                        },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </View>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={18} color={theme.text} />
+                  )}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -591,6 +736,66 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   offScheduleHeaderTitle: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  filterBarContainer: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.04)',
+    paddingBottom: 2,
+  },
+  filterTabsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 16,
+  },
+  sortBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 340,
+    borderWidth: 1,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  sortOptionRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginVertical: 2,
+  },
+  sortOptionRight: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
   },

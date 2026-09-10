@@ -1,5 +1,13 @@
 import dayjs from 'dayjs';
-import type { Habit, HabitCheckin, HabitStats, OverallStats, DayAdherence } from '../types/habit';
+import type {
+  Habit,
+  HabitCheckin,
+  HabitStats,
+  OverallStats,
+  DayAdherence,
+  HabitSortOption,
+  MonthAdherenceStats,
+} from '../types/habit';
 
 export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روتين', 'روحانية', 'تطوير'] as const;
 export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
@@ -90,9 +98,10 @@ export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = 
  */
 export const calculateHabitStats = (
   habit: Habit,
-  allCheckins: HabitCheckin[]
+  allCheckins: HabitCheckin[],
+  referenceDate?: string | dayjs.Dayjs
 ): HabitStats => {
-  const today = dayjs().startOf('day');
+  const today = (referenceDate ? dayjs(referenceDate) : dayjs()).startOf('day');
   const todayStr = today.format('YYYY-MM-DD');
 
   // Filter valid completed checkins up to today (ignore any accidental future dates)
@@ -574,6 +583,153 @@ export const formatOverallStatsForShare = (
     `• العادات النشطة: ${overall.activeHabits} عادات`,
     '',
     'تطبيق إنجاز للالتزام وبناء العادات ✨',
+  ].join('\n');
+};
+
+/**
+ * Sort habits according to user preference:
+ * - 'default': retains initial list order (creation chronological)
+ * - 'pending_first': uncompleted habits on selectedDate come first, followed by completed habits
+ * - 'reminder_time': earliest reminder to latest, habits without reminders at the end
+ * - 'streak': highest streak first
+ */
+export const sortHabits = (
+  habits: Habit[],
+  sortOption: HabitSortOption,
+  allCheckins: HabitCheckin[],
+  selectedDate: string
+): Habit[] => {
+  if (sortOption === 'default' || habits.length <= 1) {
+    return [...habits];
+  }
+
+  const completedSet = new Set(
+    allCheckins
+      .filter((c) => c.date === selectedDate && c.completed)
+      .map((c) => c.habitId)
+  );
+
+  return [...habits].sort((a, b) => {
+    if (sortOption === 'pending_first') {
+      const aDone = completedSet.has(a.id) ? 1 : 0;
+      const bDone = completedSet.has(b.id) ? 1 : 0;
+      if (aDone !== bDone) return aDone - bDone;
+      return 0;
+    }
+
+    if (sortOption === 'reminder_time') {
+      const aTime = a.reminderTime ? normalizeArabicNumerals(a.reminderTime) : null;
+      const bTime = b.reminderTime ? normalizeArabicNumerals(b.reminderTime) : null;
+
+      if (aTime && bTime) {
+        return aTime.localeCompare(bTime);
+      }
+      if (aTime && !bTime) return -1;
+      if (!aTime && bTime) return 1;
+      return 0;
+    }
+
+    if (sortOption === 'streak') {
+      const aStreak = calculateHabitStats(a, allCheckins, selectedDate).currentStreak;
+      const bStreak = calculateHabitStats(b, allCheckins, selectedDate).currentStreak;
+      if (bStreak !== aStreak) {
+        return bStreak - aStreak;
+      }
+      return 0;
+    }
+
+    return 0;
+  });
+};
+
+const ARABIC_MONTH_NAMES = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+];
+
+/**
+ * Calculate month-level adherence, total completions, and perfect days count
+ */
+export const calculateMonthAdherence = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[],
+  referenceDate: dayjs.Dayjs = dayjs()
+): MonthAdherenceStats => {
+  const targetMonth = referenceDate.startOf('month');
+  const today = dayjs().startOf('day');
+  const daysInMonth = targetMonth.daysInMonth();
+  const year = targetMonth.year();
+  const monthIndex = targetMonth.month();
+  const monthLabel = `${ARABIC_MONTH_NAMES[monthIndex]} ${year}`;
+
+  const activeHabits = habits.filter((h) => !h.archivedAt && h.isActive);
+  const activeHabitsCount = activeHabits.length;
+
+  const isCurrentMonth = today.isSame(targetMonth, 'month');
+  const isFutureMonth = targetMonth.isAfter(today, 'month');
+
+  const daysToEvaluate = isFutureMonth
+    ? 0
+    : isCurrentMonth
+    ? Math.min(daysInMonth, today.date())
+    : daysInMonth;
+
+  let totalDueOpportunities = 0;
+  let totalCompletions = 0;
+  let perfectDaysCount = 0;
+
+  for (let day = 1; day <= daysToEvaluate; day++) {
+    const curDate = targetMonth.date(day);
+    const dateStr = curDate.format('YYYY-MM-DD');
+
+    const dueOnDate = habits.filter((h) => isHabitDueOnDate(h, dateStr, false));
+    const dayCheckins = allCheckins.filter((c) => c.date === dateStr && c.completed);
+
+    const completedCountOnDay = dayCheckins.length;
+    totalDueOpportunities += dueOnDate.length;
+    totalCompletions += completedCountOnDay;
+
+    if (dueOnDate.length > 0) {
+      const allDueCompleted = dueOnDate.every((h) =>
+        dayCheckins.some((c) => c.habitId === h.id)
+      );
+      if (allDueCompleted) {
+        perfectDaysCount++;
+      }
+    }
+  }
+
+  const completionRate =
+    totalDueOpportunities > 0
+      ? Math.round((totalCompletions / totalDueOpportunities) * 100)
+      : 0;
+
+  return {
+    monthLabel,
+    year,
+    monthIndex,
+    totalDueOpportunities,
+    totalCompletions,
+    completionRate: Math.min(100, Math.max(0, completionRate)),
+    perfectDaysCount,
+    totalDaysInMonth: daysInMonth,
+    daysPassedInMonth: daysToEvaluate,
+    activeHabitsCount,
+  };
+};
+
+/**
+ * Format month achievement summary for native sharing
+ */
+export const formatMonthlySummaryForShare = (stats: MonthAdherenceStats): string => {
+  return [
+    `📅 ملخص إنجازات شهر ${stats.monthLabel}:`,
+    `• نسبة الالتزام الشهرية: ${stats.completionRate}%`,
+    `• إجمالي الإنجازات: ${stats.totalCompletions} إنجاز 🎯`,
+    `• الأيام المكتملة 100%: ${stats.perfectDaysCount} ${stats.perfectDaysCount === 1 ? 'يوم' : 'أيام'} 🌟`,
+    `• العادات النشطة: ${stats.activeHabitsCount}`,
+    '',
+    'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
   ].join('\n');
 };
 

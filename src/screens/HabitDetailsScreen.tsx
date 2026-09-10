@@ -15,6 +15,7 @@ import { useHabitStore } from '../store/useHabitStore';
 import { Header } from '../components/common/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
+import { ProgressBar } from '../components/common/ProgressBar';
 import { HabitHeatmap } from '../components/details/HabitHeatmap';
 import { HabitStatGrid } from '../components/details/HabitStatGrid';
 import {
@@ -258,7 +259,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                     flexDirection: 'row-reverse',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: 8,
+                    marginBottom: 6,
                   }}
                 >
                   <Text style={[typography.subMedium, { color: theme.text }]}>
@@ -276,6 +277,14 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                     {todayCount} من {habit.targetCount} {habit.unit} (
                     {Math.min(100, Math.round((todayCount / habit.targetCount) * 100))}%)
                   </Text>
+                </View>
+
+                <View style={{ marginBottom: spacing.sm }}>
+                  <ProgressBar
+                    progress={Math.min(100, Math.round((todayCount / habit.targetCount) * 100))}
+                    height={5}
+                    color={isCompletedToday ? theme.primary : theme.text}
+                  />
                 </View>
 
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>

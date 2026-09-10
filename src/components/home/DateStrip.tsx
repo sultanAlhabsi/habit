@@ -6,8 +6,10 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useTheme } from '../../theme/ThemeContext';
+import { formatArabicDate } from '../../utils/habitUtils';
 
 interface DateStripProps {
   selectedDate: string; // YYYY-MM-DD
@@ -21,10 +23,14 @@ export const DateStrip: React.FC<DateStripProps> = ({
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
 
-  // Generate 14 days around today (7 days before, today, 6 days ahead)
   const today = dayjs();
-  const days = Array.from({ length: 14 }).map((_, index) => {
-    const d = today.subtract(7 - index, 'day');
+  const selDay = dayjs(selectedDate);
+  const diffFromToday = selDay.diff(today, 'day');
+
+  // Dynamic window: if selectedDate is outside standard 14 days around today, center around selectedDate
+  const centerDate = Math.abs(diffFromToday) <= 7 ? today : selDay;
+  const days = Array.from({ length: 15 }).map((_, index) => {
+    const d = centerDate.subtract(7 - index, 'day');
     return {
       dateStr: d.format('YYYY-MM-DD'),
       dayNum: d.date(),
@@ -44,10 +50,43 @@ export const DateStrip: React.FC<DateStripProps> = ({
         });
       }, 100);
     }
-  }, [selectedIndex]);
+  }, [selectedIndex, selectedDate]);
 
   return (
     <View style={[styles.container, { marginBottom: spacing.sm }]}>
+      {/* Week Navigation Header */}
+      <View style={[styles.navRow, { paddingHorizontal: spacing.base, marginBottom: 6 }]}>
+        <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600' }]}>
+          {formatArabicDate(selectedDate)}
+        </Text>
+
+        <View style={styles.chevronsRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="الأسبوع السابق"
+            onPress={() => onSelectDate(dayjs(selectedDate).subtract(7, 'day').format('YYYY-MM-DD'))}
+            style={({ pressed }) => [
+              styles.navBtn,
+              { opacity: pressed ? 0.5 : 1 },
+            ]}
+          >
+            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="الأسبوع التالي"
+            onPress={() => onSelectDate(dayjs(selectedDate).add(7, 'day').format('YYYY-MM-DD'))}
+            style={({ pressed }) => [
+              styles.navBtn,
+              { opacity: pressed ? 0.5 : 1 },
+            ]}
+          >
+            <Ionicons name="chevron-back" size={16} color={theme.textMuted} />
+          </Pressable>
+        </View>
+      </View>
+
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -151,5 +190,20 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     marginTop: 3,
+  },
+  navRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  chevronsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  navBtn: {
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

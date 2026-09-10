@@ -18,6 +18,9 @@ import {
   normalizeArabicNumerals,
   getHabitCategory,
   getHabitStreakStatus,
+  sortHabits,
+  calculateMonthAdherence,
+  formatMonthlySummaryForShare,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -631,6 +634,161 @@ test('getHabitStreakStatus: determines correct streak status on completed, rest,
   assert.equal(restStatus.status, 'rest_day');
   assert.ok(restStatus.message.includes('يوم استراحة مجدول'));
   assert.equal(restStatus.iconName, 'cafe-outline');
+});
+
+test('sortHabits: sorts habits according to pending_first, reminder_time, streak, and default', () => {
+  const h1 = createMockHabit({
+    id: 'h1',
+    name: 'صلاة الفجر',
+    reminderTime: '05:00',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+  const h2 = createMockHabit({
+    id: 'h2',
+    name: 'قراءة الكتب',
+    reminderTime: '20:00',
+    createdAt: '2026-01-02T00:00:00.000Z',
+  });
+  const h3 = createMockHabit({
+    id: 'h3',
+    name: 'شرب الماء',
+    reminderTime: undefined,
+    createdAt: '2026-01-03T00:00:00.000Z',
+  });
+
+  const habits = [h1, h2, h3];
+  const dateStr = '2026-06-15';
+
+  // Checkins: h1 is completed, h2 and h3 are pending
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: 'h1',
+      date: dateStr,
+      completed: true,
+      count: 1,
+      createdAt: '2026-06-15T05:30:00.000Z',
+    },
+    // h2 has a 3-day streak in the past
+    {
+      id: 'c2_prev1',
+      habitId: 'h2',
+      date: '2026-06-14',
+      completed: true,
+      count: 1,
+      createdAt: '2026-06-14T10:00:00.000Z',
+    },
+    {
+      id: 'c2_prev2',
+      habitId: 'h2',
+      date: '2026-06-13',
+      completed: true,
+      count: 1,
+      createdAt: '2026-06-13T10:00:00.000Z',
+    },
+  ];
+
+  // 1. Default order: preserves original array
+  const defaultSorted = sortHabits(habits, 'default', checkins, dateStr);
+  assert.deepEqual(
+    defaultSorted.map((h) => h.id),
+    ['h1', 'h2', 'h3']
+  );
+
+  // 2. Pending first: h2 and h3 come before completed h1
+  const pendingSorted = sortHabits(habits, 'pending_first', checkins, dateStr);
+  assert.equal(pendingSorted[2].id, 'h1');
+  assert.ok(['h2', 'h3'].includes(pendingSorted[0].id));
+  assert.ok(['h2', 'h3'].includes(pendingSorted[1].id));
+
+  // 3. Reminder time: 05:00 (h1) -> 20:00 (h2) -> undefined (h3)
+  const reminderSorted = sortHabits(habits, 'reminder_time', checkins, dateStr);
+  assert.deepEqual(
+    reminderSorted.map((h) => h.id),
+    ['h1', 'h2', 'h3']
+  );
+
+  // 4. Streak order: h2 has streak 2 (active yesterday), h1 has streak 1 (completed today), h3 has 0
+  const streakSorted = sortHabits(habits, 'streak', checkins, dateStr);
+  assert.equal(streakSorted[0].id, 'h2');
+});
+
+test('calculateMonthAdherence: computes correct metrics for a full month', () => {
+  const habit1 = createMockHabit({
+    id: 'm-h1',
+    frequency: 'daily',
+    createdAt: '2026-05-01T00:00:00.000Z',
+  });
+  const habit2 = createMockHabit({
+    id: 'm-h2',
+    frequency: 'daily',
+    createdAt: '2026-05-01T00:00:00.000Z',
+  });
+
+  // Reference date: past month June 2026 (30 days total)
+  const refDate = dayjs('2026-06-15');
+
+  // Let's create 10 completed days for habit1 and 5 for habit2, with 3 perfect days where both were done
+  const checkins: HabitCheckin[] = [];
+  for (let day = 1; day <= 10; day++) {
+    const dStr = `2026-06-${day.toString().padStart(2, '0')}`;
+    checkins.push({
+      id: `c-h1-${day}`,
+      habitId: 'm-h1',
+      date: dStr,
+      completed: true,
+      count: 1,
+      createdAt: `${dStr}T10:00:00.000Z`,
+    });
+    if (day <= 3) {
+      checkins.push({
+        id: `c-h2-${day}`,
+        habitId: 'm-h2',
+        date: dStr,
+        completed: true,
+        count: 1,
+        createdAt: `${dStr}T11:00:00.000Z`,
+      });
+    }
+  }
+
+  const stats = calculateMonthAdherence([habit1, habit2], checkins, refDate);
+
+  assert.equal(stats.totalDaysInMonth, 30);
+  assert.equal(stats.daysPassedInMonth, 30); // Past month is fully evaluated
+  assert.equal(stats.totalDueOpportunities, 60); // 30 days * 2 habits
+  assert.equal(stats.totalCompletions, 13); // 10 from h1 + 3 from h2
+  assert.equal(stats.completionRate, Math.round((13 / 60) * 100)); // ~22%
+  assert.equal(stats.perfectDaysCount, 3); // Days 1, 2, 3
+  assert.ok(stats.monthLabel.includes('2026'));
+});
+
+test('calculateMonthAdherence: handles empty habits list safely without NaN or division by zero', () => {
+  const stats = calculateMonthAdherence([], [], dayjs('2026-06-15'));
+  assert.equal(stats.totalDueOpportunities, 0);
+  assert.equal(stats.totalCompletions, 0);
+  assert.equal(stats.completionRate, 0);
+  assert.equal(stats.perfectDaysCount, 0);
+});
+
+test('formatMonthlySummaryForShare: formats month summary correctly for native sharing', () => {
+  const stats = {
+    monthKey: '2026-06',
+    monthLabel: 'يونيو 2026',
+    totalDaysInMonth: 30,
+    daysPassedInMonth: 30,
+    totalDueOpportunities: 60,
+    totalCompletions: 48,
+    completionRate: 80,
+    perfectDaysCount: 18,
+  };
+
+  const message = formatMonthlySummaryForShare(stats);
+  assert.ok(message.includes('يونيو 2026'));
+  assert.ok(message.includes('80%'));
+  assert.ok(message.includes('48'));
+  assert.ok(message.includes('18'));
+  assert.ok(message.includes('تطبيق إنجاز'));
 });
 
 

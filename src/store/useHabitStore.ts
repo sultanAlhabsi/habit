@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Vibration } from 'react-native';
 import dayjs from 'dayjs';
-import { Habit, HabitCheckin } from '../types/habit';
+import { Habit, HabitCheckin, HabitSortOption } from '../types/habit';
 import {
   initDatabase,
   fetchAllHabits,
@@ -37,6 +37,7 @@ interface HabitState {
   selectedDate: string;
   isLoading: boolean;
   filter: 'all' | 'pending' | 'completed';
+  sortOption: HabitSortOption;
   themeMode: ThemeMode;
   hapticsEnabled: boolean;
   notificationsEnabled: boolean;
@@ -45,6 +46,7 @@ interface HabitState {
   init: () => Promise<void>;
   setSelectedDate: (date: string) => void;
   setFilter: (filter: 'all' | 'pending' | 'completed') => void;
+  setSortOption: (option: HabitSortOption) => void;
   setThemeMode: (mode: ThemeMode) => void;
   toggleHaptics: () => void;
   toggleNotifications: () => Promise<void>;
@@ -69,6 +71,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   selectedDate: dayjs().format('YYYY-MM-DD'),
   isLoading: true,
   filter: 'all',
+  sortOption: 'default',
   themeMode: 'system',
   hapticsEnabled: true,
   notificationsEnabled: true,
@@ -77,20 +80,26 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       set({ isLoading: true });
       await initDatabase();
-      const [habits, checkins, hapticsPref, notifPref] = await Promise.all([
+      const [habits, checkins, hapticsPref, notifPref, sortPref] = await Promise.all([
         fetchAllHabits(),
         fetchAllCheckins(),
         getPreference('haptics_enabled', 'true'),
         getPreference('notifications_enabled', 'true'),
+        getPreference('habit_sort_preference', 'default'),
       ]);
 
       const notificationsEnabled = notifPref !== 'false';
+      const validSortOptions: HabitSortOption[] = ['default', 'pending_first', 'reminder_time', 'streak'];
+      const sortOption: HabitSortOption = validSortOptions.includes(sortPref as HabitSortOption)
+        ? (sortPref as HabitSortOption)
+        : 'default';
 
       set({
         habits,
         checkins,
         hapticsEnabled: hapticsPref !== 'false',
         notificationsEnabled,
+        sortOption,
         isLoading: false,
       });
 
@@ -108,6 +117,11 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   setFilter: (filter: 'all' | 'pending' | 'completed') => {
     set({ filter });
+  },
+
+  setSortOption: (sortOption: HabitSortOption) => {
+    set({ sortOption });
+    setPreference('habit_sort_preference', sortOption);
   },
 
   setThemeMode: (themeMode: ThemeMode) => {

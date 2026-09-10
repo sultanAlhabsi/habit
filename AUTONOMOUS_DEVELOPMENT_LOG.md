@@ -645,6 +645,120 @@ npx expo export --platform android -> Android Bundled (1488 modules) -> Exported
 2. **مرونة تسجيل العادات غير المجدولة دون الإخلال بالجدول اليومي الأساسي:** فصل العادات المستحقة اليوم في القائمة الرئيسية مع توفير قسم منسدل خفيف للعادات الأخرى، يحافظ على التركيز والهدوء الذهني للمستخدم، مع تمكينه عند الرغبة من تسجيل أي نشاط استثنائي بسهولة.
 3. **التطبيع الاستباقي لمدخلات لوحة المفاتيح:** بدلاً من إظهار رسائل خطأ مزعجة للمستخدمين الذين يكتبون بالأرقام العربية، يقوم التطبيق بتطبيعها ومعالجتها فوراً دون إرباك المستخدم.
 
+---
+
+## الدورة السابعة (Cycle 7) - نظام ترتيب وتفضيل العادات، تحليلات الالتزام الشهري، والتنقل الزمني المرن
+- **التاريخ:** 11 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة السابعة
+1. **نظام ترتيب وتفضيل العادات الذكي (Habit Prioritization & Sorting):**
+   - تمكين المستخدم من ترتيب قائمة عاداته بسهولة بحسب ما يناسب يومه وطريقة تركيزه:
+     - `الافتراضي`: الترتيب القياسي القائم على الإنشاء.
+     - `المتبقية أولاً`: إبراز العادات غير المنجزة في صدارة القائمة، ونقل العادات المكتملة لأسفل لتركيز ذهني مضاعف.
+     - `وقت التنبيه`: تنظيم العادات تسلسلياً بحسب مواعيد التذكير من الصباح حتى المساء.
+     - `أعلى سلسلة`: وضع العادات ذات أطول سلاسل إنجاز في القمة للتحفيز والحفاظ على الاستمرارية.
+   - حفظ التفضيل تلقائياً في SQLite واسترجاعه عند إعادة تشغيل التطبيق.
+   - زر أنيق في شريط الفرز ونافذة منبثقة تفاعلية (Modal) مخصصة لاختيار نمط الترتيب في الشاشة الرئيسية.
+2. **بطاقة تحليلات الالتزام الشهري (`MonthlyAdherenceCard`):**
+   - إضافة بطاقة تحليلية تفاعلية في شاشة الإحصائيات تحسب معدل الإنجاز الشهري، إجمالي الفرص المجدولة، عدد الأيام المثالية (100% التزام)، وإجمالي أيام التقييم.
+   - إتاحة التنقل بين الشهور السابقة ومقارنة نسب الإنجاز التراكمية.
+   - إمكانية مشاركة خلاصة الشهر المنسقة بنص عربي جميل عبر خاصية المشاركة.
+3. **تطوير شريط التاريخ للتنقل الزمني المرن (`Dynamic DateStrip & Week Stepping`):**
+   - تمكين شريط التاريخ من التكيف ديناميكياً مع أي تاريخ محدد في الماضي أو المستقبل، بحيث لا يفقد التحديد عند استعراض فترات سابقة.
+   - تزويد الشريط بأزرار تنقل أسبوعي (`chevron-forward` و `chevron-back`) لتصفح الأسابيع السابقة والقادمة بكل يسر وسهولة.
+4. **شريط التقدم البصري لتفاصيل العادات متعددة الأهداف (`Multi-target Visual Progress`):**
+   - إضافة شريط تقدم بياني دقيق في قسم إنجاز اليوم داخل شاشة تفاصيل العادة، يقدم تغذية بصرية فورية عند إتمام كل خطوة أو كوب أو جلسة.
+5. **تطوير دالة `calculateHabitStats` لدعم التاريخ المرجعي (`referenceDate`):**
+   - دعم حساب السلاسل ونسب الإنجاز نسبةً لأي تاريخ في السجل مع الحفاظ التام على التوافق الرجعي 100%.
+
+---
+
+### 2. التغييرات الفنية المنجزة
+
+#### أ. الأنواع والمتجر (`src/types/habit.ts` و `src/store/useHabitStore.ts`):
+- إضافة نوع `HabitSortOption` (`default`, `pending_first`, `reminder_time`, `streak`).
+- تعريف واجهة `MonthAdherenceStats` و مصفوفة `HABIT_SORT_OPTIONS`.
+- إضافة خاصية `sortOption` وإجراء `setSortOption` في متجر Zustand مع الحفظ في تفضيلات SQLite (`habit_sort_preference`).
+
+#### ب. خوارزميات الترتيب والتحليل الشهري (`src/utils/habitUtils.ts`):
+- دالة `sortHabits`: فرز العادات بحسب النمط المختار مع معالجة الوقت وتطبيع الأرقام ودعم السلاسل.
+- دالة `calculateMonthAdherence`: حساب إحصائيات الشهر الكامل أو الحالي وعدد الأيام المثالية دون أخطاء رياضية أو قسمة على صفر.
+- دالة `formatMonthlySummaryForShare`: صياغة تقرير الأداء الشهري للمشاركة عبر تطبيقات التواصل.
+- تحديث `calculateHabitStats` لقبول `referenceDate` اختياري.
+
+#### ج. واجهات المستخدم:
+- **`MonthlyAdherenceCard.tsx` و `StatisticsScreen.tsx`:** بناء ودمج بطاقة الالتزام الشهري مع أزرار التنقل بين الشهور وزر المشاركة.
+- **`HomeScreen.tsx`:** دمج زر الفرز المنبثق، والنافذة التفاعلية لاختيار الترتيب، وتطبيق الترتيب على قائمتي العادات المجدولة وغير المجدولة.
+- **`DateStrip.tsx`:** تحويل نافذة الأيام إلى نافذة ديناميكية متكيفة مع إضافة أسهم التنقل الأسبوعي وعنوان اليوم العربي.
+- **`HabitDetailsScreen.tsx`:** إضافة شريط التقدم المرئي `ProgressBar` للعادات متعددة الأهداف اليومية.
+
+---
+
+### 3. نتائج الاختبارات وفحص البناء والجودة
+- **عدد الاختبارات:** 41 اختباراً شاملاً (زيادة 4 اختبارات جديدة تغطي الترتيب والتحليل الشهري والمشاركة).
+- **نسبة النجاح:** 100% (41 pass, 0 fail).
+- **فحص الأنواع الصارم (TypeScript):** 0 أخطاء (`tsc --noEmit`).
+
+```bash
+# نتائج اختبارات Node Test Runner الكاملة:
+✔ createBackupPayload: constructs standard schema envelope (5.4ms)
+✔ validateBackupJson: validates well-formed JSON string (1.2ms)
+✔ validateBackupJson: rejects malformed or invalid backups (0.9ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.5ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.1ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (14.2ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (1.7ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (0.9ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (1.5ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (6.0ms)
+✔ calculateHabitStats: increments streak when today is completed (6.2ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (4.0ms)
+✔ calculateHabitStats: paused habit retains historical stats (4.2ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.4ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (8.2ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (2.5ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (11.8ms)
+✔ formatArabicDate: formats correctly in Arabic (0.6ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.6ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (1.0ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.7ms)
+✔ calculateCheckinProgress: calculates progress, percentage, and completion status accurately (0.9ms)
+✔ getNextProgressCount: clamps increment and decrement safely within [0, targetCount] (0.5ms)
+✔ formatDailySummaryForShare: generates formatted Arabic summary for native sharing (1.3ms)
+✔ formatDailySummaryForShare: handles day with no due habits gracefully (0.4ms)
+✔ formatOverallStatsForShare: generates clean Arabic overall milestones report (23.1ms)
+✔ normalizeArabicNumerals: converts Eastern Arabic and Persian numerals to Western digits (1.6ms)
+✔ getHabitCategory: accurately maps icons to categories (0.5ms)
+✔ getHabitStreakStatus: determines correct streak status on completed, rest, and pending days (1.4ms)
+✔ sortHabits: sorts habits according to pending_first, reminder_time, streak, and default (73.8ms)
+✔ calculateMonthAdherence: computes correct metrics for a full month (3.4ms)
+✔ calculateMonthAdherence: handles empty habits list safely without NaN or division by zero (0.8ms)
+✔ formatMonthlySummaryForShare: formats month summary correctly for native sharing (0.4ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (7.9ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (4.7ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (1.3ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (1.0ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (2.2ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (1.3ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (1.5ms)
+✔ parseReminderTime: supports Arabic-Indic and Persian numeral strings (2.4ms)
+ℹ tests 41 | suites 0 | pass 41 | fail 0 | cancelled 0 | duration_ms 630ms
+
+# فحص أنواع TypeScript:
+npm run typecheck -> tsc --noEmit -> 0 errors!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة السابعة
+1. **الترتيب الخامل والفعال مع الاحتفاظ بالاستقرار (Stable In-Memory Sorting with Persistent Preference):** حفظ خيار الترتيب في التفضيلات المحلية يضمن تذكره عبر الجلسات، بينما يتم تطبيق الترتيب اللحظي في الذاكرة عبر دالة نقية وسريعة دون إعادة استعلام بطيئة لقاعدة البيانات.
+2. **مرونة التاريخ المرجعي في حساب السلاسل (`Reference Date in Habit Stats`):** بدلاً من افتراض وقت التشغيل الحالي دائماً، تم تحديث `calculateHabitStats` لقبول تاريخ مرجعي، مما مكّن فرز العادات بحسب السلسلة نسبة لأي يوم يتم تصفحه وليس فقط اليوم الفعلي.
+3. **توليد النافذة الزمنية الديناميكية في شريط الأيام (`Adaptive Center Date Window`):** الحفاظ على سرعة التمرير والتنقل بالاعتماد على مصفوفة محددة من 15 يوماً تتمركز تلقائياً حول اليوم المختار في حال بعده عن تاريخ اليوم، مما يمنع انقطاع المؤشر البصري.
+
 
 
 

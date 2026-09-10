@@ -97,3 +97,31 @@ export const DAYS_OF_WEEK_AR = [
 export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روتين', 'روحانية', 'تطوير'] as const;
 export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
 
+export type HabitSortOption = 'default' | 'pending_first' | 'reminder_time' | 'streak';
+
+export interface HabitSortOptionItem {
+  id: HabitSortOption;
+  label: string;
+  icon: string;
+}
+
+export const HABIT_SORT_OPTIONS: HabitSortOptionItem[] = [
+  { id: 'default', label: 'الافتراضي', icon: 'reorder-four-outline' },
+  { id: 'pending_first', label: 'المتبقية أولاً', icon: 'hourglass-outline' },
+  { id: 'reminder_time', label: 'وقت التنبيه', icon: 'time-outline' },
+  { id: 'streak', label: 'أعلى سلسلة', icon: 'flame-outline' },
+];
+
+export interface MonthAdherenceStats {
+  monthLabel: string;
+  year: number;
+  monthIndex: number;
+  totalDueOpportunities: number;
+  totalCompletions: number;
+  completionRate: number;
+  perfectDaysCount: number;
+  totalDaysInMonth: number;
+  daysPassedInMonth: number;
+  activeHabitsCount: number;
+}
+

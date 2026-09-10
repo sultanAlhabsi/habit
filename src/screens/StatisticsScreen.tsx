@@ -8,6 +8,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
 import { Card } from '../components/common/Card';
 import { WeeklyChart } from '../components/stats/WeeklyChart';
+import { MonthlyAdherenceCard } from '../components/stats/MonthlyAdherenceCard';
 import { BadgeList } from '../components/stats/BadgeList';
 import {
   calculateHabitStats,
@@ -128,6 +129,9 @@ export const StatisticsScreen: React.FC = () => {
             ))}
           </View>
         </Card>
+
+        {/* Monthly Adherence & Performance Analytics */}
+        <MonthlyAdherenceCard habits={habits} checkins={checkins} />
 
         {/* Weekly Adherence Chart with Week Navigation */}
         <WeeklyChart
