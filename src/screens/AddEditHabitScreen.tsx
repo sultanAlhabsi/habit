@@ -1,0 +1,577 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  Pressable,
+  Alert,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../theme/ThemeContext';
+import { useHabitStore } from '../store/useHabitStore';
+import { Header } from '../components/common/Header';
+import { Button } from '../components/common/Button';
+import { Card } from '../components/common/Card';
+import {
+  AVAILABLE_ICONS,
+  DAYS_OF_WEEK_AR,
+  HabitFrequency,
+} from '../types/habit';
+import { HABIT_PALETTES } from '../theme/colors';
+
+interface AddEditHabitScreenProps {
+  route: any;
+  navigation: any;
+}
+
+export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
+  route,
+  navigation,
+}) => {
+  const insets = useSafeAreaInsets();
+  const { theme, spacing, radius, typography, touchTarget } = useTheme();
+  const { habits, addHabit, updateHabit } = useHabitStore();
+
+  const habitId = route.params?.habitId;
+  const existingHabit = habitId ? habits.find((h) => h.id === habitId) : null;
+  const isEditing = Boolean(existingHabit);
+
+  const [name, setName] = useState(existingHabit?.name || '');
+  const [description, setDescription] = useState(existingHabit?.description || '');
+  const [selectedIcon, setSelectedIcon] = useState(existingHabit?.icon || 'fitness-outline');
+  const [selectedColor, setSelectedColor] = useState(existingHabit?.color || HABIT_PALETTES[0].hex);
+  const [frequency, setFrequency] = useState<HabitFrequency>(existingHabit?.frequency || 'daily');
+  const [frequencyDays, setFrequencyDays] = useState<number[]>(
+    existingHabit?.frequencyDays || [0, 1, 2, 3, 4, 5, 6]
+  );
+  const [targetCount, setTargetCount] = useState(String(existingHabit?.targetCount || '1'));
+  const [unit, setUnit] = useState(existingHabit?.unit || 'مرة');
+  const [reminderTime, setReminderTime] = useState(existingHabit?.reminderTime || '08:00');
+  const [hasReminder, setHasReminder] = useState(Boolean(existingHabit?.reminderTime));
+
+  const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
+
+  const toggleDay = (dayIndex: number) => {
+    if (frequencyDays.includes(dayIndex)) {
+      if (frequencyDays.length === 1) {
+        Alert.alert('تنبيه', 'يجب اختيار يوم واحد على الأقل للعادة');
+        return;
+      }
+      setFrequencyDays(frequencyDays.filter((d) => d !== dayIndex));
+    } else {
+      setFrequencyDays([...frequencyDays, dayIndex].sort());
+    }
+  };
+
+  const handleSave = async () => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      Alert.alert('تنبيه', 'يرجى إدخال اسم العادة');
+      return;
+    }
+
+    const parsedTarget = parseInt(targetCount, 10);
+    const validTarget = isNaN(parsedTarget) || parsedTarget < 1 ? 1 : parsedTarget;
+
+    if (isEditing && existingHabit) {
+      await updateHabit({
+        ...existingHabit,
+        name: trimmedName,
+        description: description.trim() || undefined,
+        icon: selectedIcon,
+        color: selectedColor,
+        frequency,
+        frequencyDays: frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : frequencyDays,
+        targetCount: validTarget,
+        unit: unit.trim() || 'مرة',
+        reminderTime: hasReminder ? reminderTime : null,
+      });
+    } else {
+      await addHabit({
+        name: trimmedName,
+        description: description.trim() || undefined,
+        icon: selectedIcon,
+        color: selectedColor,
+        frequency,
+        frequencyDays: frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : frequencyDays,
+        targetCount: validTarget,
+        unit: unit.trim() || 'مرة',
+        isActive: true,
+        reminderTime: hasReminder ? reminderTime : null,
+      });
+    }
+
+    navigation.goBack();
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Header
+        title={isEditing ? 'تعديل العادة' : 'عادة جديدة'}
+        subtitle={isEditing ? existingHabit?.name : undefined}
+        onBackPress={() => navigation.goBack()}
+        rightAction={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="حفظ"
+            onPress={handleSave}
+            style={({ pressed }) => [
+              styles.headerSaveBtn,
+              { opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            <Text style={[typography.subMedium, { color: theme.text, fontWeight: '600' }]}>
+              حفظ
+            </Text>
+          </Pressable>
+        }
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          padding: spacing.base,
+          paddingBottom: insets.bottom + 40,
+        }}
+      >
+        {/* Basic Info */}
+        <Card style={styles.sectionCard}>
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
+            اسم العادة
+          </Text>
+          <TextInput
+            placeholder="قراءة كتاب، شرب ماء، مشي..."
+            placeholderTextColor={theme.textMuted}
+            value={name}
+            onChangeText={setName}
+            style={[
+              styles.input,
+              typography.body,
+              {
+                color: theme.text,
+                borderColor: theme.border,
+                borderRadius: radius.sm,
+                backgroundColor: theme.background,
+                minHeight: touchTarget,
+              },
+            ]}
+          />
+
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginTop: 14, marginBottom: 6 }]}>
+            ملاحظات أو الدافع (اختياري)
+          </Text>
+          <TextInput
+            placeholder="ملاحظة تذكيرية..."
+            placeholderTextColor={theme.textMuted}
+            value={description}
+            onChangeText={setDescription}
+            style={[
+              styles.input,
+              typography.body,
+              {
+                color: theme.text,
+                borderColor: theme.border,
+                borderRadius: radius.sm,
+                backgroundColor: theme.background,
+                minHeight: touchTarget,
+              },
+            ]}
+          />
+        </Card>
+
+        {/* Color Palette (Subtle & Earthy) */}
+        <Card style={styles.sectionCard}>
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
+            اللون
+          </Text>
+          <View style={styles.colorRow}>
+            {HABIT_PALETTES.map((colorItem) => {
+              const isSelected = selectedColor === colorItem.hex;
+              return (
+                <Pressable
+                  key={colorItem.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={colorItem.label}
+                  onPress={() => setSelectedColor(colorItem.hex)}
+                  style={[
+                    styles.colorCircle,
+                    {
+                      backgroundColor: colorItem.hex,
+                      borderColor: isSelected ? theme.text : 'transparent',
+                      borderWidth: isSelected ? 2.5 : 0,
+                    },
+                  ]}
+                >
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+
+        {/* Icons Grid */}
+        <Card style={styles.sectionCard}>
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
+            الأيقونة
+          </Text>
+          <View style={styles.iconGrid}>
+            {AVAILABLE_ICONS.map((item) => {
+              const isSelected = selectedIcon === item.name;
+              return (
+                <Pressable
+                  key={item.name}
+                  accessibilityRole="button"
+                  accessibilityLabel={item.label}
+                  onPress={() => setSelectedIcon(item.name)}
+                  style={[
+                    styles.iconBox,
+                    {
+                      borderRadius: radius.sm,
+                      backgroundColor: isSelected ? theme.text : 'transparent',
+                      borderColor: theme.border,
+                      borderWidth: isSelected ? 0 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={item.name as any}
+                    size={20}
+                    color={isSelected ? theme.background : theme.textSecondary}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
+
+        {/* Frequency & Days */}
+        <Card style={styles.sectionCard}>
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
+            التكرار
+          </Text>
+
+          <View style={styles.frequencyTypeRow}>
+            <Pressable
+              onPress={() => setFrequency('daily')}
+              style={[
+                styles.freqBtn,
+                {
+                  backgroundColor: frequency === 'daily' ? theme.text : theme.background,
+                  borderRadius: radius.sm,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color: frequency === 'daily' ? theme.background : theme.text,
+                    fontWeight: '500',
+                  },
+                ]}
+              >
+                يوميًا
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setFrequency('specific_days')}
+              style={[
+                styles.freqBtn,
+                {
+                  backgroundColor: frequency === 'specific_days' ? theme.text : theme.background,
+                  borderRadius: radius.sm,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color: frequency === 'specific_days' ? theme.background : theme.text,
+                    fontWeight: '500',
+                  },
+                ]}
+              >
+                أيام محددة
+              </Text>
+            </Pressable>
+          </View>
+
+          {frequency === 'specific_days' && (
+            <View style={styles.daysSelectorRow}>
+              {DAYS_OF_WEEK_AR.map((day) => {
+                const isDaySelected = frequencyDays.includes(day.index);
+                return (
+                  <Pressable
+                    key={day.index}
+                    onPress={() => toggleDay(day.index)}
+                    style={[
+                      styles.daySelectPill,
+                      {
+                        borderRadius: radius.sm,
+                        backgroundColor: isDaySelected ? theme.text : theme.background,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        typography.caption,
+                        {
+                          color: isDaySelected ? theme.background : theme.textSecondary,
+                          fontWeight: isDaySelected ? '600' : '400',
+                          fontSize: 11,
+                        },
+                      ]}
+                    >
+                      {day.short}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </Card>
+
+        {/* Target and Unit */}
+        <Card style={styles.sectionCard}>
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
+            الهدف اليومي
+          </Text>
+
+          <View style={styles.targetRow}>
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <TextInput
+                value={unit}
+                onChangeText={setUnit}
+                placeholder="الوحدة (مرة، دقيقة...)"
+                placeholderTextColor={theme.textMuted}
+                style={[
+                  styles.input,
+                  typography.body,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    borderRadius: radius.sm,
+                    backgroundColor: theme.background,
+                    minHeight: touchTarget,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={{ width: 80 }}>
+              <TextInput
+                value={targetCount}
+                onChangeText={setTargetCount}
+                keyboardType="numeric"
+                style={[
+                  styles.input,
+                  typography.body,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    borderRadius: radius.sm,
+                    backgroundColor: theme.background,
+                    textAlign: 'center',
+                    minHeight: touchTarget,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={styles.quickUnitsRow}>
+            {commonUnits.map((u) => (
+              <Pressable
+                key={u}
+                onPress={() => setUnit(u)}
+                style={[
+                  styles.unitPill,
+                  {
+                    backgroundColor: unit === u ? theme.text : theme.background,
+                    borderColor: theme.border,
+                    borderRadius: radius.sm,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: unit === u ? theme.background : theme.textSecondary,
+                      fontSize: 11,
+                    },
+                  ]}
+                >
+                  {u}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </Card>
+
+        {/* Reminder */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.reminderHeader}>
+            <Pressable
+              onPress={() => setHasReminder(!hasReminder)}
+              style={[
+                styles.togglePill,
+                {
+                  backgroundColor: hasReminder ? theme.text : theme.cardSecondary,
+                  borderRadius: radius.sm,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  { color: hasReminder ? theme.background : theme.textSecondary, fontWeight: '500' },
+                ]}
+              >
+                {hasReminder ? 'مفعّل' : 'معطل'}
+              </Text>
+            </Pressable>
+
+            <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right' }]}>
+              تذكير يومي
+            </Text>
+          </View>
+
+          {hasReminder && (
+            <TextInput
+              value={reminderTime}
+              onChangeText={setReminderTime}
+              placeholder="08:00"
+              placeholderTextColor={theme.textMuted}
+              style={[
+                styles.input,
+                typography.body,
+                {
+                  color: theme.text,
+                  borderColor: theme.border,
+                  borderRadius: radius.sm,
+                  backgroundColor: theme.background,
+                  textAlign: 'center',
+                  minHeight: touchTarget,
+                  marginTop: 10,
+                },
+              ]}
+            />
+          )}
+        </Card>
+
+        {/* Save Button */}
+        <View style={{ marginTop: spacing.md }}>
+          <Button
+            title={isEditing ? 'تحديث العادة' : 'إنشاء العادة'}
+            onPress={handleSave}
+            variant="primary"
+            size="md"
+          />
+        </View>
+      </ScrollView>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  headerSaveBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionCard: {
+    marginBottom: 12,
+    padding: 14,
+  },
+  input: {
+    borderWidth: 1,
+    textAlign: 'right',
+    paddingHorizontal: 12,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  colorCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconGrid: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  iconBox: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  frequencyTypeRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 8,
+  },
+  freqBtn: {
+    flex: 1,
+    minHeight: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  daysSelectorRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  daySelectPill: {
+    width: 38,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  targetRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  quickUnitsRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 10,
+  },
+  unitPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  reminderHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  togglePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+});
