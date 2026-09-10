@@ -9,6 +9,10 @@ let isInitialized = false;
 // Fallback in-memory store in case native SQLite is unavailable
 let memoryHabits: Habit[] = [...INITIAL_HABITS];
 let memoryCheckins: HabitCheckin[] = generateDemoCheckins();
+let memoryMeta: Record<string, string> = {
+  theme_mode: 'system',
+  haptics_enabled: 'true',
+};
 
 const getDB = async (): Promise<SQLite.SQLiteDatabase | null> => {
   if (dbInstance) return dbInstance;
@@ -304,3 +308,60 @@ export const seedDatabase = async (): Promise<void> => {
   `);
   await seedDatabaseInternal(db);
 };
+
+export const getPreference = async (key: string, defaultValue = ''): Promise<string> => {
+  const db = await getDB();
+  if (!db) {
+    return memoryMeta[key] ?? defaultValue;
+  }
+  try {
+    const row = await db.getFirstAsync<{ value: string }>(
+      'SELECT value FROM meta WHERE key = ?',
+      [key]
+    );
+    return row ? row.value : defaultValue;
+  } catch (err) {
+    console.warn(`[Database] Error getting preference ${key}:`, err);
+    return defaultValue;
+  }
+};
+
+export const setPreference = async (key: string, value: string): Promise<void> => {
+  const db = await getDB();
+  if (!db) {
+    memoryMeta[key] = value;
+    return;
+  }
+  try {
+    await db.runAsync(
+      'INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
+      [key, value]
+    );
+  } catch (err) {
+    console.warn(`[Database] Error saving preference ${key}:`, err);
+  }
+};
+
+export const archiveHabitRecord = async (habitId: string, archive: boolean): Promise<void> => {
+  const db = await getDB();
+  const archivedAt = archive ? dayjs().toISOString() : null;
+  const isActive = archive ? 0 : 1;
+
+  if (!db) {
+    const idx = memoryHabits.findIndex((h) => h.id === habitId);
+    if (idx >= 0) {
+      memoryHabits[idx] = {
+        ...memoryHabits[idx],
+        archivedAt,
+        isActive: !archive,
+      };
+    }
+    return;
+  }
+
+  await db.runAsync(
+    'UPDATE habits SET archived_at = ?, is_active = ? WHERE id = ?',
+    [archivedAt, isActive, habitId]
+  );
+};
+

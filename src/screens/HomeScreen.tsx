@@ -77,6 +77,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           },
         ]}
       >
+        <View style={styles.headerTitles}>
+          <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
+            العادات
+          </Text>
+        </View>
+
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="إضافة عادة جديدة"
@@ -92,12 +98,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         >
           <Ionicons name="add" size={24} color={theme.text} />
         </Pressable>
-
-        <View style={styles.headerTitles}>
-          <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
-            العادات
-          </Text>
-        </View>
       </View>
 
       <ScrollView

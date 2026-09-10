@@ -13,6 +13,7 @@ interface HabitHeatmapProps {
 
 export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
   completedDates,
+  habitColor,
   onToggleDate,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
@@ -117,7 +118,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
                   styles.dayCircle,
                   {
                     borderRadius: radius.full,
-                    backgroundColor: isCompleted ? theme.primary : 'transparent',
+                    backgroundColor: isCompleted ? (habitColor || theme.primary) : 'transparent',
                     borderColor: isToday ? theme.text : 'transparent',
                     borderWidth: isToday && !isCompleted ? 1 : 0,
                   },
@@ -174,12 +175,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   weekDaysRow: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     justifyContent: 'space-around',
     marginBottom: 6,
   },
   calendarGrid: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
   },
   dayCol: {

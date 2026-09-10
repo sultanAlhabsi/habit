@@ -38,7 +38,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({ data }) => {
                   },
                 ]}
               >
-                {item.rate > 0 ? `${item.rate}%` : '-'}
+                {item.totalCount > 0 ? `${item.rate}%` : '-'}
               </Text>
 
               {/* Slim sleek bar track */}

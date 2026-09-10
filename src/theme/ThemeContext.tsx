@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useColorScheme } from 'react-native';
 import { DARK_THEME, LIGHT_THEME, ThemeColors } from './colors';
 import { SPACING, RADIUS, TOUCH_TARGET } from './spacing';
 import { TYPOGRAPHY } from './typography';
+import { getPreference, setPreference } from '../services/database';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
@@ -33,7 +34,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode; initialMode?: 
   initialMode = 'system',
 }) => {
   const systemColorScheme = useColorScheme();
-  const [themeMode, setThemeMode] = useState<ThemeMode>(initialMode);
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(initialMode);
+
+  useEffect(() => {
+    getPreference('theme_mode', initialMode).then((saved) => {
+      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+        setThemeModeState(saved);
+      }
+    });
+  }, [initialMode]);
+
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    setThemeModeState(mode);
+    setPreference('theme_mode', mode);
+  }, []);
 
   const isDark =
     themeMode === 'system'
@@ -61,3 +75,4 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode; initialMode?: 
 };
 
 export const useTheme = () => useContext(ThemeContext);
+
