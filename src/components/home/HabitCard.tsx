@@ -15,6 +15,7 @@ interface HabitCardProps {
   streak: number;
   currentCount?: number;
   isFuture?: boolean;
+  isOffSchedule?: boolean;
   onToggleCheckin: () => void;
   onPressDetails: () => void;
   onIncrement?: () => void;
@@ -27,6 +28,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   streak,
   currentCount = 0,
   isFuture = false,
+  isOffSchedule = false,
   onToggleCheckin,
   onPressDetails,
   onIncrement,
@@ -34,8 +36,10 @@ export const HabitCard: React.FC<HabitCardProps> = ({
 }) => {
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
   const isMultiTarget = habit.targetCount > 1;
-  const safeCount = Math.min(habit.targetCount, Math.max(0, currentCount));
-  const progressRatio = habit.targetCount > 0 ? Math.min(1, safeCount / habit.targetCount) : 0;
+  const safeCount = isCompleted
+    ? habit.targetCount
+    : Math.min(habit.targetCount, Math.max(0, currentCount));
+  const progressRatio = habit.targetCount > 0 ? (isCompleted ? 1 : Math.min(1, safeCount / habit.targetCount)) : 0;
 
   return (
     <Pressable
@@ -59,38 +63,94 @@ export const HabitCard: React.FC<HabitCardProps> = ({
       <View style={styles.cardContent}>
         {/* Right side in RTL: Controls */}
         {isCompleted ? (
-          <Pressable
-            disabled={isFuture}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: true, disabled: isFuture }}
-            accessibilityLabel={
-              isFuture
-                ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
-                : `إلغاء إتمام ${habit.name}`
-            }
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={onToggleCheckin}
-            style={({ pressed }) => [
-              styles.checkTarget,
-              {
-                minWidth: touchTarget,
-                minHeight: touchTarget,
-                opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.checkCircle,
+          isMultiTarget ? (
+            <View style={styles.multiControlGroup}>
+              <Pressable
+                disabled={isFuture}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: true, disabled: isFuture }}
+                accessibilityLabel={
+                  isFuture
+                    ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
+                    : `إلغاء إتمام ${habit.name}`
+                }
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                onPress={onToggleCheckin}
+                style={({ pressed }) => [
+                  styles.checkTarget,
+                  {
+                    minWidth: 36,
+                    minHeight: touchTarget,
+                    opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.checkCircle,
+                    {
+                      borderColor: theme.primary,
+                      backgroundColor: theme.primary,
+                    },
+                  ]}
+                >
+                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                </View>
+              </Pressable>
+
+              {!isFuture && onDecrement && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`إنقاص إنجاز ${habit.name}`}
+                  hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                  onPress={onDecrement}
+                  style={({ pressed }) => [
+                    styles.stepBtn,
+                    {
+                      borderColor: theme.border,
+                      backgroundColor: theme.cardSecondary,
+                      opacity: pressed ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons name="remove" size={13} color={theme.textSecondary} />
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <Pressable
+              disabled={isFuture}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: true, disabled: isFuture }}
+              accessibilityLabel={
+                isFuture
+                  ? `لا يمكن تسجيل إنجاز لتاريخ مستقبلي (${habit.name})`
+                  : `إلغاء إتمام ${habit.name}`
+              }
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              onPress={onToggleCheckin}
+              style={({ pressed }) => [
+                styles.checkTarget,
                 {
-                  borderColor: theme.primary,
-                  backgroundColor: theme.primary,
+                  minWidth: touchTarget,
+                  minHeight: touchTarget,
+                  opacity: isFuture ? 0.35 : pressed ? 0.6 : 1,
                 },
               ]}
             >
-              <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-            </View>
-          </Pressable>
+              <View
+                style={[
+                  styles.checkCircle,
+                  {
+                    borderColor: theme.primary,
+                    backgroundColor: theme.primary,
+                  },
+                ]}
+              >
+                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+              </View>
+            </Pressable>
+          )
         ) : isMultiTarget ? (
           <View style={styles.multiControlGroup}>
             <Pressable
@@ -268,6 +328,22 @@ export const HabitCard: React.FC<HabitCardProps> = ({
                 ]}
               >
                 • متوقفة
+              </Text>
+            )}
+
+            {isOffSchedule && (
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color: theme.textSecondary,
+                    textAlign: 'right',
+                    marginRight: 6,
+                    fontSize: 11,
+                  },
+                ]}
+              >
+                • غير مجدولة اليوم
               </Text>
             )}
           </View>

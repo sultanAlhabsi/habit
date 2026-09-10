@@ -15,6 +15,9 @@ import {
   getNextProgressCount,
   formatDailySummaryForShare,
   formatOverallStatsForShare,
+  normalizeArabicNumerals,
+  getHabitCategory,
+  getHabitStreakStatus,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -548,4 +551,86 @@ test('formatOverallStatsForShare: generates clean Arabic overall milestones repo
   assert.ok(overallText.includes('إجمالي الإنجازات: 2'));
   assert.ok(overallText.includes('تطبيق إنجاز'));
 });
+
+test('normalizeArabicNumerals: converts Eastern Arabic and Persian numerals to Western digits', () => {
+  // Eastern Arabic numerals (٠-٩)
+  assert.equal(normalizeArabicNumerals('٠١٢٣٤٥٦٧٨٩'), '0123456789');
+  assert.equal(normalizeArabicNumerals('٥'), '5');
+  assert.equal(normalizeArabicNumerals('١٢:٣٠'), '12:30');
+
+  // Persian numerals (۰-۹)
+  assert.equal(normalizeArabicNumerals('۰۱۲۳۴۵۶۷۸۹'), '0123456789');
+  assert.equal(normalizeArabicNumerals('۷'), '7');
+  assert.equal(normalizeArabicNumerals('۰۸:۴۵'), '08:45');
+
+  // Mixed and standard
+  assert.equal(normalizeArabicNumerals('12:30'), '12:30');
+  assert.equal(normalizeArabicNumerals('نص مع أرقام: ٣ اكواب'), 'نص مع أرقام: 3 اكواب');
+  assert.equal(normalizeArabicNumerals(''), '');
+});
+
+test('getHabitCategory: accurately maps icons to categories', () => {
+  assert.equal(getHabitCategory('water-outline'), 'صحة');
+  assert.equal(getHabitCategory('barbell-outline'), 'صحة');
+  assert.equal(getHabitCategory('fitness-outline'), 'صحة');
+  assert.equal(getHabitCategory('bed-outline'), 'صحة');
+  assert.equal(getHabitCategory('walk-outline'), 'صحة');
+
+  assert.equal(getHabitCategory('laptop-outline'), 'إنتاجية');
+  assert.equal(getHabitCategory('trophy-outline'), 'إنتاجية');
+
+  assert.equal(getHabitCategory('sunny-outline'), 'روتين');
+  assert.equal(getHabitCategory('alarm-outline'), 'روتين');
+  assert.equal(getHabitCategory('cafe-outline'), 'روتين');
+
+  assert.equal(getHabitCategory('sparkles-outline'), 'روحانية');
+  assert.equal(getHabitCategory('leaf-outline'), 'روحانية');
+
+  assert.equal(getHabitCategory('book-outline'), 'تطوير');
+  assert.equal(getHabitCategory('journal-outline'), 'تطوير');
+
+  // Unknown icon fallback
+  assert.equal(getHabitCategory('unknown-icon-name'), 'تطوير');
+});
+
+test('getHabitStreakStatus: determines correct streak status on completed, rest, and pending days', () => {
+  const habit = createMockHabit({
+    id: 'h-streak-1',
+    frequency: 'specific_days',
+    frequencyDays: [1, 3, 5], // Mon, Wed, Fri
+    createdAt: '2026-06-01T00:00:00.000Z',
+  });
+
+  // Monday 2026-06-15 is a due day (weekday 1)
+  const mondayStr = '2026-06-15';
+  // Tuesday 2026-06-16 is a rest day (weekday 2)
+  const tuesdayStr = '2026-06-16';
+
+  // 1. Pending on due day
+  const pendingStatus = getHabitStreakStatus(habit, [], mondayStr);
+  assert.equal(pendingStatus.status, 'pending');
+  assert.ok(pendingStatus.message.includes('بانتظار إنجازك اليوم'));
+  assert.equal(pendingStatus.iconName, 'time-outline');
+
+  // 2. Completed on due day
+  const completedCheckin: HabitCheckin = {
+    id: 'c-mon',
+    habitId: 'h-streak-1',
+    date: mondayStr,
+    completed: true,
+    count: 1,
+    createdAt: '2026-06-15T08:00:00.000Z',
+  };
+  const completedStatus = getHabitStreakStatus(habit, [completedCheckin], mondayStr);
+  assert.equal(completedStatus.status, 'completed');
+  assert.ok(completedStatus.message.includes('سلسلتك في استمرار'));
+  assert.equal(completedStatus.iconName, 'checkmark-circle-outline');
+
+  // 3. Rest day
+  const restStatus = getHabitStreakStatus(habit, [completedCheckin], tuesdayStr);
+  assert.equal(restStatus.status, 'rest_day');
+  assert.ok(restStatus.message.includes('يوم استراحة مجدول'));
+  assert.equal(restStatus.iconName, 'cafe-outline');
+});
+
 

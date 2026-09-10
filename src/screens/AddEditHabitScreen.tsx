@@ -22,6 +22,7 @@ import {
 } from '../types/habit';
 import { HABIT_PALETTES } from '../theme/colors';
 import { isValidReminderTime } from '../utils/notificationUtils';
+import { normalizeArabicNumerals } from '../utils/habitUtils';
 
 
 interface AddEditHabitScreenProps {
@@ -83,8 +84,9 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
       return;
     }
 
+    const normalizedReminderTime = normalizeArabicNumerals(reminderTime);
     if (hasReminder) {
-      if (!isValidReminderTime(reminderTime)) {
+      if (!isValidReminderTime(normalizedReminderTime)) {
         Alert.alert(
           'تنبيه',
           'يرجى إدخال وقت صحيح للتنبيه بصيغة 24 ساعة (مثال: 08:30 أو 20:00)'
@@ -93,9 +95,11 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
       }
     }
 
-    const parsedTarget = parseInt(targetCount, 10);
+    const normalizedTargetStr = normalizeArabicNumerals(targetCount);
+    const parsedTarget = parseInt(normalizedTargetStr, 10);
     const validTarget = isNaN(parsedTarget) || parsedTarget < 1 ? 1 : parsedTarget;
 
+    const finalReminder = hasReminder ? normalizedReminderTime : null;
 
     if (isEditing && existingHabit) {
       await updateHabit({
@@ -108,7 +112,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
         frequencyDays: frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : frequencyDays,
         targetCount: validTarget,
         unit: unit.trim() || 'مرة',
-        reminderTime: hasReminder ? reminderTime : null,
+        reminderTime: finalReminder,
       });
     } else {
       await addHabit({
@@ -121,7 +125,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
         targetCount: validTarget,
         unit: unit.trim() || 'مرة',
         isActive: true,
-        reminderTime: hasReminder ? reminderTime : null,
+        reminderTime: finalReminder,
       });
     }
 
@@ -237,9 +241,26 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
 
         {/* Icons Grid */}
         <Card style={styles.sectionCard}>
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
-            الأيقونة
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row-reverse',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 10,
+            }}
+          >
+            <Text style={[typography.caption, { color: theme.textSecondary }]}>
+              الأيقونة
+            </Text>
+            {(() => {
+              const currentOpt = AVAILABLE_ICONS.find((i) => i.name === selectedIcon);
+              return currentOpt ? (
+                <Text style={[typography.caption, { color: theme.primary, fontWeight: '600' }]}>
+                  {currentOpt.label} • {currentOpt.category}
+                </Text>
+              ) : null;
+            })()}
+          </View>
           <View style={styles.iconGrid}>
             {AVAILABLE_ICONS.map((item) => {
               const isSelected = selectedIcon === item.name;

@@ -535,6 +535,117 @@ npx expo export --platform android -> Exported: dist (1488 modules bundled, 0 er
 2. **الحفاظ على سلامة حسابات السلاسل:** شرط احتساب العادة في السلسلة اليومية يظل دائماً مقيداً بـ `completed === true` (أي وصول العداد إلى كامل الهدف)، مما يحمي السلسلة من الاحتساب الزائف بمجرد نقرة جزئية.
 3. **الاعتماد على واجهات المشاركة الأصلية لنظام التشغيل (`Share` API):** استخدام واجهة النظام القياسية دون إضافة مكتبات خارجية ثقيلة، مما يحافظ على خفة التطبيق وسرعته ويتيح للمستخدم حرية إرسال التقرير لأي تطبيق مثبت على جهازه.
 
+---
+
+## الدورة السادسة (Cycle 6) - دعم الأرقام العربية، تراجع الإنجاز المتعدد، تصنيف العادات، والبحث الشامل وتسجيل العادات غير المجدولة
+- **التاريخ:** 11 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة السادسة
+هدفت هذه الدورة إلى حل مشاكل تجربة المستخدم الدقيقة مع لوحات المفاتيح العربية، ومرونة التراجع في العادات متعددة الأهداف، وتحسين تنظيم وتصنيف العادات والبحث الشامل:
+1. **معالجة إدخال الأرقام بالمحارف العربية والمشرقية (Arabic-Indic & Persian Numerals Normalization):**
+   - في لوحات المفاتيح العربية على الهواتف الذكية (iOS و Android)، غالبًا ما تُدخل الأرقام بتنسيق مشرقي (`٠١٢٣٤٥٦٧٨٩`) أو فارسي (`۰۱۲۳۴۵۶۷۸۹`). كانت دوال `parseInt` القياسية تُعيد `NaN` في شاشة إضافة وتعديل العادات مما يُجبر الهدف اليومي على العودة للقيمة الافتراضية 1 دون تنبيه، وكان التحقق من وقت التذكير يفشل تلقائياً.
+2. **مرونة التراجع في العادات متعددة الأهداف عند اكتمالها (`Multi-target Decrement on Completed`):**
+   - عندما يصل المستخدم إلى الهدف الكامل للعادة متعددة الإنجازات (مثل 5/5 أكواب ماء)، كانت بطاقة العادة `HabitCard` تخفي زر النقصان (`-`) وتظهر علامة الإتمام الخضراء فقط، وكان الضغط عليها يعيد العادة بالكامل إلى الصفر (0/5). تم تطوير البطاقة لتُبقي زر النقصان متاحاً عند الإتمام ليتمكن المستخدم من التراجع خطوة واحدة (4/5) بسلاسة.
+3. **تصنيف العادات وتبويبها (Habit Categories & Domain Tags):**
+   - تفعيل تصنيف مجالات العادات (`صحة`، `إنتاجية`، `روتين`، `روحانية`، `تطوير`)، وإبراز التصنيف تلقائياً في شاشة الإضافة والتعديل بناءً على الأيقونة المختارة، وعرض وسم التصنيف في شاشة التفاصيل، مع توفير شريط فلترة علوي في الشاشة الرئيسية.
+4. **البحث الشامل وتسجيل العادات غير المجدولة لليوم (`Off-schedule Habits & Global Search`):**
+   - توسيع نطاق البحث في الشاشة الرئيسية ليشمل جميع العادات النشطة، وإضافة قسم منسدل سلس للعادات غير المجدولة اليوم (`عادات أخرى غير مجدولة اليوم`)، مما يتيح تسجيل إنجاز عادة عفوية أو في غير يومها المجدول مباشرة من الشاشة الرئيسية دون الحاجة للبحث والدخول لشاشة التفاصيل.
+5. **شريط حالة السلسلة والتحفيز الذكي في شاشة التفاصيل (`Streak & Day Status Banner`):**
+   - إضافة دالة `getHabitStreakStatus` وبطاقة ذكية تعرض حالة العادة بدقة: سواء كانت مكتملة لليوم، أو في يوم استراحة مجدول ومحفوظ السلسلة ☕، أو بانتظار إنجاز اليوم للحفاظ على السلسلة ⏳.
+
+---
+
+### 2. التغييرات الفنية المنجزة
+
+#### أ. معالجة وتطبيع الأرقام العربية (`habitUtils.ts` و `notificationUtils.ts`):
+- إنشاء دالة `normalizeArabicNumerals(input)` تدعم تحويل الأرقام المشرقية (`٠-٩`) والفارسية (`۰-۹`) إلى أرقام قياسية (`0-9`).
+- دمج التطبيع قبل التحقق والتخزين في:
+  - معالجة `targetCount` في `AddEditHabitScreen.tsx`.
+  - معالجة `reminderTime` في `AddEditHabitScreen.tsx` و `parseReminderTime` في `notificationUtils.ts`.
+
+#### ب. بطاقة العادة وتجربة الإنجاز (`HabitCard.tsx`):
+- الحفاظ على زر النقصان (`-`) بجانب علامة الإتمام الخضراء عند اكتمال العادة متعددة الإنجازات (`isMultiTarget && isCompleted`) لتمكين التراجع التدريجي.
+- إضافة خاصية `isOffSchedule` لإظهار علامة توضيحية خفيفة (`• غير مجدولة اليوم`) عند عرض عادات مسجلة خارج جدولها المعتاد.
+- ضمان ثبات شريط التقدم الصغير عند 100% فور اكتمال العادة.
+
+#### ج. الشاشة الرئيسية (`HomeScreen.tsx`):
+- إضافة شريط تصنيفات أفقي متجاوب (`الكل`، `صحة`، `إنتاجية`، `روتين`، `روحانية`، `تطوير`).
+- توسيع البحث ليعمل على كامل قائمة العادات غير المؤرشفة مع تمييز العادات غير المجدولة تلقائياً.
+- إضافة قسم مخصص منسدل للعادات غير المجدولة اليوم مع عدادها، مما يمنح المستخدم مرونة كاملة لتسجيل أي إنجاز عفوي أو سريع.
+
+#### د. شاشة التفاصيل وشاشة الإضافة (`HabitDetailsScreen.tsx` و `AddEditHabitScreen.tsx`):
+- إضافة وسم التصنيف (`categoryTag`) بجانب اسم العادة في تفاصيل العادة.
+- عرض بطاقة حالة السلسلة والتحفيز الذكية (`streakStatusCard`).
+- إظهار اسم التصنيف والمجال ديناميكياً في رأس منتقي الأيقونات بشاشة الإضافة/التعديل.
+
+---
+
+### 3. نتائج الاختبارات وفحص البناء والجودة
+- **عدد الاختبارات:** 37 اختباراً شاملاً (زيادة 4 اختبارات جديدة).
+- **نسبة النجاح:** 100% (37 pass, 0 fail).
+- **فحص الأنواع الصارم (TypeScript):** 0 أخطاء (tsc --noEmit).
+- **تصدير حزمة الإنتاج لنظام أندرويد (Expo Android Export):** تم بنجاح تام (1488 وحدة بدون أي تحذيرات).
+
+```bash
+# نتائج اختبارات Node Test Runner:
+✔ createBackupPayload: constructs standard schema envelope (7.8ms)
+✔ validateBackupJson: validates well-formed JSON string (1.5ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.4ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.4ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.8ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (12.0ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (2.6ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (1.2ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (2.2ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (6.8ms)
+✔ calculateHabitStats: increments streak when today is completed (6.8ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (4.5ms)
+✔ calculateHabitStats: paused habit retains historical stats (4.0ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.3ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (4.6ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (3.0ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (15.5ms)
+✔ formatArabicDate: formats correctly in Arabic (0.6ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (0.8ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.4ms)
+✔ calculateCheckinProgress: calculates progress, percentage, and completion status accurately (0.7ms)
+✔ getNextProgressCount: clamps increment and decrement safely within [0, targetCount] (0.4ms)
+✔ formatDailySummaryForShare: generates formatted Arabic summary for native sharing (1.1ms)
+✔ formatDailySummaryForShare: handles day with no due habits gracefully (0.3ms)
+✔ formatOverallStatsForShare: generates clean Arabic overall milestones report (36.4ms)
+✔ normalizeArabicNumerals: converts Eastern Arabic and Persian numerals to Western digits (2.1ms)
+✔ getHabitCategory: accurately maps icons to categories (0.5ms)
+✔ getHabitStreakStatus: determines correct streak status on completed, rest, and pending days (1.6ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (7.0ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (4.2ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (1.1ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.8ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.8ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (1.1ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (1.3ms)
+✔ parseReminderTime: supports Arabic-Indic and Persian numeral strings (2.2ms)
+ℹ tests 37 | suites 0 | pass 37 | fail 0 | cancelled 0 | duration_ms 562ms
+
+# فحص أنواع TypeScript:
+npm run typecheck -> tsc --noEmit -> 0 errors!
+
+# تصدير حزمة الإنتاج لنظام أندرويد:
+npx expo export --platform android -> Android Bundled (1488 modules) -> Exported: dist (Clean bundle)
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة السادسة
+1. **استقلالية دوال المنطق الصرفة (Zero-Dependency Pure Utilities):** الحفاظ على خلو ملفات `habitUtils.ts` و `notificationUtils.ts` من أي اعتمادات runtime محلية متشابكة، لضمان تشغيل اختبارات Node ESM بسرعة فائقة وبدون أي عوائق في حزم Metro أو بيئات الاختبار.
+2. **مرونة تسجيل العادات غير المجدولة دون الإخلال بالجدول اليومي الأساسي:** فصل العادات المستحقة اليوم في القائمة الرئيسية مع توفير قسم منسدل خفيف للعادات الأخرى، يحافظ على التركيز والهدوء الذهني للمستخدم، مع تمكينه عند الرغبة من تسجيل أي نشاط استثنائي بسهولة.
+3. **التطبيع الاستباقي لمدخلات لوحة المفاتيح:** بدلاً من إظهار رسائل خطأ مزعجة للمستخدمين الذين يكتبون بالأرقام العربية، يقوم التطبيق بتطبيعها ومعالجتها فوراً دون إرباك المستخدم.
+
+
 
 
 

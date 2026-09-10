@@ -1,5 +1,23 @@
 import type { Habit } from '../types/habit';
 
+/**
+ * Normalizes Eastern Arabic numerals (٠-٩) and Persian numerals (۰-۹) to standard ASCII digits (0-9).
+ */
+export const normalizeArabicNumerals = (input: string | number | null | undefined): string => {
+  if (input === null || input === undefined) return '';
+  const str = String(input);
+  return str
+    .replace(/[٠۰]/g, '0')
+    .replace(/[١۱]/g, '1')
+    .replace(/[٢۲]/g, '2')
+    .replace(/[٣۳]/g, '3')
+    .replace(/[٤۴]/g, '4')
+    .replace(/[٥۵]/g, '5')
+    .replace(/[٦۶]/g, '6')
+    .replace(/[٧۷]/g, '7')
+    .replace(/[٨۸]/g, '8')
+    .replace(/[٩۹]/g, '9');
+};
 
 export interface ReminderTriggerDescriptor {
   identifier: string;
@@ -11,6 +29,7 @@ export interface ReminderTriggerDescriptor {
 
 /**
  * Parses a time string in "HH:mm" format into hour and minute components.
+ * Supports both ASCII digits and Arabic-Indic numerals.
  * Returns null if the format is invalid or values are out of bounds.
  */
 export const parseReminderTime = (
@@ -18,7 +37,7 @@ export const parseReminderTime = (
 ): { hour: number; minute: number } | null => {
   if (!timeStr || typeof timeStr !== 'string') return null;
 
-  const trimmed = timeStr.trim();
+  const trimmed = normalizeArabicNumerals(timeStr.trim());
   if (!/^\d{1,2}:\d{2}$/.test(trimmed)) return null;
 
   const parts = trimmed.split(':');

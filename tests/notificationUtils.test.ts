@@ -101,3 +101,14 @@ test('generateHabitReminderTriggers: returns empty array for paused or archived 
   const noReminderHabit = createTestHabit({ reminderTime: undefined });
   assert.deepEqual(generateHabitReminderTriggers(noReminderHabit), []);
 });
+
+test('parseReminderTime: supports Arabic-Indic and Persian numeral strings', () => {
+  // Eastern Arabic numerals (٠-٩)
+  assert.deepEqual(parseReminderTime('٠٨:٣٠'), { hour: 8, minute: 30 });
+  assert.deepEqual(parseReminderTime('٢١:١٥'), { hour: 21, minute: 15 });
+
+  // Persian numerals (۰-۹)
+  assert.deepEqual(parseReminderTime('۰۵:۴۵'), { hour: 5, minute: 45 });
+  assert.deepEqual(parseReminderTime('۱۴:۰۹'), { hour: 14, minute: 9 });
+});
+

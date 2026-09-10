@@ -1,6 +1,57 @@
 import dayjs from 'dayjs';
 import type { Habit, HabitCheckin, HabitStats, OverallStats, DayAdherence } from '../types/habit';
 
+export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روتين', 'روحانية', 'تطوير'] as const;
+export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
+
+const ICON_CATEGORY_MAP: Record<string, string> = {
+  'book-outline': 'تطوير',
+  'journal-outline': 'تطوير',
+  'water-outline': 'صحة',
+  'fitness-outline': 'صحة',
+  'moon-outline': 'صحة',
+  'heart-outline': 'صحة',
+  'walk-outline': 'صحة',
+  'bicycle-outline': 'صحة',
+  'barbell-outline': 'صحة',
+  'bed-outline': 'صحة',
+  'pulse-outline': 'صحة',
+  'sunny-outline': 'روتين',
+  'alarm-outline': 'روتين',
+  'cafe-outline': 'روتين',
+  'sparkles-outline': 'روحانية',
+  'leaf-outline': 'روحانية',
+  'laptop-outline': 'إنتاجية',
+  'trophy-outline': 'إنتاجية',
+};
+
+/**
+ * Normalizes Eastern Arabic numerals (٠-٩) and Persian numerals (۰-۹) to standard ASCII digits (0-9).
+ */
+export const normalizeArabicNumerals = (input: string | number | null | undefined): string => {
+  if (input === null || input === undefined) return '';
+  const str = String(input);
+  return str
+    .replace(/[٠۰]/g, '0')
+    .replace(/[١۱]/g, '1')
+    .replace(/[٢۲]/g, '2')
+    .replace(/[٣۳]/g, '3')
+    .replace(/[٤۴]/g, '4')
+    .replace(/[٥۵]/g, '5')
+    .replace(/[٦۶]/g, '6')
+    .replace(/[٧۷]/g, '7')
+    .replace(/[٨۸]/g, '8')
+    .replace(/[٩۹]/g, '9');
+};
+
+/**
+ * Returns the category name for a given habit based on its icon name
+ */
+export const getHabitCategory = (iconName?: string): string => {
+  if (!iconName) return 'تطوير';
+  return ICON_CATEGORY_MAP[iconName] || 'تطوير';
+};
+
 /**
  * Check if a habit is scheduled to be done on a specific date (YYYY-MM-DD)
  * @param habit Habit object
@@ -372,7 +423,7 @@ export const calculateCheckinProgress = (
   const targetCount = Math.max(1, habit.targetCount || 1);
   const count = Math.max(0, checkin ? checkin.count : 0);
   const isCompleted = Boolean(checkin?.completed) || count >= targetCount;
-  const progressRatio = Math.min(1, count / targetCount);
+  const progressRatio = isCompleted ? 1 : Math.min(1, count / targetCount);
   const progressPercent = Math.round(progressRatio * 100);
 
   return {
@@ -382,6 +433,48 @@ export const calculateCheckinProgress = (
     isCompleted,
     progressRatio,
     progressPercent,
+  };
+};
+
+export interface HabitStreakStatusInfo {
+  status: 'completed' | 'rest_day' | 'pending';
+  message: string;
+  iconName: string;
+}
+
+/**
+ * Determines current status and friendly message for a habit on a specific date
+ */
+export const getHabitStreakStatus = (
+  habit: Habit,
+  allCheckins: HabitCheckin[],
+  dateStr: string
+): HabitStreakStatusInfo => {
+  const isDue = isHabitDueOnDate(habit, dateStr, false);
+  const isCompleted = allCheckins.some(
+    (c) => c.habitId === habit.id && c.date === dateStr && c.completed
+  );
+
+  if (isCompleted) {
+    return {
+      status: 'completed',
+      message: 'تم إنجاز العادة بنجاح! سلسلتك في استمرار وتألق 🔥',
+      iconName: 'checkmark-circle-outline',
+    };
+  }
+
+  if (!isDue) {
+    return {
+      status: 'rest_day',
+      message: 'اليوم يوم استراحة مجدول لهذه العادة (السلسلة محفوظة) ☕',
+      iconName: 'cafe-outline',
+    };
+  }
+
+  return {
+    status: 'pending',
+    message: 'بانتظار إنجازك اليوم للحفاظ على استمرارية سلسلتك ⏳',
+    iconName: 'time-outline',
   };
 };
 

@@ -17,7 +17,11 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { HabitHeatmap } from '../components/details/HabitHeatmap';
 import { HabitStatGrid } from '../components/details/HabitStatGrid';
-import { calculateHabitStats } from '../utils/habitUtils';
+import {
+  calculateHabitStats,
+  getHabitCategory,
+  getHabitStreakStatus,
+} from '../utils/habitUtils';
 
 interface HabitDetailsScreenProps {
   route: any;
@@ -73,6 +77,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   );
 
   const stats = calculateHabitStats(habit, checkins);
+  const category = getHabitCategory(habit.icon);
+  const streakStatus = getHabitStreakStatus(habit, checkins, todayStr);
 
   const handleArchiveConfirm = () => {
     Alert.alert(
@@ -92,8 +98,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   };
 
   const handleRestore = async () => {
-    await archiveHabit(habit.id, false);
-    Alert.alert('تمت الاستعادة', `تمت استعادة عادة "${habit.name}" إلى قائمتك اليومية.`);
+    await restoreHabit(habit.id);
   };
 
   const handleDeleteConfirm = () => {
@@ -174,9 +179,24 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         <Card style={[styles.heroCard, { marginBottom: spacing.base }]}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroTitles}>
-              <Text style={[typography.h2, { color: theme.text, textAlign: 'right' }]}>
-                {habit.name}
-              </Text>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={[typography.h2, { color: theme.text, textAlign: 'right' }]}>
+                  {habit.name}
+                </Text>
+                <View
+                  style={[
+                    styles.categoryTag,
+                    {
+                      backgroundColor: theme.cardSecondary,
+                      borderColor: theme.border,
+                    },
+                  ]}
+                >
+                  <Text style={[typography.caption, { color: theme.textSecondary, fontSize: 11, fontWeight: '600' }]}>
+                    {category}
+                  </Text>
+                </View>
+              </View>
               {habit.description ? (
                 <Text
                   style={[
@@ -320,6 +340,53 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
               </View>
             )
           ) : null}
+
+          {!isArchived && (
+            <View
+              style={[
+                styles.streakStatusCard,
+                {
+                  backgroundColor:
+                    streakStatus.status === 'completed'
+                      ? theme.primaryLight
+                      : theme.cardSecondary,
+                  borderColor:
+                    streakStatus.status === 'completed'
+                      ? theme.primary
+                      : theme.border,
+                  borderRadius: radius.md,
+                  marginTop: spacing.md,
+                },
+              ]}
+            >
+              <Ionicons
+                name={streakStatus.iconName as any}
+                size={18}
+                color={
+                  streakStatus.status === 'completed'
+                    ? theme.primary
+                    : theme.textSecondary
+                }
+                style={{ marginLeft: 8 }}
+              />
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color:
+                      streakStatus.status === 'completed'
+                        ? theme.primary
+                        : theme.textSecondary,
+                    fontWeight: '600',
+                    flex: 1,
+                    textAlign: 'right',
+                  },
+                ]}
+              >
+                {streakStatus.message}
+              </Text>
+            </View>
+          )}
         </Card>
 
         {/* 4 Stats Grid */}
@@ -422,6 +489,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  categoryTag: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  streakStatusCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
   },
 });
 

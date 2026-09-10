@@ -93,3 +93,7 @@ export const DAYS_OF_WEEK_AR = [
   { index: 5, name: 'الجمعة', short: 'جمع' },
   { index: 6, name: 'السبت', short: 'سبت' },
 ];
+
+export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روتين', 'روحانية', 'تطوير'] as const;
+export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
+

@@ -20,11 +20,17 @@ import { DailyProgressCard } from '../components/home/DailyProgressCard';
 import { HabitCard } from '../components/home/HabitCard';
 import { EmptyState } from '../components/common/EmptyState';
 import {
+  HABIT_CATEGORIES,
+  HabitCategory,
+} from '../types/habit';
+import {
   calculateOverallStats,
   calculateHabitStats,
   getHabitsForDate,
   filterHabitsByQuery,
   formatDailySummaryForShare,
+  isHabitDueOnDate,
+  getHabitCategory,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -37,6 +43,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<HabitCategory | 'الكل'>('الكل');
+  const [isOffScheduleExpanded, setIsOffScheduleExpanded] = useState(false);
 
   const {
     habits,
@@ -66,17 +74,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   // Calculate overall stats for selected date
   const overallStats = calculateOverallStats(habits, checkins, selectedDate);
 
+  // Unarchived active habits
+  const activeUnarchivedHabits = habits.filter((h) => !h.archivedAt);
+
   // Relevant habits for selected date (active due habits + paused habits completed on this date)
   const dueHabits = getHabitsForDate(habits, checkins, selectedDate);
-  const searchedHabits = searchQuery.trim()
-    ? filterHabitsByQuery(dueHabits, searchQuery)
+  const isSearchActive = Boolean(searchQuery.trim());
+
+  // Search searches across ALL active habits so user can find and log off-schedule habits too
+  const baseHabits = isSearchActive
+    ? filterHabitsByQuery(activeUnarchivedHabits, searchQuery)
     : dueHabits;
 
-  const searchedCompletedCount = searchedHabits.filter((h) =>
+  // Filter by category
+  const categoryFilteredHabits = selectedCategory === 'الكل'
+    ? baseHabits
+    : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+
+  const categoryCompletedCount = categoryFilteredHabits.filter((h) =>
     checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
   ).length;
 
-  const filteredHabits = searchedHabits.filter((h) => {
+  const filteredHabits = categoryFilteredHabits.filter((h) => {
     const isCompleted = checkins.some(
       (c) => c.habitId === h.id && c.date === selectedDate && c.completed
     );
@@ -84,6 +103,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     if (filter === 'pending') return !isCompleted;
     return true; // 'all'
   });
+
+  // Off-schedule habits for selected date (when not searching)
+  const offScheduleHabits = activeUnarchivedHabits.filter(
+    (h) => !dueHabits.some((dh) => dh.id === h.id)
+  );
+  const filteredOffScheduleHabits = selectedCategory === 'الكل'
+    ? offScheduleHabits
+    : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
 
   const handleShareDaily = async () => {
     try {
@@ -267,14 +294,54 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           </View>
         )}
 
+        {/* Category Filter Chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.categoryScroll, { paddingHorizontal: spacing.base }]}
+          style={{ marginBottom: spacing.sm }}
+        >
+          {HABIT_CATEGORIES.map((cat) => {
+            const isCatSelected = selectedCategory === cat;
+            return (
+              <Pressable
+                key={cat}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isCatSelected }}
+                onPress={() => setSelectedCategory(cat)}
+                style={({ pressed }) => [
+                  styles.categoryChip,
+                  {
+                    backgroundColor: isCatSelected ? theme.text : theme.cardSecondary,
+                    borderColor: isCatSelected ? theme.text : theme.border,
+                    opacity: pressed ? 0.75 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: isCatSelected ? theme.background : theme.textSecondary,
+                      fontWeight: isCatSelected ? '700' : '500',
+                    },
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
         {/* Quiet Filter Tabs */}
         <View style={[styles.filterRow, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
           {(['all', 'pending', 'completed'] as const).map((tab) => {
             const isSelected = filter === tab;
             const labels = {
-              all: `الكل (${searchedHabits.length})`,
-              pending: `المتبقية (${Math.max(0, searchedHabits.length - searchedCompletedCount)})`,
-              completed: `المكتملة (${searchedCompletedCount})`,
+              all: `الكل (${categoryFilteredHabits.length})`,
+              pending: `المتبقية (${Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)})`,
+              completed: `المكتملة (${categoryCompletedCount})`,
             };
 
             return (
@@ -310,7 +377,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </View>
 
         {/* Habits List or Empty States */}
-        {dueHabits.length === 0 ? (
+        {baseHabits.length === 0 && !isSearchActive ? (
           <EmptyState
             icon="leaf-outline"
             title="لا توجد عادات لهذا اليوم"
@@ -318,8 +385,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             actionTitle="إضافة عادة"
             onActionPress={() => navigation.navigate('AddEditHabit', {})}
           />
-        ) : filteredHabits.length === 0 ? (
-          searchQuery.trim() ? (
+        ) : categoryFilteredHabits.length === 0 ? (
+          selectedCategory !== 'الكل' ? (
+            <EmptyState
+              icon="filter-outline"
+              title="لا توجد عادات في هذا التصنيف"
+              description={`لم يتم العثور على عادات تنتمي لتصنيف "${selectedCategory}"`}
+              actionTitle="عرض جميع التصنيفات"
+              onActionPress={() => setSelectedCategory('الكل')}
+            />
+          ) : isSearchActive ? (
             <EmptyState
               icon="search-outline"
               title="لم يتم العثور على نتائج"
@@ -348,6 +423,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             const isCompleted = Boolean(checkin?.completed);
             const currentCount = checkin ? checkin.count : 0;
             const stats = calculateHabitStats(habit, checkins);
+            const isDue = isHabitDueOnDate(habit, selectedDate, true);
 
             return (
               <HabitCard
@@ -357,6 +433,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 currentCount={currentCount}
                 streak={stats.currentStreak}
                 isFuture={isFutureDate}
+                isOffSchedule={!isDue}
                 onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                 onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                 onDecrement={() => decrementCheckin(habit.id, selectedDate)}
@@ -366,6 +443,70 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               />
             );
           })
+        )}
+
+        {/* Off-Schedule Habits Collapsible Section */}
+        {!isSearchActive && filteredOffScheduleHabits.length > 0 && (
+          <View style={{ marginTop: spacing.base }}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إظهار العادات غير المجدولة لليوم"
+              onPress={() => setIsOffScheduleExpanded(!isOffScheduleExpanded)}
+              style={({ pressed }) => [
+                styles.offScheduleHeader,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.md,
+                  marginHorizontal: spacing.base,
+                  marginBottom: isOffScheduleExpanded ? spacing.sm : spacing.md,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <View style={styles.offScheduleHeaderRow}>
+                <View style={styles.offScheduleHeaderTitle}>
+                  <Ionicons name="calendar-outline" size={16} color={theme.textSecondary} />
+                  <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
+                    عادات أخرى غير مجدولة اليوم ({filteredOffScheduleHabits.length})
+                  </Text>
+                </View>
+                <Ionicons
+                  name={isOffScheduleExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={theme.textSecondary}
+                />
+              </View>
+            </Pressable>
+
+            {isOffScheduleExpanded &&
+              filteredOffScheduleHabits.map((habit) => {
+                const checkin = checkins.find(
+                  (c) => c.habitId === habit.id && c.date === selectedDate
+                );
+                const isCompleted = Boolean(checkin?.completed);
+                const currentCount = checkin ? checkin.count : 0;
+                const stats = calculateHabitStats(habit, checkins);
+
+                return (
+                  <HabitCard
+                    key={`off_${habit.id}`}
+                    habit={habit}
+                    isCompleted={isCompleted}
+                    currentCount={currentCount}
+                    streak={stats.currentStreak}
+                    isFuture={isFutureDate}
+                    isOffSchedule={true}
+                    onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
+                    onIncrement={() => incrementCheckin(habit.id, selectedDate)}
+                    onDecrement={() => decrementCheckin(habit.id, selectedDate)}
+                    onPressDetails={() =>
+                      navigation.navigate('HabitDetails', { habitId: habit.id })
+                    }
+                  />
+                );
+              })}
+          </View>
         )}
       </ScrollView>
     </View>
@@ -411,6 +552,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 6,
   },
+  categoryScroll: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  categoryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
   filterRow: {
     flexDirection: 'row-reverse',
     borderBottomWidth: 1,
@@ -427,4 +579,20 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
   },
+  offScheduleHeader: {
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  offScheduleHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  offScheduleHeaderTitle: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
 });
+
