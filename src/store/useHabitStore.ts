@@ -92,7 +92,13 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       ]);
 
       const notificationsEnabled = notifPref !== 'false';
-      const validSortOptions: HabitSortOption[] = ['default', 'pending_first', 'reminder_time', 'streak'];
+      const validSortOptions: HabitSortOption[] = [
+        'default',
+        'pending_first',
+        'alphabetical',
+        'reminder_time',
+        'streak',
+      ];
       const sortOption: HabitSortOption = validSortOptions.includes(sortPref as HabitSortOption)
         ? (sortPref as HabitSortOption)
         : 'default';

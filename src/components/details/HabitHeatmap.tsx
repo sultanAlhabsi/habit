@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -28,6 +28,15 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
   const [currentMonth, setCurrentMonth] = useState(
     selectedDate ? dayjs(selectedDate) : dayjs()
   );
+
+  useEffect(() => {
+    if (selectedDate && dayjs(selectedDate).isValid()) {
+      const targetMonth = dayjs(selectedDate).startOf('month');
+      if (!targetMonth.isSame(currentMonth.startOf('month'))) {
+        setCurrentMonth(targetMonth);
+      }
+    }
+  }, [selectedDate]);
 
   const startOfMonth = currentMonth.startOf('month');
   const daysInMonth = currentMonth.daysInMonth();

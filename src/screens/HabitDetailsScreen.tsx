@@ -578,18 +578,32 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         {/* Quiet Actions */}
         <View style={styles.actionsContainer}>
           {isArchived ? (
-            <Button
-              title="استعادة العادة من الأرشيف"
-              variant="primary"
-              onPress={handleRestore}
-              style={{ marginBottom: spacing.sm }}
-            />
+            <>
+              <Button
+                title="استعادة العادة من الأرشيف"
+                variant="primary"
+                onPress={handleRestore}
+                style={{ marginBottom: spacing.sm }}
+              />
+              <Button
+                title="نسخ كعادة جديدة نشطة ⎘"
+                variant="outline"
+                onPress={() => navigation.navigate('AddEditHabit', { duplicateFromId: habit.id })}
+                style={{ marginBottom: spacing.sm }}
+              />
+            </>
           ) : (
             <>
               <Button
                 title={habit.isPinned ? 'إلغاء تثبيت العادة' : 'تثبيت العادة في البداية 📌'}
                 variant="outline"
                 onPress={() => togglePinHabit(habit.id)}
+                style={{ marginBottom: spacing.sm }}
+              />
+              <Button
+                title="تكرار العادة كعادة جديدة ⎘"
+                variant="outline"
+                onPress={() => navigation.navigate('AddEditHabit', { duplicateFromId: habit.id })}
                 style={{ marginBottom: spacing.sm }}
               />
               <Button

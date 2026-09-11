@@ -1289,4 +1289,46 @@ test('calculateCategoryAnalytics: accurately computes category metrics and balan
   assert.ok(result.insightMessage.includes('إنتاجية'));
 });
 
+test('sortHabits: alphabetical mode correctly sorts Arabic habit names and prioritizes pinned habits', () => {
+  const hReading = createMockHabit({ id: 'h1', name: 'قراءة الكتب', isPinned: false });
+  const hWater = createMockHabit({ id: 'h2', name: 'شرب الماء', isPinned: false });
+  const hWalk = createMockHabit({ id: 'h3', name: 'المشي المسائي', isPinned: false });
+  const hMorningPrayer = createMockHabit({ id: 'h4', name: 'أذكار الصباح', isPinned: false });
+  const hWorkoutPinned = createMockHabit({ id: 'h5', name: 'تمارين رياضية', isPinned: true });
+
+  const habits = [hReading, hWater, hWalk, hMorningPrayer, hWorkoutPinned];
+  const sorted = sortHabits(habits, 'alphabetical', [], '2026-06-15');
+
+  // Pinned habit always comes first
+  assert.equal(sorted[0].id, 'h5'); // تمارين رياضية (pinned)
+
+  // Remaining habits sorted alphabetically:
+  // 'أذكار الصباح' -> 'المشي المسائي' -> 'شرب الماء' -> 'قراءة الكتب'
+  assert.equal(sorted[1].id, 'h4'); // أذكار الصباح
+  assert.equal(sorted[2].id, 'h3'); // المشي المسائي
+  assert.equal(sorted[3].id, 'h2'); // شرب الماء
+  assert.equal(sorted[4].id, 'h1'); // قراءة الكتب
+});
+
+test('formatArabicCount: handles active habits singular, dual, and plural rules', () => {
+  const formatHabits = (count: number) =>
+    formatArabicCount(
+      count,
+      'عادة نشطة واحدة',
+      'عادتان نشطتان',
+      'عادات نشطة',
+      'عادة نشطة'
+    );
+
+  assert.equal(formatHabits(0), '0 عادة نشطة');
+  assert.equal(formatHabits(1), 'عادة نشطة واحدة');
+  assert.equal(formatHabits(2), 'عادتان نشطتان');
+  assert.equal(formatHabits(3), '3 عادات نشطة');
+  assert.equal(formatHabits(4), '4 عادات نشطة');
+  assert.equal(formatHabits(10), '10 عادات نشطة');
+  assert.equal(formatHabits(11), '11 عادة نشطة');
+  assert.equal(formatHabits(25), '25 عادة نشطة');
+});
+
+
 

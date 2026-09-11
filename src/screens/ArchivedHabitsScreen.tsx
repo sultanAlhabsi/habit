@@ -151,10 +151,17 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
             variant="outline"
             size="sm"
             onPress={() => handleRestore(habit)}
-            style={{ flex: 1, marginLeft: 8 }}
+            style={{ flex: 1, marginLeft: 6 }}
           />
           <Button
-            title="حذف نهائي"
+            title="نسخ ⎘"
+            variant="outline"
+            size="sm"
+            onPress={() => navigation.navigate('AddEditHabit', { duplicateFromId: habit.id })}
+            style={{ flex: 1, marginLeft: 6 }}
+          />
+          <Button
+            title="حذف"
             variant="destructive"
             size="sm"
             onPress={() => handleDeletePermanent(habit)}

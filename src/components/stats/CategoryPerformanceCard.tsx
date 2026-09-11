@@ -5,7 +5,7 @@ import { Habit, HabitCheckin } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
 import { ProgressBar } from '../common/ProgressBar';
-import { calculateCategoryAnalytics } from '../../utils/habitUtils';
+import { calculateCategoryAnalytics, formatArabicCount } from '../../utils/habitUtils';
 
 interface CategoryPerformanceCardProps {
   habits: Habit[];
@@ -128,7 +128,13 @@ export const CategoryPerformanceCard: React.FC<CategoryPerformanceCardProps> = (
                     </Text>
                     <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', fontSize: 11 }]}>
                       {hasHabits
-                        ? `${item.activeHabits} ${item.activeHabits === 1 ? 'عادة نشطة' : 'عادات نشطة'}`
+                        ? formatArabicCount(
+                            item.activeHabits,
+                            'عادة نشطة واحدة',
+                            'عادتان نشطتان',
+                            'عادات نشطة',
+                            'عادة نشطة'
+                          )
                         : 'لا توجد عادات حالياً'}
                     </Text>
                   </View>

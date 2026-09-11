@@ -40,22 +40,29 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const { habits, addHabit, updateHabit } = useHabitStore();
 
   const habitId = route.params?.habitId;
+  const duplicateFromId = route.params?.duplicateFromId;
   const existingHabit = habitId ? habits.find((h) => h.id === habitId) : null;
+  const duplicateSourceHabit = duplicateFromId ? habits.find((h) => h.id === duplicateFromId) : null;
   const isEditing = Boolean(existingHabit);
+  const isDuplicating = Boolean(duplicateSourceHabit && !existingHabit);
 
-  const [name, setName] = useState(existingHabit?.name || '');
-  const [description, setDescription] = useState(existingHabit?.description || '');
-  const [selectedIcon, setSelectedIcon] = useState(existingHabit?.icon || 'fitness-outline');
-  const [iconCategoryFilter, setIconCategoryFilter] = useState<string>('الكل');
-  const [selectedColor, setSelectedColor] = useState(existingHabit?.color || HABIT_PALETTES[0].hex);
-  const [frequency, setFrequency] = useState<HabitFrequency>(existingHabit?.frequency || 'daily');
-  const [frequencyDays, setFrequencyDays] = useState<number[]>(
-    existingHabit?.frequencyDays || [0, 1, 2, 3, 4, 5, 6]
+  const templateHabit = existingHabit || duplicateSourceHabit;
+
+  const [name, setName] = useState(
+    existingHabit?.name || (duplicateSourceHabit ? `${duplicateSourceHabit.name} (نسخة)` : '')
   );
-  const [targetCount, setTargetCount] = useState(String(existingHabit?.targetCount || '1'));
-  const [unit, setUnit] = useState(existingHabit?.unit || 'مرة');
-  const [reminderTime, setReminderTime] = useState(existingHabit?.reminderTime || '08:00');
-  const [hasReminder, setHasReminder] = useState(Boolean(existingHabit?.reminderTime));
+  const [description, setDescription] = useState(templateHabit?.description || '');
+  const [selectedIcon, setSelectedIcon] = useState(templateHabit?.icon || 'fitness-outline');
+  const [iconCategoryFilter, setIconCategoryFilter] = useState<string>('الكل');
+  const [selectedColor, setSelectedColor] = useState(templateHabit?.color || HABIT_PALETTES[0].hex);
+  const [frequency, setFrequency] = useState<HabitFrequency>(templateHabit?.frequency || 'daily');
+  const [frequencyDays, setFrequencyDays] = useState<number[]>(
+    templateHabit?.frequencyDays || [0, 1, 2, 3, 4, 5, 6]
+  );
+  const [targetCount, setTargetCount] = useState(String(templateHabit?.targetCount || '1'));
+  const [unit, setUnit] = useState(templateHabit?.unit || 'مرة');
+  const [reminderTime, setReminderTime] = useState(templateHabit?.reminderTime || '08:00');
+  const [hasReminder, setHasReminder] = useState(Boolean(templateHabit?.reminderTime));
   const [isPinned, setIsPinned] = useState(Boolean(existingHabit?.isPinned));
 
   const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
@@ -140,8 +147,14 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Header
-        title={isEditing ? 'تعديل العادة' : 'عادة جديدة'}
-        subtitle={isEditing ? existingHabit?.name : undefined}
+        title={isEditing ? 'تعديل العادة' : isDuplicating ? 'نسخ العادة' : 'عادة جديدة'}
+        subtitle={
+          isEditing
+            ? existingHabit?.name
+            : isDuplicating
+            ? `نسخ من "${duplicateSourceHabit?.name}"`
+            : undefined
+        }
         onBackPress={() => navigation.goBack()}
         rightAction={
           <Pressable

@@ -690,6 +690,10 @@ export const sortHabits = (
       return 0;
     }
 
+    if (sortOption === 'alphabetical') {
+      return a.name.localeCompare(b.name, 'ar');
+    }
+
     return 0;
   });
 };

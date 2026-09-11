@@ -99,7 +99,7 @@ export const DAYS_OF_WEEK_AR = [
 export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روتين', 'روحانية', 'تطوير'] as const;
 export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
 
-export type HabitSortOption = 'default' | 'pending_first' | 'reminder_time' | 'streak';
+export type HabitSortOption = 'default' | 'pending_first' | 'alphabetical' | 'reminder_time' | 'streak';
 
 export interface HabitSortOptionItem {
   id: HabitSortOption;
@@ -110,6 +110,7 @@ export interface HabitSortOptionItem {
 export const HABIT_SORT_OPTIONS: HabitSortOptionItem[] = [
   { id: 'default', label: 'الافتراضي', icon: 'reorder-four-outline' },
   { id: 'pending_first', label: 'المتبقية أولاً', icon: 'hourglass-outline' },
+  { id: 'alphabetical', label: 'أبجدي (أ - ي)', icon: 'text-outline' },
   { id: 'reminder_time', label: 'وقت التنبيه', icon: 'time-outline' },
   { id: 'streak', label: 'أعلى سلسلة', icon: 'flame-outline' },
 ];

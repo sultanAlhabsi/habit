@@ -8,7 +8,7 @@ export type MainTabParamList = {
 
 export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
-  AddEditHabit: { habitId?: string };
+  AddEditHabit: { habitId?: string; duplicateFromId?: string };
   HabitDetails: { habitId: string; date?: string };
   ArchivedHabits: undefined;
 };
