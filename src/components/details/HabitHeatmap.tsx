@@ -8,7 +8,9 @@ import { Card } from '../common/Card';
 interface HabitHeatmapProps {
   completedDates: Set<string>;
   habitColor: string;
-  onToggleDate: (dateStr: string) => void;
+  selectedDate?: string;
+  onSelectDate?: (dateStr: string) => void;
+  onToggleDate?: (dateStr: string) => void;
   readOnly?: boolean;
   createdAt?: string;
 }
@@ -16,12 +18,16 @@ interface HabitHeatmapProps {
 export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
   completedDates,
   habitColor,
+  selectedDate,
+  onSelectDate,
   onToggleDate,
   readOnly = false,
   createdAt,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
-  const [currentMonth, setCurrentMonth] = useState(dayjs());
+  const [currentMonth, setCurrentMonth] = useState(
+    selectedDate ? dayjs(selectedDate) : dayjs()
+  );
 
   const startOfMonth = currentMonth.startOf('month');
   const daysInMonth = currentMonth.daysInMonth();
@@ -112,6 +118,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
           const dateStr = cellDate.format('YYYY-MM-DD');
           const isCompleted = completedDates.has(dateStr);
           const isToday = dateStr === todayStr;
+          const isSelected = selectedDate === dateStr;
           const isFuture = cellDate.isAfter(dayjs().startOf('day'));
           const isBeforeCreation = createdAt
             ? cellDate.isBefore(dayjs(createdAt).startOf('day'))
@@ -128,9 +135,22 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
                   ? `تاريخ سابق لإنشاء العادة (${dateStr})`
                   : isFuture
                   ? `تاريخ مستقبلي (${dateStr})`
+                  : isSelected
+                  ? `اليوم المختار (${dateStr})${isCompleted ? '، مكتمل' : ''}`
                   : `تسجيل ${dateStr}`
               }
-              onPress={() => onToggleDate(dateStr)}
+              onPress={() => {
+                if (onSelectDate) {
+                  onSelectDate(dateStr);
+                } else if (onToggleDate) {
+                  onToggleDate(dateStr);
+                }
+              }}
+              onLongPress={() => {
+                if (!readOnly && onToggleDate) {
+                  onToggleDate(dateStr);
+                }
+              }}
               style={({ pressed }) => [
                 styles.dayCol,
                 styles.dayCell,
@@ -151,8 +171,14 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
                   {
                     borderRadius: radius.full,
                     backgroundColor: isCompleted ? (habitColor || theme.primary) : 'transparent',
-                    borderColor: isToday ? theme.text : 'transparent',
-                    borderWidth: isToday && !isCompleted ? 1 : 0,
+                    borderColor: isSelected
+                      ? isCompleted
+                        ? theme.text
+                        : (habitColor || theme.primary)
+                      : isToday
+                      ? theme.text
+                      : 'transparent',
+                    borderWidth: isSelected ? 2 : isToday && !isCompleted ? 1 : 0,
                   },
                 ]}
               >
@@ -162,10 +188,12 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
                     {
                       color: isCompleted
                         ? '#FFFFFF'
+                        : isSelected
+                        ? (habitColor || theme.primary)
                         : isToday
                         ? theme.text
                         : theme.textSecondary,
-                      fontWeight: isCompleted || isToday ? '600' : '400',
+                      fontWeight: isCompleted || isToday || isSelected ? '600' : '400',
                     },
                   ]}
                 >
@@ -190,7 +218,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
       >
         {readOnly
           ? 'العادة في الأرشيف (للقراءة فقط)'
-          : 'اضغط على أي يوم للتعديل أو التسجيل'}
+          : 'اضغط لاختيار اليوم واستعراض خواطره، واضغط مجدداً للتسجيل'}
       </Text>
     </Card>
   );

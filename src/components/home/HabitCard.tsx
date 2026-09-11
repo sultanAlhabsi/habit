@@ -8,6 +8,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
+import { formatArabicStreakDays } from '../../utils/habitUtils';
 
 interface HabitCardProps {
   habit: Habit;
@@ -315,7 +316,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
                   },
                 ]}
               >
-                {streak} {streak === 1 ? 'يوم' : 'أيام'} متتالية
+                {formatArabicStreakDays(streak)}
               </Text>
             )}
 

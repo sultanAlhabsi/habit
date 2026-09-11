@@ -29,12 +29,15 @@ import {
   STREAK_MILESTONES,
   normalizeArabicText,
   formatArabicDaysCount,
+  formatArabicStreakDays,
   formatArabicCount,
   toArabicNumerals,
   escapeCsvCell,
   exportCheckinsToCsv,
   exportHabitsSummaryToCsv,
   exportFullReportToCsv,
+  CATEGORY_CONFIG,
+  calculateCategoryAnalytics,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -1198,6 +1201,92 @@ test('exportFullReportToCsv: generates combined spreadsheet report with sections
   assert.ok(csv.includes('# ملخص أداء العادات'));
   assert.ok(csv.includes('# سجلات الإنجاز والملاحظات اليومية'));
   assert.ok(csv.includes('قراءة القرآن'));
+});
+
+test('formatArabicStreakDays: adheres strictly to Arabic consecutive day grammar rules', () => {
+  assert.equal(formatArabicStreakDays(0), '0 يوم');
+  assert.equal(formatArabicStreakDays(1), 'يوم واحد');
+  assert.equal(formatArabicStreakDays(2), 'يومان متتاليان');
+  assert.equal(formatArabicStreakDays(3), '3 أيام متتالية');
+  assert.equal(formatArabicStreakDays(5), '5 أيام متتالية');
+  assert.equal(formatArabicStreakDays(10), '10 أيام متتالية');
+  assert.equal(formatArabicStreakDays(11), '11 يوم متتالية');
+  assert.equal(formatArabicStreakDays(21), '21 يوم متتالية');
+  assert.equal(formatArabicStreakDays(66), '66 يوم متتالية');
+  assert.equal(formatArabicStreakDays(100), '100 يوم متتالية');
+  assert.equal(formatArabicStreakDays(365), '365 يوم متتالية');
+});
+
+test('calculateCategoryAnalytics: handles empty habits list safely', () => {
+  const result = calculateCategoryAnalytics([], []);
+
+  assert.equal(result.categories.length, 5);
+  assert.equal(result.topCategory, null);
+  assert.equal(result.focusCategory, null);
+  assert.equal(result.balanceScore, 0);
+  assert.ok(result.insightMessage.includes('أضف عاداتك الأولى'));
+});
+
+test('calculateCategoryAnalytics: accurately computes category metrics and balance score', () => {
+  const todayStr = dayjs().format('YYYY-MM-DD');
+
+  // Health habit (100% complete)
+  const hHealth = createMockHabit({
+    id: 'h-health',
+    name: 'تمارين رياضية',
+    icon: 'fitness-outline', // Category: صحة
+    createdAt: todayStr,
+  });
+
+  // Productivity habit (0% complete)
+  const hProd = createMockHabit({
+    id: 'h-prod',
+    name: 'برمجة موقع',
+    icon: 'laptop-outline', // Category: إنتاجية
+    createdAt: todayStr,
+  });
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: 'h-health',
+      date: todayStr,
+      completed: true,
+      count: 1,
+      updatedAt: todayStr,
+    },
+  ];
+
+  const result = calculateCategoryAnalytics([hHealth, hProd], checkins);
+
+  const healthCat = result.categories.find((c) => c.category === 'صحة');
+  const prodCat = result.categories.find((c) => c.category === 'إنتاجية');
+  const routineCat = result.categories.find((c) => c.category === 'روتين');
+
+  assert.ok(healthCat);
+  assert.equal(healthCat.activeHabits, 1);
+  assert.equal(healthCat.completionRate, 100);
+  assert.equal(healthCat.totalCheckins, 1);
+
+  assert.ok(prodCat);
+  assert.equal(prodCat.activeHabits, 1);
+  assert.equal(prodCat.completionRate, 0);
+  assert.equal(prodCat.totalCheckins, 0);
+
+  assert.ok(routineCat);
+  assert.equal(routineCat.activeHabits, 0);
+  assert.equal(routineCat.completionRate, 0);
+
+  // Top category is health, focus is productivity
+  assert.equal(result.topCategory?.category, 'صحة');
+  assert.equal(result.focusCategory?.category, 'إنتاجية');
+
+  // Balance score considers 2 active categories (2/5 coverage) and average 50% rate
+  assert.ok(result.balanceScore > 0 && result.balanceScore <= 100);
+
+  // Coaching insight addresses both
+  assert.ok(result.insightMessage.includes('صحة'));
+  assert.ok(result.insightMessage.includes('إنتاجية'));
 });
 
 

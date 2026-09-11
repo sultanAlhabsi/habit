@@ -18,6 +18,7 @@ import { Card } from '../components/common/Card';
 import {
   AVAILABLE_ICONS,
   DAYS_OF_WEEK_AR,
+  HABIT_CATEGORIES,
   HabitFrequency,
 } from '../types/habit';
 import { HABIT_PALETTES } from '../theme/colors';
@@ -45,6 +46,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [name, setName] = useState(existingHabit?.name || '');
   const [description, setDescription] = useState(existingHabit?.description || '');
   const [selectedIcon, setSelectedIcon] = useState(existingHabit?.icon || 'fitness-outline');
+  const [iconCategoryFilter, setIconCategoryFilter] = useState<string>('الكل');
   const [selectedColor, setSelectedColor] = useState(existingHabit?.color || HABIT_PALETTES[0].hex);
   const [frequency, setFrequency] = useState<HabitFrequency>(existingHabit?.frequency || 'daily');
   const [frequencyDays, setFrequencyDays] = useState<number[]>(
@@ -264,8 +266,51 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
               ) : null;
             })()}
           </View>
+          {/* Category Filter Chips for Icons */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryChipsContainer}
+            style={{ marginBottom: 12 }}
+          >
+            {HABIT_CATEGORIES.map((cat) => {
+              const isCatSelected = iconCategoryFilter === cat;
+              return (
+                <Pressable
+                  key={cat}
+                  accessibilityRole="button"
+                  accessibilityLabel={`تصنيف ${cat}`}
+                  onPress={() => setIconCategoryFilter(cat)}
+                  style={[
+                    styles.categoryChip,
+                    {
+                      backgroundColor: isCatSelected ? theme.primary : theme.cardSecondary,
+                      borderColor: isCatSelected ? theme.primary : theme.border,
+                      borderRadius: radius.full,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: isCatSelected ? '#FFFFFF' : theme.textSecondary,
+                        fontWeight: isCatSelected ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
           <View style={styles.iconGrid}>
-            {AVAILABLE_ICONS.map((item) => {
+            {(iconCategoryFilter === 'الكل'
+              ? AVAILABLE_ICONS
+              : AVAILABLE_ICONS.filter((item) => item.category === iconCategoryFilter)
+            ).map((item) => {
               const isSelected = selectedIcon === item.name;
               return (
                 <Pressable
@@ -653,6 +698,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     gap: 6,
+  },
+  categoryChipsContainer: {
+    flexDirection: 'row-reverse',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  categoryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
   },
   iconBox: {
     width: 38,

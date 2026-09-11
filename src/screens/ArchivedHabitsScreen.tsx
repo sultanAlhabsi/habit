@@ -15,7 +15,7 @@ import { useHabitStore } from '../store/useHabitStore';
 import { Header } from '../components/common/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
-import { calculateHabitStats, formatArabicDate } from '../utils/habitUtils';
+import { calculateHabitStats, formatArabicDate, formatArabicDaysCount } from '../utils/habitUtils';
 import { Habit } from '../types/habit';
 
 interface ArchivedHabitsScreenProps {
@@ -138,7 +138,7 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
                 أطول سلسلة
               </Text>
               <Text style={[typography.subMedium, { color: theme.text }]}>
-                {stats.bestStreak} يوم
+                {formatArabicDaysCount(stats.bestStreak)}
               </Text>
             </View>
 

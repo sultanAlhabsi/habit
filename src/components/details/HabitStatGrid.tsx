@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { HabitStats } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
+import { formatArabicDaysCount } from '../../utils/habitUtils';
 
 interface HabitStatGridProps {
   stats: HabitStats;
@@ -14,8 +15,8 @@ export const HabitStatGrid: React.FC<HabitStatGridProps> = ({ stats, unit }) => 
   const { theme, spacing, typography } = useTheme();
 
   const items = [
-    { title: 'الالتزام الحالي', value: `${stats.currentStreak} يوم` },
-    { title: 'أفضل إنجاز', value: `${stats.bestStreak} يوم` },
+    { title: 'الالتزام الحالي', value: formatArabicDaysCount(stats.currentStreak) },
+    { title: 'أفضل إنجاز', value: formatArabicDaysCount(stats.bestStreak) },
     { title: 'إجمالي المرات', value: `${stats.totalCompletions} ${unit || 'مرة'}` },
     { title: 'نسبة الالتزام', value: `${stats.completionRate}%` },
   ];

@@ -11,6 +11,8 @@ import type {
   StreakMilestoneInfo,
   HabitDayDistribution,
   HabitConsistencyPattern,
+  CategoryPerformanceItem,
+  CategoryAnalytics,
 } from '../types/habit';
 
 export const DAYS_OF_WEEK_AR = [
@@ -1105,6 +1107,133 @@ export const formatArabicDaysCount = (count: number): string => {
   if (safe === 2) return 'يومان';
   if (safe >= 3 && safe <= 10) return `${safe} أيام`;
   return `${safe} يوم`;
+};
+
+/**
+ * Formats streak count into authentic Arabic phrasing with 'متتالية':
+ * 0 -> '0 يوم'
+ * 1 -> 'يوم واحد'
+ * 2 -> 'يومان متتاليان'
+ * 3..10 -> 'X أيام متتالية'
+ * 11+ -> 'X يوم متتالية'
+ */
+export const formatArabicStreakDays = (count: number): string => {
+  const safe = Math.max(0, Math.floor(count || 0));
+  if (safe === 0) return '0 يوم';
+  if (safe === 1) return 'يوم واحد';
+  if (safe === 2) return 'يومان متتاليان';
+  if (safe >= 3 && safe <= 10) return `${safe} أيام متتالية`;
+  return `${safe} يوم متتالية`;
+};
+
+export const CATEGORY_CONFIG: {
+  category: Exclude<HabitCategory, 'الكل'>;
+  iconName: string;
+  color: string;
+}[] = [
+  { category: 'صحة', iconName: 'fitness-outline', color: '#2ECC71' },
+  { category: 'إنتاجية', iconName: 'laptop-outline', color: '#3498DB' },
+  { category: 'روتين', iconName: 'sunny-outline', color: '#E67E22' },
+  { category: 'روحانية', iconName: 'sparkles-outline', color: '#9B59B6' },
+  { category: 'تطوير', iconName: 'book-outline', color: '#1ABC9C' },
+];
+
+/**
+ * Calculates category breakdown, adherence balance, and personalized coaching insight.
+ */
+export const calculateCategoryAnalytics = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[]
+): CategoryAnalytics => {
+  const activeHabits = habits.filter((h) => !h.archivedAt && h.isActive);
+  const completedCheckins = allCheckins.filter((c) => c.completed);
+
+  const habitMap = new Map<string, Habit>();
+  habits.forEach((h) => habitMap.set(h.id, h));
+
+  const categories: CategoryPerformanceItem[] = CATEGORY_CONFIG.map((cfg) => {
+    const catHabits = habits.filter(
+      (h) => getHabitCategory(h.icon) === cfg.category
+    );
+    const catActiveHabits = activeHabits.filter(
+      (h) => getHabitCategory(h.icon) === cfg.category
+    );
+
+    const catCheckins = completedCheckins.filter((c) => {
+      const h = habitMap.get(c.habitId);
+      return h && getHabitCategory(h.icon) === cfg.category;
+    });
+
+    let completionRate = 0;
+    if (catActiveHabits.length > 0) {
+      const sumRates = catActiveHabits.reduce((acc, h) => {
+        const stats = calculateHabitStats(h, allCheckins);
+        return acc + stats.completionRate;
+      }, 0);
+      completionRate = Math.round(sumRates / catActiveHabits.length);
+    }
+
+    return {
+      category: cfg.category,
+      iconName: cfg.iconName,
+      color: cfg.color,
+      totalHabits: catHabits.length,
+      activeHabits: catActiveHabits.length,
+      totalCheckins: catCheckins.length,
+      completionRate: Math.min(100, Math.max(0, completionRate)),
+    };
+  });
+
+  const categoriesWithActive = categories.filter((c) => c.activeHabits > 0);
+
+  let topCategory: CategoryPerformanceItem | null = null;
+  let focusCategory: CategoryPerformanceItem | null = null;
+
+  if (categoriesWithActive.length > 0) {
+    const sortedByRate = [...categoriesWithActive].sort(
+      (a, b) => b.completionRate - a.completionRate || b.totalCheckins - a.totalCheckins
+    );
+    topCategory = sortedByRate[0];
+
+    const sortedLowest = [...categoriesWithActive].sort(
+      (a, b) => a.completionRate - b.completionRate || a.totalCheckins - b.totalCheckins
+    );
+    if (sortedLowest[0].completionRate < topCategory.completionRate) {
+      focusCategory = sortedLowest[0];
+    }
+  }
+
+  // Calculate life balance score
+  let balanceScore = 0;
+  if (activeHabits.length > 0) {
+    const activeCatCount = categoriesWithActive.length;
+    const coverageRatio = activeCatCount / CATEGORY_CONFIG.length;
+    const avgRate =
+      categoriesWithActive.reduce((acc, c) => acc + c.completionRate, 0) /
+      Math.max(1, activeCatCount);
+    balanceScore = Math.min(100, Math.max(0, Math.round(coverageRatio * 40 + avgRate * 0.6)));
+  }
+
+  let insightMessage = '';
+  if (activeHabits.length === 0) {
+    insightMessage = 'أضف عاداتك الأولى في مختلف مجالات الحياة لبدء رحلة التوازن والتطوير.';
+  } else if (topCategory && !focusCategory && topCategory.completionRate === 100) {
+    insightMessage = 'توازن استثنائي! التزام تام في جميع مجالات حياتك بنسبة 100% 🌟';
+  } else if (topCategory && focusCategory) {
+    insightMessage = `أداؤك متميز في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%) 🔥، وركّز أكثر على ${focusCategory.category} (${focusCategory.completionRate}%) لتحقيق التوازن الشامل.`;
+  } else if (topCategory) {
+    insightMessage = `استمرارية رائعة في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%)، وسّع نطاق عاداتك لتشمل مجالات جديدة ✨`;
+  } else {
+    insightMessage = 'واصل بناء عاداتك في مختلف المجالات للارتقاء بنمط حياتك اليومي.';
+  }
+
+  return {
+    categories,
+    topCategory,
+    focusCategory,
+    balanceScore,
+    insightMessage,
+  };
 };
 
 /**

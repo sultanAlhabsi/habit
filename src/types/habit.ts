@@ -162,3 +162,21 @@ export interface HabitConsistencyPattern {
   insightMessage: string;
 }
 
+export interface CategoryPerformanceItem {
+  category: Exclude<HabitCategory, 'الكل'>;
+  iconName: string;
+  color: string;
+  totalHabits: number;
+  activeHabits: number;
+  totalCheckins: number;
+  completionRate: number; // 0 - 100
+}
+
+export interface CategoryAnalytics {
+  categories: CategoryPerformanceItem[];
+  topCategory: CategoryPerformanceItem | null;
+  focusCategory: CategoryPerformanceItem | null;
+  balanceScore: number; // 0 - 100
+  insightMessage: string;
+}
+

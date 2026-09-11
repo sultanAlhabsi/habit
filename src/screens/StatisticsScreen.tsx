@@ -9,6 +9,7 @@ import { useHabitStore } from '../store/useHabitStore';
 import { Card } from '../components/common/Card';
 import { WeeklyChart } from '../components/stats/WeeklyChart';
 import { MonthlyAdherenceCard } from '../components/stats/MonthlyAdherenceCard';
+import { CategoryPerformanceCard } from '../components/stats/CategoryPerformanceCard';
 import { BadgeList } from '../components/stats/BadgeList';
 import {
   calculateHabitStats,
@@ -56,7 +57,7 @@ export const StatisticsScreen: React.FC = () => {
 
   const kpis = [
     { title: 'إنجاز اليوم', value: `${overall.todayCompletionRate}%` },
-    { title: 'أعلى سلسلة', value: `${overall.bestOverallStreak} يوم` },
+    { title: 'أعلى سلسلة', value: formatArabicDaysCount(overall.bestOverallStreak) },
     { title: 'إجمالي المرات', value: `${overall.totalCheckinsEver}` },
     { title: 'العادات النشطة', value: `${overall.activeHabits}` },
   ];
@@ -142,6 +143,9 @@ export const StatisticsScreen: React.FC = () => {
           onNextWeek={() => setWeekOffset((prev) => Math.min(0, prev + 1))}
           hasNextWeek={weekOffset < 0}
         />
+
+        {/* Life Domains & Category Balance */}
+        <CategoryPerformanceCard habits={habits} checkins={checkins} />
 
         {/* Habits Leaderboard */}
         <Card style={{ padding: spacing.base, marginBottom: spacing.base }}>

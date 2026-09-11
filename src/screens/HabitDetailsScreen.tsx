@@ -556,6 +556,16 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
           completedDates={completedDates}
           habitColor={habit.color}
           createdAt={habit.createdAt}
+          selectedDate={selectedDate}
+          onSelectDate={(dateStr) => {
+            if (selectedDate === dateStr) {
+              if (!isArchived) {
+                toggleCheckin(habit.id, dateStr);
+              }
+            } else {
+              setSelectedDate(dateStr);
+            }
+          }}
           onToggleDate={(dateStr) => {
             if (!isArchived) {
               setSelectedDate(dateStr);
