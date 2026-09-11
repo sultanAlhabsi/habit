@@ -22,7 +22,9 @@ import { sendTestNotification } from '../services/notificationService';
 import {
   exportBackupViaShare,
   validateBackupJson,
+  exportCsvViaShare,
 } from '../services/backupService';
+import { exportFullReportToCsv } from '../utils/habitUtils';
 
 export const SettingsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -30,6 +32,7 @@ export const SettingsScreen: React.FC = () => {
   const { theme, spacing, radius, typography, themeMode, setThemeMode, touchTarget } = useTheme();
   const {
     habits,
+    checkins,
     hapticsEnabled,
     toggleHaptics,
     notificationsEnabled,
@@ -101,6 +104,19 @@ export const SettingsScreen: React.FC = () => {
       await exportBackupViaShare(payload);
     } catch (err) {
       Alert.alert('خطأ', 'حدث خطأ أثناء تصدير النسخة الاحتياطية.');
+    }
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      if (habits.length === 0) {
+        Alert.alert('تنبيه', 'لا توجد عادات مسجلة لتصدير تقرير CSV.');
+        return;
+      }
+      const csvData = exportFullReportToCsv(habits, checkins);
+      await exportCsvViaShare(csvData, 'تقرير عادات وسجلات إنجاز');
+    } catch (err) {
+      Alert.alert('خطأ', 'حدث خطأ أثناء تصدير ملف CSV.');
     }
   };
 
@@ -338,6 +354,15 @@ export const SettingsScreen: React.FC = () => {
               size="sm"
               onPress={() => setIsImportModalOpen(true)}
               style={{ flex: 1 }}
+            />
+          </View>
+
+          <View style={{ marginTop: 8 }}>
+            <Button
+              title="تصدير السجلات إلى ملف إكسل (CSV) 📊"
+              variant="outline"
+              size="sm"
+              onPress={handleExportCsv}
             />
           </View>
 

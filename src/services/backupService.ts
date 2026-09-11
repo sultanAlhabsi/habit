@@ -27,3 +27,24 @@ export const exportBackupViaShare = async (payload: BackupPayload): Promise<bool
     return false;
   }
 };
+
+/**
+ * Triggers native system share dialog with exported CSV content.
+ */
+export const exportCsvViaShare = async (
+  csvContent: string,
+  title = 'سجلات إنجاز - تقرير شامل'
+): Promise<boolean> => {
+  try {
+    const todayStr = dayjs().format('YYYY-MM-DD');
+    await Share.share({
+      title: `${title} (${todayStr}).csv`,
+      message: csvContent,
+    });
+    return true;
+  } catch (error) {
+    console.warn('[BackupService] CSV Share error:', error);
+    return false;
+  }
+};
+

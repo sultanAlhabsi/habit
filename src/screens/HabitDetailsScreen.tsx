@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import {
   calculateHabitConsistencyPattern,
   formatHabitStatsForShare,
   getHabitCheckinNotes,
+  formatArabicDate,
 } from '../utils/habitUtils';
 
 interface HabitDetailsScreenProps {
@@ -76,11 +77,17 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
   const isArchived = Boolean(habit.archivedAt);
   const todayStr = dayjs().format('YYYY-MM-DD');
-  const todayCheckin = checkins.find(
-    (c) => c.habitId === habit.id && c.date === todayStr
+  const initialDate = route.params?.date as string | undefined;
+  const [selectedDate, setSelectedDate] = useState<string>(
+    initialDate && dayjs(initialDate).isValid() ? initialDate : todayStr
   );
-  const todayCount = todayCheckin ? todayCheckin.count : 0;
-  const isCompletedToday = Boolean(todayCheckin?.completed);
+  const isViewingToday = selectedDate === todayStr;
+
+  const activeCheckin = checkins.find(
+    (c) => c.habitId === habit.id && c.date === selectedDate
+  );
+  const activeCount = activeCheckin ? activeCheckin.count : 0;
+  const isCompletedOnDate = Boolean(activeCheckin?.completed);
 
   const completedDates = new Set(
     checkins
@@ -90,7 +97,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
   const stats = calculateHabitStats(habit, checkins);
   const category = getHabitCategory(habit.icon);
-  const streakStatus = getHabitStreakStatus(habit, checkins, todayStr);
+  const streakStatus = getHabitStreakStatus(habit, checkins, selectedDate);
   const milestoneInfo = calculateStreakMilestone(stats.currentStreak);
   const consistencyPattern = calculateHabitConsistencyPattern(habit, checkins, todayStr);
   const allHabitNotes = getHabitCheckinNotes(checkins, habit.id);
@@ -307,7 +314,55 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             </View>
           </View>
 
-          {/* Clean Today Check Toggle (if not archived) */}
+          {/* Date Viewing Indicator (when inspecting past date) */}
+          {!isViewingToday && (
+            <View
+              style={[
+                styles.dateViewingBadge,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.md,
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                <Ionicons name="calendar-outline" size={15} color={theme.primary} />
+                <Text
+                  style={[
+                    typography.caption,
+                    { color: theme.text, marginRight: 6, fontWeight: '600' },
+                  ]}
+                >
+                  سجل تاريخ: {formatArabicDate(selectedDate)}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="العودة لتاريخ اليوم"
+                onPress={() => setSelectedDate(todayStr)}
+                style={({ pressed }) => [
+                  styles.returnTodayBtn,
+                  {
+                    backgroundColor: theme.primaryLight,
+                    borderRadius: radius.sm,
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    typography.caption,
+                    { color: theme.primary, fontWeight: '600', fontSize: 11 },
+                  ]}
+                >
+                  العودة لتاريخ اليوم
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* Clean Date Check Toggle (if not archived) */}
           {!isArchived ? (
             habit.targetCount > 1 ? (
               <View
@@ -327,36 +382,36 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   }}
                 >
                   <Text style={[typography.subMedium, { color: theme.text }]}>
-                    إنجاز اليوم
+                    {isViewingToday ? 'إنجاز اليوم' : `إنجاز ${formatArabicDate(selectedDate)}`}
                   </Text>
                   <Text
                     style={[
                       typography.caption,
                       {
-                        color: isCompletedToday ? theme.primary : theme.textSecondary,
-                        fontWeight: isCompletedToday ? '700' : '500',
+                        color: isCompletedOnDate ? theme.primary : theme.textSecondary,
+                        fontWeight: isCompletedOnDate ? '700' : '500',
                       },
                     ]}
                   >
-                    {todayCount} من {habit.targetCount} {habit.unit} (
-                    {Math.min(100, Math.round((todayCount / habit.targetCount) * 100))}%)
+                    {activeCount} من {habit.targetCount} {habit.unit} (
+                    {Math.min(100, Math.round((activeCount / habit.targetCount) * 100))}%)
                   </Text>
                 </View>
 
                 <View style={{ marginBottom: spacing.sm }}>
                   <ProgressBar
-                    progress={Math.min(100, Math.round((todayCount / habit.targetCount) * 100))}
+                    progress={Math.min(100, Math.round((activeCount / habit.targetCount) * 100))}
                     height={5}
-                    color={isCompletedToday ? theme.primary : theme.text}
+                    color={isCompletedOnDate ? theme.primary : theme.text}
                   />
                 </View>
 
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
                     <Button
-                      title={isCompletedToday ? 'مكتملة بالكامل ✓' : 'إكمال العادة الآن'}
-                      variant={isCompletedToday ? 'outline' : 'primary'}
-                      onPress={() => toggleCheckin(habit.id, todayStr)}
+                      title={isCompletedOnDate ? 'مكتملة بالكامل ✓' : 'إكمال العادة الآن'}
+                      variant={isCompletedOnDate ? 'outline' : 'primary'}
+                      onPress={() => toggleCheckin(habit.id, selectedDate)}
                     />
                   </View>
 
@@ -369,8 +424,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   >
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="زيادة إنجاز اليوم"
-                      onPress={() => incrementCheckin(habit.id, todayStr)}
+                      accessibilityLabel="زيادة إنجاز التاريخ المحدد"
+                      onPress={() => incrementCheckin(habit.id, selectedDate)}
                       style={({ pressed }) => [
                         styles.stepperBtn,
                         {
@@ -384,17 +439,17 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                     </Pressable>
 
                     <Pressable
-                      disabled={todayCount <= 0}
+                      disabled={activeCount <= 0}
                       accessibilityRole="button"
-                      accessibilityLabel="إنقاص إنجاز اليوم"
-                      onPress={() => decrementCheckin(habit.id, todayStr)}
+                      accessibilityLabel="إنقاص إنجاز التاريخ المحدد"
+                      onPress={() => decrementCheckin(habit.id, selectedDate)}
                       style={({ pressed }) => [
                         styles.stepperBtn,
                         {
                           backgroundColor: theme.cardSecondary,
                           borderColor: theme.border,
                           marginRight: 6,
-                          opacity: todayCount <= 0 ? 0.3 : pressed ? 0.6 : 1,
+                          opacity: activeCount <= 0 ? 0.3 : pressed ? 0.6 : 1,
                         },
                       ]}
                     >
@@ -406,9 +461,17 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             ) : (
               <View style={{ marginTop: spacing.md }}>
                 <Button
-                  title={isCompletedToday ? 'مكتملة اليوم ✓' : 'تسجيل إنجاز اليوم'}
-                  variant={isCompletedToday ? 'outline' : 'primary'}
-                  onPress={() => toggleCheckin(habit.id, todayStr)}
+                  title={
+                    isCompletedOnDate
+                      ? isViewingToday
+                        ? 'مكتملة اليوم ✓'
+                        : 'مكتملة بهذا التاريخ ✓'
+                      : isViewingToday
+                      ? 'تسجيل إنجاز اليوم'
+                      : 'تسجيل إنجاز لهذا التاريخ'
+                  }
+                  variant={isCompletedOnDate ? 'outline' : 'primary'}
+                  onPress={() => toggleCheckin(habit.id, selectedDate)}
                 />
               </View>
             )
@@ -471,8 +534,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         {/* Daily Reflection Notes & Habit Diary */}
         <HabitNotesSection
           habit={habit}
-          selectedDate={todayStr}
-          currentCheckin={todayCheckin}
+          selectedDate={selectedDate}
+          currentCheckin={activeCheckin}
           allNotes={allHabitNotes}
           onSaveNote={async (date, note) => {
             await updateCheckinNote(habit.id, date, note);
@@ -493,7 +556,12 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
           completedDates={completedDates}
           habitColor={habit.color}
           createdAt={habit.createdAt}
-          onToggleDate={(dateStr) => !isArchived && toggleCheckin(habit.id, dateStr)}
+          onToggleDate={(dateStr) => {
+            if (!isArchived) {
+              setSelectedDate(dateStr);
+              toggleCheckin(habit.id, dateStr);
+            }
+          }}
           readOnly={isArchived}
         />
 
@@ -612,6 +680,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
+  },
+  dateViewingBadge: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  returnTodayBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
 });
 

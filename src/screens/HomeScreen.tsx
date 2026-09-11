@@ -19,6 +19,7 @@ import { Header } from '../components/common/Header';
 import { DateStrip } from '../components/home/DateStrip';
 import { DailyProgressCard } from '../components/home/DailyProgressCard';
 import { HabitCard } from '../components/home/HabitCard';
+import { QuickNoteModal } from '../components/home/QuickNoteModal';
 import { EmptyState } from '../components/common/EmptyState';
 import {
   HABIT_CATEGORIES,
@@ -50,6 +51,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [selectedCategory, setSelectedCategory] = useState<HabitCategory | 'الكل'>('الكل');
   const [isOffScheduleExpanded, setIsOffScheduleExpanded] = useState(false);
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
+  const [activeNoteModal, setActiveNoteModal] = useState<{
+    habit: any;
+    date: string;
+    initialNote?: string;
+  } | null>(null);
 
   const {
     habits,
@@ -64,6 +70,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     toggleCheckin,
     incrementCheckin,
     decrementCheckin,
+    updateCheckinNote,
+    deleteCheckinNote,
   } = useHabitStore();
 
   const activeSortItem =
@@ -499,7 +507,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                 onDecrement={() => decrementCheckin(habit.id, selectedDate)}
                 onPressDetails={() =>
-                  navigation.navigate('HabitDetails', { habitId: habit.id })
+                  navigation.navigate('HabitDetails', { habitId: habit.id, date: selectedDate })
+                }
+                onPressNote={() =>
+                  setActiveNoteModal({
+                    habit,
+                    date: selectedDate,
+                    initialNote: checkin?.note,
+                  })
                 }
               />
             );
@@ -563,7 +578,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                     onDecrement={() => decrementCheckin(habit.id, selectedDate)}
                     onPressDetails={() =>
-                      navigation.navigate('HabitDetails', { habitId: habit.id })
+                      navigation.navigate('HabitDetails', { habitId: habit.id, date: selectedDate })
+                    }
+                    onPressNote={() =>
+                      setActiveNoteModal({
+                        habit,
+                        date: selectedDate,
+                        initialNote: checkin?.note,
+                      })
                     }
                   />
                 );
@@ -571,6 +593,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           </View>
         )}
       </ScrollView>
+
+      {/* Quick Daily Reflection Note Modal */}
+      <QuickNoteModal
+        visible={activeNoteModal !== null}
+        habit={activeNoteModal?.habit || null}
+        date={activeNoteModal?.date || selectedDate}
+        initialNote={activeNoteModal?.initialNote}
+        onClose={() => setActiveNoteModal(null)}
+        onSave={async (note) => {
+          if (activeNoteModal) {
+            await updateCheckinNote(activeNoteModal.habit.id, activeNoteModal.date, note);
+          }
+        }}
+        onDelete={async () => {
+          if (activeNoteModal) {
+            await deleteCheckinNote(activeNoteModal.habit.id, activeNoteModal.date);
+          }
+        }}
+      />
 
       {/* Sort Options Modal */}
       <Modal

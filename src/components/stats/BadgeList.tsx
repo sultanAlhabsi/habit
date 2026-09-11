@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
+import { toArabicNumerals } from '../../utils/habitUtils';
 
 interface Milestone {
   id: string;
@@ -35,21 +36,21 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       title: 'البداية',
       desc: 'إنشاء أول عادة في التطبيق',
       unlocked: totalHabits > 0,
-      progressText: totalHabits > 0 ? 'مكتمل' : '٠/١ عادة',
+      progressText: totalHabits > 0 ? 'مكتمل' : `${toArabicNumerals(Math.min(1, totalHabits))}/١ عادة`,
     },
     {
       id: 'first_checkin',
       title: 'الخطوة الأولى',
       desc: 'تسجيل أول إنجاز لعادة',
       unlocked: totalCheckins >= 1,
-      progressText: totalCheckins >= 1 ? 'مكتمل' : '٠/١ إنجاز',
+      progressText: totalCheckins >= 1 ? 'مكتمل' : `${toArabicNumerals(Math.min(1, totalCheckins))}/١ إنجاز`,
     },
     {
       id: 'streak_3',
       title: '٣ أيام متتالية',
       desc: 'الالتزام بعادة لمدة 3 أيام متتالية',
       unlocked: bestStreak >= 3,
-      progressText: bestStreak >= 3 ? 'مكتمل' : `${bestStreak}/٣ أيام`,
+      progressText: bestStreak >= 3 ? 'مكتمل' : `${toArabicNumerals(Math.min(3, bestStreak))}/٣ أيام`,
     },
     {
       id: 'perfect_day',
@@ -66,7 +67,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       title: 'أسبوع كامل',
       desc: 'الاستمرار بعادة لمدة 7 أيام متتالية',
       unlocked: bestStreak >= 7,
-      progressText: bestStreak >= 7 ? 'مكتمل' : `${Math.min(7, bestStreak)}/٧ أيام`,
+      progressText: bestStreak >= 7 ? 'مكتمل' : `${toArabicNumerals(Math.min(7, bestStreak))}/٧ أيام`,
     },
     {
       id: 'checkins_50',
@@ -74,7 +75,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       desc: 'تسجيل 50 إنجازًا إجماليًا',
       unlocked: totalCheckins >= 50,
       progressText:
-        totalCheckins >= 50 ? 'مكتمل' : `${Math.min(50, totalCheckins)}/٥٠ إنجاز`,
+        totalCheckins >= 50 ? 'مكتمل' : `${toArabicNumerals(Math.min(50, totalCheckins))}/٥٠ إنجاز`,
     },
     {
       id: 'streak_30',
@@ -82,7 +83,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       desc: 'الاستمرار لمدة 30 يومًا متتالية',
       unlocked: bestStreak >= 30,
       progressText:
-        bestStreak >= 30 ? 'مكتمل' : `${Math.min(30, bestStreak)}/٣٠ يوم`,
+        bestStreak >= 30 ? 'مكتمل' : `${toArabicNumerals(Math.min(30, bestStreak))}/٣٠ يوم`,
     },
     {
       id: 'streak_66',
@@ -90,7 +91,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       desc: 'الاستمرار لمدة 66 يومًا وتثبيت السلوك العصبي',
       unlocked: bestStreak >= 66,
       progressText:
-        bestStreak >= 66 ? 'مكتمل' : `${Math.min(66, bestStreak)}/٦٦ يوم`,
+        bestStreak >= 66 ? 'مكتمل' : `${toArabicNumerals(Math.min(66, bestStreak))}/٦٦ يوم`,
     },
     {
       id: 'century_club',
@@ -98,7 +99,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       desc: 'تسجيل 100 إنجاز إجمالي في التطبيق',
       unlocked: totalCheckins >= 100,
       progressText:
-        totalCheckins >= 100 ? 'مكتمل' : `${Math.min(100, totalCheckins)}/١٠٠ إنجاز`,
+        totalCheckins >= 100 ? 'مكتمل' : `${toArabicNumerals(Math.min(100, totalCheckins))}/١٠٠ إنجاز`,
     },
     {
       id: 'checkins_200',
@@ -106,7 +107,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       desc: 'تسجيل 200 إنجاز إجمالي في التطبيق',
       unlocked: totalCheckins >= 200,
       progressText:
-        totalCheckins >= 200 ? 'مكتمل' : `${Math.min(200, totalCheckins)}/٢٠٠ إنجاز`,
+        totalCheckins >= 200 ? 'مكتمل' : `${toArabicNumerals(Math.min(200, totalCheckins))}/٢٠٠ إنجاز`,
     },
     {
       id: 'streak_365',
@@ -114,7 +115,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       desc: 'الاستمرار لمدة عام كامل (365 يومًا) متتالية',
       unlocked: bestStreak >= 365,
       progressText:
-        bestStreak >= 365 ? 'مكتمل' : `${Math.min(365, bestStreak)}/٣٦٥ يوم`,
+        bestStreak >= 365 ? 'مكتمل' : `${toArabicNumerals(Math.min(365, bestStreak))}/٣٦٥ يوم`,
     },
   ];
 

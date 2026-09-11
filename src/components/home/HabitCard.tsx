@@ -21,6 +21,7 @@ interface HabitCardProps {
   onPressDetails: () => void;
   onIncrement?: () => void;
   onDecrement?: () => void;
+  onPressNote?: () => void;
 }
 
 export const HabitCard: React.FC<HabitCardProps> = ({
@@ -35,6 +36,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   onPressDetails,
   onIncrement,
   onDecrement,
+  onPressNote,
 }) => {
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
   const isMultiTarget = habit.targetCount > 1;
@@ -367,31 +369,52 @@ export const HabitCard: React.FC<HabitCardProps> = ({
               </Text>
             )}
 
-            {hasNote && (
-              <View
-                accessibilityLabel="توجد ملاحظة مسجلة لهذا اليوم"
-                style={{
-                  flexDirection: 'row-reverse',
-                  alignItems: 'center',
-                  marginRight: 6,
-                }}
+            {hasNote ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="عرض أو تعديل ملاحظة اليوم"
+                onPress={onPressNote}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.noteBadgePressable,
+                  {
+                    backgroundColor: theme.primaryLight,
+                    borderRadius: radius.sm,
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
               >
-                <Ionicons name="document-text-outline" size={12} color={theme.primary} />
+                <Ionicons name="document-text" size={11} color={theme.primary} />
                 <Text
                   style={[
                     typography.caption,
                     {
                       color: theme.primary,
                       fontSize: 10,
-                      marginRight: 2,
+                      marginRight: 3,
                       fontWeight: '600',
                     },
                   ]}
                 >
                   ملاحظة
                 </Text>
-              </View>
-            )}
+              </Pressable>
+            ) : onPressNote && !isFuture ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إضافة ملاحظة سريعة لليوم"
+                onPress={onPressNote}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.quickAddNoteBtn,
+                  {
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="create-outline" size={12} color={theme.textMuted} />
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
@@ -493,6 +516,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteBadgePressable: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginRight: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  quickAddNoteBtn: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    marginRight: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },

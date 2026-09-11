@@ -16,6 +16,7 @@ import {
   calculateWeekAdherence,
   formatWeekRangeArabic,
   formatOverallStatsForShare,
+  formatArabicDaysCount,
 } from '../utils/habitUtils';
 
 export const StatisticsScreen: React.FC = () => {
@@ -174,7 +175,7 @@ export const StatisticsScreen: React.FC = () => {
               >
                 <View style={styles.rankLeft}>
                   <Text style={[typography.subMedium, { color: theme.text }]}>
-                    {item.stats.currentStreak} {item.stats.currentStreak === 1 ? 'يوم' : 'أيام'} 🔥
+                    {formatArabicDaysCount(item.stats.currentStreak)} 🔥
                   </Text>
                 </View>
 

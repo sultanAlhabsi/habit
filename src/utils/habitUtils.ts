@@ -67,6 +67,15 @@ export const normalizeArabicNumerals = (input: string | number | null | undefine
 };
 
 /**
+ * Converts standard ASCII digits (0-9) to Eastern Arabic numerals (٠-٩).
+ */
+export const toArabicNumerals = (input: number | string | null | undefined): string => {
+  if (input === null || input === undefined) return '';
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  return String(input).replace(/[0-9]/g, (w) => arabicDigits[Number(w)]);
+};
+
+/**
  * Returns the category name for a given habit based on its icon name
  */
 export const getHabitCategory = (iconName?: string): string => {
@@ -1080,4 +1089,195 @@ export const formatHabitNotesForShare = (
     'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
   ].join('\n');
 };
+
+/**
+ * Formats a count of days adhering to authentic Arabic grammar rules:
+ * 0 -> '0 يوم'
+ * 1 -> 'يوم واحد'
+ * 2 -> 'يومان'
+ * 3..10 -> 'X أيام'
+ * 11+ -> 'X يوم'
+ */
+export const formatArabicDaysCount = (count: number): string => {
+  const safe = Math.max(0, Math.floor(count || 0));
+  if (safe === 0) return '0 يوم';
+  if (safe === 1) return 'يوم واحد';
+  if (safe === 2) return 'يومان';
+  if (safe >= 3 && safe <= 10) return `${safe} أيام`;
+  return `${safe} يوم`;
+};
+
+/**
+ * Generic Arabic counting helper with singular, dual, plural, and over-ten forms.
+ */
+export const formatArabicCount = (
+  count: number,
+  singular: string,
+  dual: string,
+  plural: string,
+  overTenUnit?: string
+): string => {
+  const safe = Math.max(0, Math.floor(count || 0));
+  const fallbackUnit = overTenUnit || singular;
+  if (safe === 0) return `0 ${fallbackUnit}`;
+  if (safe === 1) return singular;
+  if (safe === 2) return dual;
+  if (safe >= 3 && safe <= 10) return `${safe} ${plural}`;
+  return `${safe} ${fallbackUnit}`;
+};
+
+/**
+ * Escapes a cell value according to RFC 4180 CSV standard.
+ */
+export const escapeCsvCell = (value: string | number | boolean | null | undefined): string => {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+};
+
+/**
+ * Exports all checkins and daily reflection notes to standard CSV format.
+ * Prepends UTF-8 BOM (\uFEFF) to ensure Arabic text displays correctly in Excel.
+ */
+export const exportCheckinsToCsv = (
+  habits: Habit[],
+  checkins: HabitCheckin[]
+): string => {
+  const habitMap = new Map<string, Habit>();
+  habits.forEach((h) => habitMap.set(h.id, h));
+
+  const headers = [
+    'تاريخ الإنجاز',
+    'اسم العادة',
+    'القسم',
+    'الحالة',
+    'العدد المنجز',
+    'الهدف اليومي',
+    'الوحدة',
+    'الملاحظات والخواطر',
+    'تاريخ التوثيق',
+  ];
+
+  const sortedCheckins = [...checkins].sort((a, b) => {
+    const dateComp = b.date.localeCompare(a.date);
+    if (dateComp !== 0) return dateComp;
+    const hA = habitMap.get(a.habitId)?.name || '';
+    const hB = habitMap.get(b.habitId)?.name || '';
+    return hA.localeCompare(hB);
+  });
+
+  const rows: string[] = [headers.map(escapeCsvCell).join(',')];
+
+  for (const c of sortedCheckins) {
+    const habit = habitMap.get(c.habitId);
+    const habitName = habit?.name || c.habitId;
+    const category = getHabitCategory(habit?.icon);
+    const statusText = c.completed ? 'مكتمل' : 'قيد الإنجاز';
+    const targetCount = habit?.targetCount ?? 1;
+    const unit = habit?.unit ?? 'مرة';
+    const note = c.note || '';
+    const updatedAt = c.updatedAt || '';
+
+    rows.push(
+      [
+        c.date,
+        habitName,
+        category,
+        statusText,
+        c.count,
+        targetCount,
+        unit,
+        note,
+        updatedAt,
+      ]
+        .map(escapeCsvCell)
+        .join(',')
+    );
+  }
+
+  return '\uFEFF' + rows.join('\r\n');
+};
+
+/**
+ * Exports a summary of all habits with streak metrics and adherence to CSV.
+ */
+export const exportHabitsSummaryToCsv = (
+  habits: Habit[],
+  checkins: HabitCheckin[]
+): string => {
+  const headers = [
+    'اسم العادة',
+    'القسم',
+    'نوع التكرار',
+    'الهدف اليومي',
+    'الوحدة',
+    'السلسلة الحالية',
+    'أعلى سلسلة',
+    'إجمالي الإنجازات',
+    'نسبة الالتزام %',
+    'الحالة',
+    'وقت التذكير',
+    'مثبتة',
+    'تاريخ الإنشاء',
+  ];
+
+  const rows: string[] = [headers.map(escapeCsvCell).join(',')];
+
+  for (const habit of habits) {
+    const stats = calculateHabitStats(habit, checkins);
+    const category = getHabitCategory(habit.icon);
+    const freqLabel = habit.frequency === 'daily' ? 'يومي' : 'أيام محددة';
+    const statusLabel = habit.archivedAt ? 'مؤرشفة' : habit.isActive ? 'نشطة' : 'متوقفة';
+    const isPinnedLabel = habit.isPinned ? 'نعم' : 'لا';
+    const reminderLabel = habit.reminderTime || 'بدون تذكير';
+
+    rows.push(
+      [
+        habit.name,
+        category,
+        freqLabel,
+        habit.targetCount,
+        habit.unit,
+        stats.currentStreak,
+        stats.bestStreak,
+        stats.totalCompletions,
+        `${stats.completionRate}%`,
+        statusLabel,
+        reminderLabel,
+        isPinnedLabel,
+        habit.createdAt,
+      ]
+        .map(escapeCsvCell)
+        .join(',')
+    );
+  }
+
+  return '\uFEFF' + rows.join('\r\n');
+};
+
+/**
+ * Exports a comprehensive report containing both habits summary and detailed checkin records.
+ */
+export const exportFullReportToCsv = (
+  habits: Habit[],
+  checkins: HabitCheckin[]
+): string => {
+  const habitsCsv = exportHabitsSummaryToCsv(habits, checkins).replace(/^\uFEFF/, '');
+  const checkinsCsv = exportCheckinsToCsv(habits, checkins).replace(/^\uFEFF/, '');
+
+  return (
+    '\uFEFF' +
+    '# ملخص أداء العادات' +
+    '\r\n' +
+    habitsCsv +
+    '\r\n\r\n' +
+    '# سجلات الإنجاز والملاحظات اليومية' +
+    '\r\n' +
+    checkinsCsv
+  );
+};
+
 

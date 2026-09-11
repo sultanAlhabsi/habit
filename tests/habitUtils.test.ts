@@ -28,6 +28,13 @@ import {
   formatHabitNotesForShare,
   STREAK_MILESTONES,
   normalizeArabicText,
+  formatArabicDaysCount,
+  formatArabicCount,
+  toArabicNumerals,
+  escapeCsvCell,
+  exportCheckinsToCsv,
+  exportHabitsSummaryToCsv,
+  exportFullReportToCsv,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -1083,6 +1090,114 @@ test('calculateHabitStats: computes streaks beyond 365 days without artificial t
   const stats = calculateHabitStats(habit, checkins, '2026-06-15');
   assert.ok(stats.currentStreak >= 390, `Current streak should be at least 391, got ${stats.currentStreak}`);
   assert.ok(stats.bestStreak >= 390, `Best streak should be at least 391, got ${stats.bestStreak}`);
+});
+
+test('formatArabicDaysCount: adheres strictly to Arabic grammar rules', () => {
+  assert.equal(formatArabicDaysCount(0), '0 يوم');
+  assert.equal(formatArabicDaysCount(1), 'يوم واحد');
+  assert.equal(formatArabicDaysCount(2), 'يومان');
+  assert.equal(formatArabicDaysCount(3), '3 أيام');
+  assert.equal(formatArabicDaysCount(5), '5 أيام');
+  assert.equal(formatArabicDaysCount(10), '10 أيام');
+  assert.equal(formatArabicDaysCount(11), '11 يوم');
+  assert.equal(formatArabicDaysCount(21), '21 يوم');
+  assert.equal(formatArabicDaysCount(66), '66 يوم');
+  assert.equal(formatArabicDaysCount(100), '100 يوم');
+  assert.equal(formatArabicDaysCount(365), '365 يوم');
+});
+
+test('formatArabicCount: formats generic count forms accurately', () => {
+  const result = formatArabicCount(5, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
+  assert.equal(result, '5 عادات');
+  const single = formatArabicCount(1, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
+  assert.equal(single, 'عادة واحدة');
+  const dual = formatArabicCount(2, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
+  assert.equal(dual, 'عادتان');
+  const overTen = formatArabicCount(15, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
+  assert.equal(overTen, '15 عادة');
+});
+
+test('toArabicNumerals: converts numbers to Eastern Arabic numerals correctly', () => {
+  assert.equal(toArabicNumerals(0), '٠');
+  assert.equal(toArabicNumerals(1), '١');
+  assert.equal(toArabicNumerals(123), '١٢٣');
+  assert.equal(toArabicNumerals('50/100'), '٥٠/١٠٠');
+  assert.equal(toArabicNumerals(null), '');
+  assert.equal(toArabicNumerals(undefined), '');
+});
+
+test('escapeCsvCell: handles regular text, commas, quotes, and newlines', () => {
+  assert.equal(escapeCsvCell('قراءة كتاب'), 'قراءة كتاب');
+  assert.equal(escapeCsvCell(42), '42');
+  assert.equal(escapeCsvCell('نص يحتوي على , فاصلة'), '"نص يحتوي على , فاصلة"');
+  assert.equal(escapeCsvCell('قال: "مرحبا"'), '"قال: ""مرحبا"""');
+  assert.equal(escapeCsvCell('سطر أول\nسطر ثان'), '"سطر أول\nسطر ثان"');
+  assert.equal(escapeCsvCell(null), '');
+  assert.equal(escapeCsvCell(undefined), '');
+});
+
+test('exportCheckinsToCsv: outputs valid CSV with UTF-8 BOM and correct checkin headers', () => {
+  const habit = createMockHabit({ id: 'h1', name: 'قراءة القرآن' });
+  const checkin: HabitCheckin = {
+    id: 'c1',
+    habitId: 'h1',
+    date: '2026-09-01',
+    count: 1,
+    completed: true,
+    note: 'ملاحظة مع "اقتباس", وفاصلة',
+    updatedAt: '2026-09-01T10:00:00.000Z',
+  };
+  const csv = exportCheckinsToCsv([habit], [checkin]);
+
+  // Must start with UTF-8 BOM for Excel Arabic compatibility
+  assert.ok(csv.startsWith('\uFEFF'));
+  // Headers check
+  assert.ok(csv.includes('تاريخ الإنجاز,اسم العادة,القسم,الحالة,العدد المنجز,الهدف اليومي,الوحدة,الملاحظات والخواطر,تاريخ التوثيق'));
+  // Habit name check
+  assert.ok(csv.includes('قراءة القرآن'));
+  assert.ok(csv.includes('2026-09-01'));
+  assert.ok(csv.includes('مكتمل'));
+  // Quoted note check
+  assert.ok(csv.includes('""اقتباس""'));
+});
+
+test('exportHabitsSummaryToCsv: outputs summary metrics for each habit', () => {
+  const habit1 = createMockHabit({ id: 'h1', name: 'قراءة القرآن' });
+  const habit2 = createMockHabit({ id: 'h2', name: 'ممارسة الرياضة' });
+  const checkin: HabitCheckin = {
+    id: 'c1',
+    habitId: 'h1',
+    date: '2026-09-01',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-01T10:00:00.000Z',
+  };
+  const csv = exportHabitsSummaryToCsv([habit1, habit2], [checkin]);
+
+  assert.ok(csv.startsWith('\uFEFF'));
+  assert.ok(csv.includes('اسم العادة,القسم,نوع التكرار,الهدف اليومي,الوحدة,السلسلة الحالية,أعلى سلسلة,إجمالي الإنجازات,نسبة الالتزام %,الحالة,وقت التذكير,مثبتة,تاريخ الإنشاء'));
+  assert.ok(csv.includes('قراءة القرآن'));
+  assert.ok(csv.includes('ممارسة الرياضة'));
+  assert.ok(csv.includes('نشطة'));
+});
+
+test('exportFullReportToCsv: generates combined spreadsheet report with sections', () => {
+  const habit1 = createMockHabit({ id: 'h1', name: 'قراءة القرآن' });
+  const habit2 = createMockHabit({ id: 'h2', name: 'ممارسة الرياضة' });
+  const checkin: HabitCheckin = {
+    id: 'c1',
+    habitId: 'h1',
+    date: '2026-09-01',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-01T10:00:00.000Z',
+  };
+  const csv = exportFullReportToCsv([habit1, habit2], [checkin]);
+
+  assert.ok(csv.startsWith('\uFEFF'));
+  assert.ok(csv.includes('# ملخص أداء العادات'));
+  assert.ok(csv.includes('# سجلات الإنجاز والملاحظات اليومية'));
+  assert.ok(csv.includes('قراءة القرآن'));
 });
 
 

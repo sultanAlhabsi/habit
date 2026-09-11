@@ -154,3 +154,4 @@ export const mergeBackupData = (
     checkins: Array.from(checkinMap.values()),
   };
 };
+
