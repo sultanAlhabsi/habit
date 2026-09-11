@@ -1009,6 +1009,145 @@ npm run typecheck -> tsc --noEmit -> 0 errors!
 2. **الاحتفاظ بالخواطر عند التراجع العرضي:** سلوك التراجع لا يقوم بمحو الخاطرة التي قد يكون كتبها المستخدم بعناية، بل يعلق حالة الإنجاز ويحتفظ بالنص في السجل.
 3. **عزل مكونات التدوين والتأمل:** فصل `HabitNotesSection` إلى مكون مستقل تماماً يسهل صيانته واختباره وتطويره مستقبلاً.
 
+---
+
+## الدورة العاشرة (Cycle 10) - تثبيت العادات ذات الأولوية القصوى ومحطة العام والتطبيع العربي الذكي
+
+### 1. فحص المشروع واكتشاف المشاكل والفرص (Pre-Cycle Review & Discovery)
+- **الحالة قبل الدورة:** 48/48 اختباراً ناجحاً و0 أخطاء TypeScript.
+- **الفرص والمشاكل المكتشفة:**
+  1. **غياب خاصية تثبيت العادات (Habit Pinning / Cornerstone Habits):** في إدارة العادات اليومية، توجد دائماً عادات محورية أساسية (كقراءة القرآن أو شرب الماء أو الصلاة في وقتها) يرغب المستخدم في بقائها دائماً في أعلى قائمته اليومية بغض النظر عن خيار الترتيب المفعل (pending first أو reminder time أو streak).
+  2. **تقييد غير مبرر لحساب السلاسل المتصلة بسنة واحدة (365 Days Clamp Bug):** حلقة احتساب السلسلة السابقة في `calculateHabitStats` كانت تضع حداً أقصى للاسترجاع `Math.min(365, ...)` مما كان يقطع السلاسل المستمرة لمستخدمين ملتزمين لأكثر من عام كامل ويمنع التقدير العادل للاستمرارية الطويلة.
+  3. **غياب محطة السنة الكاملة في نظام الإنجازات:** كانت أعلى محطة في `STREAK_MILESTONES` هي نادي المئة (100 يوم)، في حين أن الاستمرار لعام كامل (365 يوماً) يمثل أعلى درجات الإنجاز والتحول السلوكي الذاتي.
+  4. **صعوبة البحث باللغة العربية بسبب اختلاف كتابة الأحرف:** اختلاف كتابة الهمزات (أ، إ، آ، ٱ)، والتاء المربوطة والهاء (ة vs ه)، والألف المقصورة والياء (ى vs ي)، والتشكيل، كان يؤدي لعدم ظهور العادة عند كتابة المستخدم لها بطريقة إملائية مختلفة في حقل البحث.
+
+---
+
+### 2. التحسينات المنفذة (Implemented Enhancements & Architecture)
+
+#### أ. معمارية تثبيت العادات (Cornerstone Habit Pinning)
+1. **تحديث نموذج البيانات (`Habit` Interface):**
+   - إضافة خاصية `isPinned?: boolean` إلى `Habit` في `src/types/habit.ts`.
+2. **ترقية قاعدة البيانات وترحيل الحقول (`database.ts`):**
+   - إضافة عمود `is_pinned INTEGER NOT NULL DEFAULT 0` إلى جدول `habits`.
+   - تنفيذ الترحيل الآمن تلقائياً: `ALTER TABLE habits ADD COLUMN is_pinned INTEGER DEFAULT 0;`.
+   - تحديث `fetchAllHabits` و`saveHabitRecord` و`seedDatabaseInternal` لقراءة وحفظ حالة التثبيت مع الحفاظ على التوافق التام.
+3. **إدارة الحالة في Zustand (`useHabitStore.ts`):**
+   - إضافة إجراء `togglePinHabit(habitId)` مع التحديث الفوري (Optimistic Update) والحفظ المستمر بقاعدة البيانات.
+4. **تحديث منطق الفرز والترتيب (`sortHabits` in `habitUtils.ts`):**
+   - إعطاء العادات المثبتة أولوية مطلقة في صدارة القائمة عبر كافة أنماط الترتيب (`default`، `pending_first`، `reminder_time`، `streak`)، مع تطبيق الفرز الثانوي بدقة بين العادات ذات نفس حالة التثبيت.
+
+#### ب. تكامل الواجهات لتثبيت العادات (UI Integration)
+1. **بطاقة العادة (`HabitCard.tsx`):**
+   - إضافة شارة التثبيت الأنيقة `pinnedBadge` مع أيقونة دبوس `pin` بجوار اسم العادة عند كونها مثبتة، مع توفير تسمية وصولية مخصصة `accessibilityLabel="عادة مثبتة ذات أولوية"`.
+2. **شاشة تفاصيل العادة (`HabitDetailsScreen.tsx`):**
+   - إضافة زر التثبيت السريع في شريط الرأس بالأيقونة التفاعلية (`pin` / `pin-outline`).
+   - إضافة زر تثبيت/إلغاء تثبيت في قائمة الإجراءات السريعة.
+3. **شاشة إنشاء وتعديل العادة (`AddEditHabitScreen.tsx`):**
+   - إضافة بطاقة مخصصة لاختيار وتفعيل "تثبيت في أعلى القائمة" مع شارة توضيحية ونبذة تعريفية، وحفظ الحالة عند الإنشاء والتعديل.
+
+#### ج. فك قيد سلاسل الإنجاز وإضافة محطة العام (Milestone Tier 365)
+1. **توسيع مدى تتبع السلاسل:**
+   - تعديل حلقة فحص السلاسل في `calculateHabitStats` لدعم حتى 3650 يوماً (10 سنوات كاملة) دون اقتطاع.
+2. **إضافة محطة الـ 365 يوماً (`tier_365`):**
+   - إضافة `tier_365` باسم "سنة التميز والأسطورة" بأيقونة `medal-outline` ووصف: "عام كامل من الإنجاز والتحول الإيجابي الشامل".
+3. **تحديث شارات الإنجاز (`BadgeList.tsx`):**
+   - إضافة وسام "العادة التلقائية" (66 يوماً)، ووسام "سيد العادات" (200 إنجاز)، ووسام "سنة التميز" (365 يوماً متتالية).
+
+#### د. التطبيع الذكي للغة العربية في البحث (`normalizeArabicText`)
+1. **دالة تطبيع النصوص العربية:**
+   - توحيد همزات الألف (أ، إ، آ، ٱ -> ا).
+   - توحيد التاء المربوطة والهاء (ة -> ه).
+   - توحيد الألف المقصورة والياء (ى -> ي).
+   - إزالة حركات التشكيل والتنوين بالكامل.
+2. **تحسين `filterHabitsByQuery`:**
+   - تطبيق التطبيع على كل من استعلام البحث واسم العادة ووصفها، مما يمنح تجربة بحث عربية طبيعية وسريعة ودقيقة.
+
+#### هـ. التحقق والتوافقية في النسخ الاحتياطي (`backupUtils.ts`)
+1. **تأكيد سلامة حقل `isPinned`:**
+   - إضافة التحقق الصارم من نوع الحقل عند استيراد النسخ الاحتياطية JSON لمنع أي بيانات تالفة.
+
+---
+
+### 3. الاختبارات والتحقق (Verification & Regression Testing)
+- **اختبارات جديدة مضافة:** 6 اختبارات جديدة تغطي:
+  - التحقق من تطبيع الأحرف والتشكيل باللغة العربية (`normalizeArabicText`).
+  - التحقق من البحث العربي المرن بمختلف أشكال الحروف والتشكيل (`filterHabitsByQuery`).
+  - التحقق من أولوية العادات المثبتة عبر كافة أنماط الترتيب (`sortHabits`).
+  - التحقق من تدرج المحطات والوصول لمحطة 365 يوماً (`calculateStreakMilestone`).
+  - التحقق من حساب السلاسل لما بعد 365 يوماً (مثل 390+ يوم).
+  - التحقق من سلامة حقل `isPinned` في النسخ الاحتياطي واستيراده.
+
+```bash
+# نتائج اختبارات Node Test Runner الكاملة:
+✔ createBackupPayload: constructs standard schema envelope (7.2ms)
+✔ validateBackupJson: validates well-formed JSON string (1.5ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.1ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.8ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.8ms)
+✔ validateBackupJson: correctly validates and preserves checkin note field (1.3ms)
+✔ validateBackupJson: correctly validates and preserves habit isPinned field (1.6ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (14.7ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (2.0ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (1.1ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (2.1ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (12.4ms)
+✔ calculateHabitStats: increments streak when today is completed (5.3ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (4.5ms)
+✔ calculateHabitStats: paused habit retains historical stats (4.2ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.2ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (5.4ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (2.3ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (10.2ms)
+✔ formatArabicDate: formats correctly in Arabic (0.5ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (1.2ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.5ms)
+✔ calculateCheckinProgress: calculates progress, percentage, and completion status accurately (0.8ms)
+✔ getNextProgressCount: clamps increment and decrement safely within [0, targetCount] (0.5ms)
+✔ formatDailySummaryForShare: generates formatted Arabic summary for native sharing (1.2ms)
+✔ formatDailySummaryForShare: handles day with no due habits gracefully (0.4ms)
+✔ formatOverallStatsForShare: generates clean Arabic overall milestones report (31.3ms)
+✔ normalizeArabicNumerals: converts Eastern Arabic and Persian numerals to Western digits (1.8ms)
+✔ getHabitCategory: accurately maps icons to categories (0.4ms)
+✔ getHabitStreakStatus: determines correct streak status on completed, rest, and pending days (0.9ms)
+✔ sortHabits: sorts habits according to pending_first, reminder_time, streak, and default (67.3ms)
+✔ calculateMonthAdherence: computes correct metrics for a full month (3.0ms)
+✔ calculateMonthAdherence: handles empty habits list safely without NaN or division by zero (0.7ms)
+✔ formatMonthlySummaryForShare: formats month summary correctly for native sharing (0.8ms)
+✔ calculateStreakMilestone: computes correct tier and remaining days for streak progression (0.7ms)
+✔ calculateHabitConsistencyPattern: calculates adherence distribution across all 7 days of the week (2.5ms)
+✔ calculateHabitConsistencyPattern: handles new habit with no completions gracefully (0.5ms)
+✔ formatHabitStatsForShare: creates detailed Arabic share text for a specific habit (0.6ms)
+✔ getHabitCheckinNotes: extracts non-empty notes sorted descending by date (0.5ms)
+✔ formatHabitNotesForShare: formats Arabic reflection diary summary correctly (0.6ms)
+✔ normalizeArabicText: normalizes Arabic orthography, letters and strips diacritics (0.6ms)
+✔ filterHabitsByQuery: matches Arabic queries regardless of Alef forms, Taa Marbuta, or Tashkeel (0.5ms)
+✔ sortHabits: prioritizes pinned habits at the top across all sort modes (0.5ms)
+✔ calculateStreakMilestone: recognizes tier_365 for year-long streaks and beyond (0.3ms)
+✔ calculateHabitStats: computes streaks beyond 365 days without artificial truncation (48.6ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (5.0ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (2.7ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (0.7ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.5ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.2ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (0.7ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (1.2ms)
+✔ parseReminderTime: supports Arabic-Indic and Persian numeral strings (2.2ms)
+ℹ tests 54 | suites 0 | pass 54 | fail 0 | cancelled 0 | duration_ms 700ms
+
+# فحص أنواع TypeScript:
+npm run typecheck -> tsc --noEmit -> 0 errors!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة العاشرة
+1. **الأولوية المطلقة لتثبيت العادات مع الحفاظ على الفرز الداخلي:** تم تصميم الفرز بحيث تطفو العادات المثبتة أولاً، مع استمرار تطبيق خيار الترتيب المختار (حسب الوقت أو الإنجاز أو السلسلة) بشكل مستقل داخل مجموعة المثبتة ثم مجموعة غير المثبتة.
+2. **دعم السلاسل الطويلة دون التأثير على الأداء:** إزالة القيد المسبق لسنة واحدة مع وضع حد أمان سخي جداً (3650 يوماً / 10 سنوات) يحمي التطبيق من أي حلقات لا نهائية في حال اختلال ساعة الجهاز مع منح المستخدمين أقصى درجات المصداقية في سلاسلهم.
+3. **التطبيع اللغوي العربي الصامت:** معالجة الإدخالات تلقائياً دون إجبار المستخدم على نمط كتابة معين يعزز من قابلية الوصول وسلاسة الاستخدام (Usability) لدى الجمهور العربي.
+
+
 
 
 

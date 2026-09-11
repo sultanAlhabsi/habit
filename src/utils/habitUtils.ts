@@ -150,7 +150,7 @@ export const calculateHabitStats = (
     checkDate = today.subtract(1, 'day');
   }
 
-  const maxBackwardDays = Math.min(365, today.diff(earliestDate, 'day') + 1);
+  const maxBackwardDays = Math.min(3650, Math.max(1, today.diff(earliestDate, 'day') + 1));
   for (let i = 0; i < maxBackwardDays; i++) {
     if (checkDate.isBefore(earliestDate)) break;
     const dateStr = checkDate.format('YYYY-MM-DD');
@@ -414,17 +414,36 @@ export const formatWeekRangeArabic = (referenceDate: string | dayjs.Dayjs): stri
 };
 
 /**
- * Filter habits by search query matching name or description
+ * Normalizes Arabic text for robust search matching:
+ * - Unifies Alef variants (أ, إ, آ, ٱ) -> ا
+ * - Unifies Taa Marbuta (ة) -> ه
+ * - Unifies Alif Maqsura (ى) -> ي
+ * - Strips Arabic diacritics (tashkeel / harakat)
+ * - Lowercases and trims whitespace
+ */
+export const normalizeArabicText = (text: string): string => {
+  if (!text) return '';
+  return text
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .toLowerCase()
+    .trim();
+};
+
+/**
+ * Filter habits by search query matching name or description with Arabic normalization
  */
 export const filterHabitsByQuery = (habits: Habit[], query: string): Habit[] => {
-  const trimmed = query.trim().toLowerCase();
-  if (!trimmed) return habits;
+  const normalizedQuery = normalizeArabicText(query);
+  if (!normalizedQuery) return habits;
 
-  return habits.filter(
-    (h) =>
-      h.name.toLowerCase().includes(trimmed) ||
-      (h.description && h.description.toLowerCase().includes(trimmed))
-  );
+  return habits.filter((h) => {
+    const normName = normalizeArabicText(h.name);
+    const normDesc = h.description ? normalizeArabicText(h.description) : '';
+    return normName.includes(normalizedQuery) || normDesc.includes(normalizedQuery);
+  });
 };
 
 export interface CheckinProgress {
@@ -613,7 +632,7 @@ export const sortHabits = (
   allCheckins: HabitCheckin[],
   selectedDate: string
 ): Habit[] => {
-  if (sortOption === 'default' || habits.length <= 1) {
+  if (habits.length <= 1) {
     return [...habits];
   }
 
@@ -624,6 +643,14 @@ export const sortHabits = (
   );
 
   return [...habits].sort((a, b) => {
+    // 1. Pinned habits always come first
+    const aPinned = a.isPinned ? 1 : 0;
+    const bPinned = b.isPinned ? 1 : 0;
+    if (aPinned !== bPinned) {
+      return bPinned - aPinned;
+    }
+
+    // 2. Secondary sort according to sortOption
     if (sortOption === 'pending_first') {
       const aDone = completedSet.has(a.id) ? 1 : 0;
       const bDone = completedSet.has(b.id) ? 1 : 0;
@@ -806,6 +833,13 @@ export const STREAK_MILESTONES: StreakMilestoneTier[] = [
     days: 100,
     icon: 'diamond-outline',
     description: 'نادي المئة، تحولت العادة إلى جزء أصيل من هويتك',
+  },
+  {
+    id: 'tier_365',
+    name: 'سنة التميز والأسطورة',
+    days: 365,
+    icon: 'medal-outline',
+    description: 'عام كامل من الإنجاز والتحول الإيجابي الشامل',
   },
 ];
 

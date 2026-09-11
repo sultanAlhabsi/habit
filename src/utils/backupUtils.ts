@@ -87,7 +87,8 @@ export const validateBackupJson = (rawJson: string): ValidationResult => {
       typeof h.id !== 'string' ||
       typeof h.name !== 'string' ||
       typeof h.frequency !== 'string' ||
-      typeof h.createdAt !== 'string'
+      typeof h.createdAt !== 'string' ||
+      (h.isPinned !== undefined && typeof h.isPinned !== 'boolean')
     ) {
       return { valid: false, error: `العادة رقم ${i + 1} تحتوي على حقول مفقودة أو غير صالحة` };
     }

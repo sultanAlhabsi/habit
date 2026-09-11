@@ -55,6 +55,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     deleteHabit,
     archiveHabit,
     restoreHabit,
+    togglePinHabit,
   } = useHabitStore();
 
   const habitId = route.params?.habitId;
@@ -151,6 +152,27 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         onBackPress={() => navigation.goBack()}
         rightAction={
           <View style={styles.headerRightActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={habit.isPinned ? 'إلغاء تثبيت العادة' : 'تثبيت العادة في البداية'}
+              onPress={() => togglePinHabit(habit.id)}
+              style={({ pressed }) => [
+                styles.headerActionBtn,
+                {
+                  minWidth: touchTarget,
+                  minHeight: touchTarget,
+                  opacity: pressed ? 0.6 : 1,
+                  marginLeft: 4,
+                },
+              ]}
+            >
+              <Ionicons
+                name={habit.isPinned ? 'pin' : 'pin-outline'}
+                size={20}
+                color={habit.isPinned ? theme.primary : theme.text}
+              />
+            </Pressable>
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="مشاركة إنجاز العادة"
@@ -486,6 +508,12 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             />
           ) : (
             <>
+              <Button
+                title={habit.isPinned ? 'إلغاء تثبيت العادة' : 'تثبيت العادة في البداية 📌'}
+                variant="outline"
+                onPress={() => togglePinHabit(habit.id)}
+                style={{ marginBottom: spacing.sm }}
+              />
               <Button
                 title={habit.isActive ? 'إيقاف مؤقت للعادة' : 'استئناف العادة'}
                 variant="outline"

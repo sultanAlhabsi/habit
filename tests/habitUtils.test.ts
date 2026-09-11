@@ -27,6 +27,7 @@ import {
   getHabitCheckinNotes,
   formatHabitNotesForShare,
   STREAK_MILESTONES,
+  normalizeArabicText,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -830,13 +831,21 @@ test('calculateStreakMilestone: computes correct tier and remaining days for str
   assert.equal(m66.nextMilestone?.tier.id, 'tier_100');
   assert.equal(m66.nextMilestone?.remainingDays, 34);
 
-  // 120 days streak (top tier: 100+ club)
+  // 120 days streak (tier_100 with next milestone tier_365)
   const m120 = calculateStreakMilestone(120);
   assert.equal(m120.currentTier.id, 'tier_100');
   assert.equal(m120.currentTier.name, 'احتراف وإتقان');
-  assert.equal(m120.nextMilestone, null);
-  assert.equal(m120.progressPercent, 100);
-  assert.equal(m120.isTopTier, true);
+  assert.equal(m120.nextMilestone?.tier.id, 'tier_365');
+  assert.equal(m120.nextMilestone?.remainingDays, 245);
+  assert.equal(m120.isTopTier, false);
+
+  // 400 days streak (top tier: 365+ year legend)
+  const m400 = calculateStreakMilestone(400);
+  assert.equal(m400.currentTier.id, 'tier_365');
+  assert.equal(m400.currentTier.name, 'سنة التميز والأسطورة');
+  assert.equal(m400.nextMilestone, null);
+  assert.equal(m400.progressPercent, 100);
+  assert.equal(m400.isTopTier, true);
 });
 
 test('calculateHabitConsistencyPattern: calculates adherence distribution across all 7 days of the week', () => {
@@ -946,6 +955,134 @@ test('formatHabitNotesForShare: formats Arabic reflection diary summary correctl
   // Test empty notes list
   const emptyText = formatHabitNotesForShare(habit, []);
   assert.ok(emptyText.includes('لا توجد ملاحظات مسجلة بعد'));
+});
+
+test('normalizeArabicText: normalizes Arabic orthography, letters and strips diacritics', () => {
+  // Alef variants
+  assert.equal(normalizeArabicText('أذكار'), 'اذكار');
+  assert.equal(normalizeArabicText('إحسان'), 'احسان');
+  assert.equal(normalizeArabicText('آيات'), 'ايات');
+  assert.equal(normalizeArabicText('ٱستغفار'), 'استغفار');
+
+  // Taa Marbuta
+  assert.equal(normalizeArabicText('قراءة'), 'قراءه');
+  assert.equal(normalizeArabicText('صلاة'), 'صلاه');
+
+  // Alif Maqsura
+  assert.equal(normalizeArabicText('مشى'), 'مشي');
+
+  // Tashkeel / Harakat
+  assert.equal(normalizeArabicText('الرِّيَاضَةُ'), 'الرياضه');
+  assert.equal(normalizeArabicText('قُرْآنٌ'), 'قران');
+
+  // Empty or whitespace
+  assert.equal(normalizeArabicText('   '), '');
+  assert.equal(normalizeArabicText(''), '');
+});
+
+test('filterHabitsByQuery: matches Arabic queries regardless of Alef forms, Taa Marbuta, or Tashkeel', () => {
+  const habits: Habit[] = [
+    createMockHabit({ id: 'h1', name: 'أذكار الصباح والمساء', description: 'ورد يومي مبارك' }),
+    createMockHabit({ id: 'h2', name: 'القراءة اليومية', description: 'قراءة ٣٠ صفحة' }),
+    createMockHabit({ id: 'h3', name: 'الرياضة والنشاط', description: 'تمارين رياضية خفيفة' }),
+  ];
+
+  // User types with plain Alef without Hamza
+  const match1 = filterHabitsByQuery(habits, 'اذكار');
+  assert.equal(match1.length, 1);
+  assert.equal(match1[0].id, 'h1');
+
+  // User types with Haa instead of Taa Marbuta
+  const match2 = filterHabitsByQuery(habits, 'قراءه');
+  assert.equal(match2.length, 1);
+  assert.equal(match2[0].id, 'h2');
+
+  // User types with Tashkeel
+  const match3 = filterHabitsByQuery(habits, 'رِيَاضَة');
+  assert.equal(match3.length, 1);
+  assert.equal(match3[0].id, 'h3');
+
+  // Search in description with variant
+  const match4 = filterHabitsByQuery(habits, 'تمارين رياضيه');
+  assert.equal(match4.length, 1);
+  assert.equal(match4[0].id, 'h3');
+});
+
+test('sortHabits: prioritizes pinned habits at the top across all sort modes', () => {
+  const hUnpinned1 = createMockHabit({ id: 'h1', name: 'عادة عادية 1', reminderTime: '10:00', isPinned: false });
+  const hPinned1 = createMockHabit({ id: 'h2', name: 'عادة مثبتة 1', reminderTime: '12:00', isPinned: true });
+  const hUnpinned2 = createMockHabit({ id: 'h3', name: 'عادة عادية 2', reminderTime: '08:00', isPinned: false });
+  const hPinned2 = createMockHabit({ id: 'h4', name: 'عادة مثبتة 2', reminderTime: '06:00', isPinned: true });
+
+  const all = [hUnpinned1, hPinned1, hUnpinned2, hPinned2];
+
+  // 1. Default mode: pinned habits appear at the top in their relative order
+  const defaultSorted = sortHabits(all, 'default', [], '2026-06-15');
+  assert.equal(defaultSorted[0].id, 'h2');
+  assert.equal(defaultSorted[1].id, 'h4');
+  assert.equal(defaultSorted[2].id, 'h1');
+  assert.equal(defaultSorted[3].id, 'h3');
+
+  // 2. Reminder time mode: pinned habits sorted by reminder time, then unpinned by reminder time
+  const timeSorted = sortHabits(all, 'reminder_time', [], '2026-06-15');
+  assert.equal(timeSorted[0].id, 'h4'); // 06:00 (pinned)
+  assert.equal(timeSorted[1].id, 'h2'); // 12:00 (pinned)
+  assert.equal(timeSorted[2].id, 'h3'); // 08:00 (unpinned)
+  assert.equal(timeSorted[3].id, 'h1'); // 10:00 (unpinned)
+
+  // 3. Pending first mode with completions
+  const checkins: HabitCheckin[] = [
+    { id: 'c1', habitId: 'h4', date: '2026-06-15', completed: true, count: 1, updatedAt: '' },
+    { id: 'c2', habitId: 'h3', date: '2026-06-15', completed: true, count: 1, updatedAt: '' },
+  ];
+  // Pinned pending (h2) -> Pinned completed (h4) -> Unpinned pending (h1) -> Unpinned completed (h3)
+  const pendingSorted = sortHabits(all, 'pending_first', checkins, '2026-06-15');
+  assert.equal(pendingSorted[0].id, 'h2'); // pinned & pending
+  assert.equal(pendingSorted[1].id, 'h4'); // pinned & completed
+  assert.equal(pendingSorted[2].id, 'h1'); // unpinned & pending
+  assert.equal(pendingSorted[3].id, 'h3'); // unpinned & completed
+});
+
+test('calculateStreakMilestone: recognizes tier_365 for year-long streaks and beyond', () => {
+  const milestone100 = calculateStreakMilestone(100);
+  assert.equal(milestone100.currentTier.id, 'tier_100');
+  assert.equal(milestone100.nextMilestone?.tier.id, 'tier_365');
+  assert.equal(milestone100.isTopTier, false);
+
+  const milestone365 = calculateStreakMilestone(365);
+  assert.equal(milestone365.currentTier.id, 'tier_365');
+  assert.equal(milestone365.currentTier.name, 'سنة التميز والأسطورة');
+  assert.equal(milestone365.isTopTier, true);
+  assert.equal(milestone365.progressPercent, 100);
+
+  const milestone400 = calculateStreakMilestone(400);
+  assert.equal(milestone400.currentTier.id, 'tier_365');
+  assert.equal(milestone400.isTopTier, true);
+});
+
+test('calculateHabitStats: computes streaks beyond 365 days without artificial truncation', () => {
+  const habit = createMockHabit({
+    id: 'h-super-streak',
+    frequency: 'daily',
+    createdAt: dayjs('2026-06-15').subtract(400, 'day').toISOString(),
+  });
+
+  const checkins: HabitCheckin[] = [];
+  for (let i = 0; i <= 390; i++) {
+    const d = dayjs('2026-06-15').subtract(i, 'day').format('YYYY-MM-DD');
+    checkins.push({
+      id: `chk_${i}`,
+      habitId: habit.id,
+      date: d,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs('2026-06-15').toISOString(),
+    });
+  }
+
+  const stats = calculateHabitStats(habit, checkins, '2026-06-15');
+  assert.ok(stats.currentStreak >= 390, `Current streak should be at least 391, got ${stats.currentStreak}`);
+  assert.ok(stats.bestStreak >= 390, `Best streak should be at least 391, got ${stats.bestStreak}`);
 });
 
 

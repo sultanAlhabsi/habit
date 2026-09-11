@@ -187,3 +187,27 @@ test('validateBackupJson: correctly validates and preserves checkin note field',
   const badValidation = validateBackupJson(JSON.stringify(badPayload));
   assert.equal(badValidation.valid, false);
 });
+
+test('validateBackupJson: correctly validates and preserves habit isPinned field', () => {
+  const habitWithPin: Habit = {
+    ...mockHabit1,
+    id: 'h_pinned',
+    isPinned: true,
+  };
+
+  const payload = createBackupPayload([habitWithPin], []);
+  const validation = validateBackupJson(JSON.stringify(payload));
+  assert.equal(validation.valid, true);
+  if (validation.valid) {
+    assert.equal(validation.data.habits[0].isPinned, true);
+  }
+
+  // Reject if isPinned is not a boolean
+  const badPayload = {
+    appName: 'enjaz-habits',
+    version: 1,
+    habits: [{ ...mockHabit1, isPinned: 'not_a_boolean' }],
+    checkins: [],
+  };
+  assert.equal(validateBackupJson(JSON.stringify(badPayload)).valid, false);
+});

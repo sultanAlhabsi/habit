@@ -246,19 +246,37 @@ export const HabitCard: React.FC<HabitCardProps> = ({
 
         {/* Center: Habit Details */}
         <View style={styles.textDetails}>
-          <Text
-            numberOfLines={1}
-            style={[
-              typography.bodyMedium,
-              {
-                color: isCompleted ? theme.textMuted : theme.text,
-                textAlign: 'right',
-                textDecorationLine: isCompleted ? 'line-through' : 'none',
-              },
-            ]}
-          >
-            {habit.name}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text
+              numberOfLines={1}
+              style={[
+                typography.bodyMedium,
+                {
+                  color: isCompleted ? theme.textMuted : theme.text,
+                  textAlign: 'right',
+                  textDecorationLine: isCompleted ? 'line-through' : 'none',
+                  flexShrink: 1,
+                },
+              ]}
+            >
+              {habit.name}
+            </Text>
+            {habit.isPinned && (
+              <View
+                accessibilityLabel="عادة مثبتة ذات أولوية"
+                style={[
+                  styles.pinnedBadge,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.border,
+                    borderRadius: radius.xs,
+                  },
+                ]}
+              >
+                <Ionicons name="pin" size={10} color={theme.primary} />
+              </View>
+            )}
+          </View>
 
           {/* Multi-target Progress Track */}
           {isMultiTarget && (
@@ -465,5 +483,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 2,
+  },
+  nameRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  pinnedBadge: {
+    marginRight: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

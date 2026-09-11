@@ -49,6 +49,7 @@ export const initDatabase = async (): Promise<void> => {
         unit TEXT NOT NULL DEFAULT 'مرة',
         is_active INTEGER NOT NULL DEFAULT 1,
         reminder_time TEXT,
+        is_pinned INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         archived_at TEXT
       );
@@ -77,6 +78,13 @@ export const initDatabase = async (): Promise<void> => {
       // Column already exists or already migrated
     }
 
+    // Safe migration: Add is_pinned column if upgrading from earlier version
+    try {
+      await db.execAsync('ALTER TABLE habits ADD COLUMN is_pinned INTEGER DEFAULT 0;');
+    } catch {
+      // Column already exists or already migrated
+    }
+
     // Check if initial seed is needed
     const countResult = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM habits');
     if (!countResult || countResult.count === 0) {
@@ -96,8 +104,8 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
     await db.runAsync(
       `INSERT OR REPLACE INTO habits (
         id, name, description, icon, color, frequency, frequency_days,
-        target_count, unit, is_active, reminder_time, created_at, archived_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        target_count, unit, is_active, reminder_time, is_pinned, created_at, archived_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         habit.id,
         habit.name,
@@ -110,6 +118,7 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
         habit.unit,
         habit.isActive ? 1 : 0,
         habit.reminderTime || null,
+        habit.isPinned ? 1 : 0,
         habit.createdAt,
         habit.archivedAt || null,
       ]
@@ -152,6 +161,7 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
       unit: string;
       is_active: number;
       reminder_time: string | null;
+      is_pinned?: number;
       created_at: string;
       archived_at: string | null;
     }>('SELECT * FROM habits ORDER BY created_at ASC');
@@ -168,6 +178,7 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
       unit: r.unit,
       isActive: r.is_active === 1,
       reminderTime: r.reminder_time,
+      isPinned: r.is_pinned === 1,
       createdAt: r.created_at,
       archivedAt: r.archived_at,
     }));
@@ -192,8 +203,8 @@ export const saveHabitRecord = async (habit: Habit): Promise<void> => {
   await db.runAsync(
     `INSERT OR REPLACE INTO habits (
       id, name, description, icon, color, frequency, frequency_days,
-      target_count, unit, is_active, reminder_time, created_at, archived_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      target_count, unit, is_active, reminder_time, is_pinned, created_at, archived_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       habit.id,
       habit.name,
@@ -206,6 +217,7 @@ export const saveHabitRecord = async (habit: Habit): Promise<void> => {
       habit.unit,
       habit.isActive ? 1 : 0,
       habit.reminderTime || null,
+      habit.isPinned ? 1 : 0,
       habit.createdAt,
       habit.archivedAt || null,
     ]

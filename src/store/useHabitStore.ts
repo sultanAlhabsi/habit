@@ -56,6 +56,7 @@ interface HabitState {
   toggleHabitActive: (habitId: string) => Promise<void>;
   archiveHabit: (habitId: string, archive?: boolean) => Promise<void>;
   restoreHabit: (habitId: string) => Promise<void>;
+  togglePinHabit: (habitId: string) => Promise<void>;
   toggleCheckin: (habitId: string, date?: string) => Promise<boolean>;
   incrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   decrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
@@ -231,6 +232,21 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   restoreHabit: async (habitId: string) => {
     await get().archiveHabit(habitId, false);
+  },
+
+  togglePinHabit: async (habitId: string) => {
+    const habit = get().habits.find((h) => h.id === habitId);
+    if (!habit) return;
+
+    const updated: Habit = {
+      ...habit,
+      isPinned: !habit.isPinned,
+    };
+
+    set((state) => ({
+      habits: state.habits.map((h) => (h.id === habitId ? updated : h)),
+    }));
+    await saveHabitRecord(updated);
   },
 
   toggleCheckin: async (habitId: string, targetDate?: string) => {

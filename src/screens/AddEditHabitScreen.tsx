@@ -54,6 +54,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [unit, setUnit] = useState(existingHabit?.unit || 'مرة');
   const [reminderTime, setReminderTime] = useState(existingHabit?.reminderTime || '08:00');
   const [hasReminder, setHasReminder] = useState(Boolean(existingHabit?.reminderTime));
+  const [isPinned, setIsPinned] = useState(Boolean(existingHabit?.isPinned));
 
   const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
 
@@ -113,6 +114,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
         targetCount: validTarget,
         unit: unit.trim() || 'مرة',
         reminderTime: finalReminder,
+        isPinned,
       });
     } else {
       await addHabit({
@@ -126,6 +128,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
         unit: unit.trim() || 'مرة',
         isActive: true,
         reminderTime: finalReminder,
+        isPinned,
       });
     }
 
@@ -549,6 +552,57 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           )}
         </Card>
 
+        {/* Cornerstone Habit / Pin to Top */}
+        <Card style={styles.sectionCard}>
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isPinned }}
+            accessibilityLabel="تثبيت العادة في أعلى القائمة"
+            onPress={() => setIsPinned(!isPinned)}
+            style={styles.pinToggleRow}
+          >
+            <View
+              style={[
+                styles.togglePill,
+                {
+                  backgroundColor: isPinned ? theme.text : theme.cardSecondary,
+                  borderRadius: radius.sm,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  { color: isPinned ? theme.background : theme.textSecondary, fontWeight: '500' },
+                ]}
+              >
+                {isPinned ? 'مثبتة 📌' : 'عادية'}
+              </Text>
+            </View>
+
+            <View style={styles.pinTextSide}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                <Ionicons
+                  name="pin"
+                  size={15}
+                  color={isPinned ? theme.primary : theme.textSecondary}
+                  style={{ marginLeft: 6 }}
+                />
+                <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+                  تثبيت في أعلى القائمة
+                </Text>
+              </View>
+              <Text
+                style={[
+                  typography.caption,
+                  { color: theme.textSecondary, textAlign: 'right', marginTop: 2 },
+                ]}
+              >
+                عادة أساسية تظهر دائمًا في مقدمة قائمة عاداتك اليومية
+              </Text>
+            </View>
+          </Pressable>
+        </Card>
 
         {/* Save Button */}
         <View style={{ marginTop: spacing.md }}>
@@ -660,6 +714,15 @@ const styles = StyleSheet.create({
   togglePill: {
     paddingHorizontal: 10,
     paddingVertical: 4,
+  },
+  pinToggleRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pinTextSide: {
+    flex: 1,
+    paddingLeft: 12,
   },
 });
 

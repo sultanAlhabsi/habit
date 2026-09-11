@@ -12,6 +12,7 @@ export interface Habit {
   unit: string;
   isActive: boolean;
   reminderTime?: string | null;
+  isPinned?: boolean;
   createdAt: string;
   archivedAt?: string | null;
 }

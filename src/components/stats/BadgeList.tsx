@@ -85,12 +85,36 @@ export const BadgeList: React.FC<BadgeListProps> = ({
         bestStreak >= 30 ? 'مكتمل' : `${Math.min(30, bestStreak)}/٣٠ يوم`,
     },
     {
+      id: 'streak_66',
+      title: 'العادة التلقائية',
+      desc: 'الاستمرار لمدة 66 يومًا وتثبيت السلوك العصبي',
+      unlocked: bestStreak >= 66,
+      progressText:
+        bestStreak >= 66 ? 'مكتمل' : `${Math.min(66, bestStreak)}/٦٦ يوم`,
+    },
+    {
       id: 'century_club',
       title: 'نادي المئة',
       desc: 'تسجيل 100 إنجاز إجمالي في التطبيق',
       unlocked: totalCheckins >= 100,
       progressText:
         totalCheckins >= 100 ? 'مكتمل' : `${Math.min(100, totalCheckins)}/١٠٠ إنجاز`,
+    },
+    {
+      id: 'checkins_200',
+      title: 'سيد العادات',
+      desc: 'تسجيل 200 إنجاز إجمالي في التطبيق',
+      unlocked: totalCheckins >= 200,
+      progressText:
+        totalCheckins >= 200 ? 'مكتمل' : `${Math.min(200, totalCheckins)}/٢٠٠ إنجاز`,
+    },
+    {
+      id: 'streak_365',
+      title: 'سنة التميز',
+      desc: 'الاستمرار لمدة عام كامل (365 يومًا) متتالية',
+      unlocked: bestStreak >= 365,
+      progressText:
+        bestStreak >= 365 ? 'مكتمل' : `${Math.min(365, bestStreak)}/٣٦٥ يوم`,
     },
   ];
 

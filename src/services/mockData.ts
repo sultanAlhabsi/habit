@@ -14,6 +14,7 @@ export const INITIAL_HABITS: Habit[] = [
     unit: 'لتر',
     isActive: true,
     reminderTime: '09:00',
+    isPinned: true,
     createdAt: dayjs().subtract(30, 'day').toISOString(),
   },
   {
