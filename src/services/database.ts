@@ -60,6 +60,7 @@ export const initDatabase = async (): Promise<void> => {
         count INTEGER NOT NULL DEFAULT 1,
         completed INTEGER NOT NULL DEFAULT 1,
         updated_at TEXT NOT NULL,
+        note TEXT,
         UNIQUE(habit_id, date)
       );
 
@@ -68,6 +69,13 @@ export const initDatabase = async (): Promise<void> => {
         value TEXT NOT NULL
       );
     `);
+
+    // Safe migration: Add note column if upgrading from earlier version
+    try {
+      await db.execAsync('ALTER TABLE checkins ADD COLUMN note TEXT;');
+    } catch {
+      // Column already exists or already migrated
+    }
 
     // Check if initial seed is needed
     const countResult = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM habits');
@@ -112,8 +120,8 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
   for (const checkin of demoCheckins) {
     await db.runAsync(
       `INSERT OR REPLACE INTO checkins (
-        id, habit_id, date, count, completed, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
+        id, habit_id, date, count, completed, updated_at, note
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         checkin.id,
         checkin.habitId,
@@ -121,6 +129,7 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
         checkin.count,
         checkin.completed ? 1 : 0,
         checkin.updatedAt,
+        checkin.note || null,
       ]
     );
   }
@@ -227,6 +236,7 @@ export const fetchAllCheckins = async (): Promise<HabitCheckin[]> => {
       count: number;
       completed: number;
       updated_at: string;
+      note?: string | null;
     }>('SELECT * FROM checkins ORDER BY date DESC');
 
     return rows.map((r) => ({
@@ -236,6 +246,7 @@ export const fetchAllCheckins = async (): Promise<HabitCheckin[]> => {
       count: r.count,
       completed: r.completed === 1,
       updatedAt: r.updated_at,
+      note: r.note || undefined,
     }));
   } catch (error) {
     console.error('[Database] Failed to fetch checkins:', error);
@@ -257,8 +268,8 @@ export const saveCheckinRecord = async (checkin: HabitCheckin): Promise<void> =>
 
   await db.runAsync(
     `INSERT OR REPLACE INTO checkins (
-      id, habit_id, date, count, completed, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?)`,
+      id, habit_id, date, count, completed, updated_at, note
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       checkin.id,
       checkin.habitId,
@@ -266,6 +277,7 @@ export const saveCheckinRecord = async (checkin: HabitCheckin): Promise<void> =>
       checkin.count,
       checkin.completed ? 1 : 0,
       checkin.updatedAt,
+      checkin.note || null,
     ]
   );
 };

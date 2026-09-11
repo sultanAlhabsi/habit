@@ -24,6 +24,8 @@ import {
   calculateStreakMilestone,
   calculateHabitConsistencyPattern,
   formatHabitStatsForShare,
+  getHabitCheckinNotes,
+  formatHabitNotesForShare,
   STREAK_MILESTONES,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
@@ -904,6 +906,46 @@ test('formatHabitStatsForShare: creates detailed Arabic share text for a specifi
   assert.ok(text.includes('40 خطوة'));
   assert.ok(text.includes('85%'));
   assert.ok(text.includes('تطبيق إنجاز'));
+
+  // Test optional latest note
+  const textWithNote = formatHabitStatsForShare(habit, stats, milestone, 'شعور ممتاز بعد جولة المشي في الحديقة');
+  assert.ok(textWithNote.includes('آخر خاطرة: "شعور ممتاز بعد جولة المشي في الحديقة"'));
+});
+
+test('getHabitCheckinNotes: extracts non-empty notes sorted descending by date', () => {
+  const checkins: HabitCheckin[] = [
+    { id: 'c1', habitId: 'h1', date: '2026-06-01', count: 1, completed: true, updatedAt: '', note: 'تدوينة أولى' },
+    { id: 'c2', habitId: 'h1', date: '2026-06-03', count: 1, completed: true, updatedAt: '', note: 'تدوينة أحدث' },
+    { id: 'c3', habitId: 'h1', date: '2026-06-02', count: 1, completed: true, updatedAt: '', note: '   ' }, // empty whitespace
+    { id: 'c4', habitId: 'h1', date: '2026-06-04', count: 1, completed: true, updatedAt: '' }, // undefined note
+    { id: 'c5', habitId: 'h2', date: '2026-06-05', count: 1, completed: true, updatedAt: '', note: 'عادة أخرى' }, // other habit
+  ];
+
+  const notes = getHabitCheckinNotes(checkins, 'h1');
+  assert.equal(notes.length, 2);
+  assert.equal(notes[0].date, '2026-06-03');
+  assert.equal(notes[0].note, 'تدوينة أحدث');
+  assert.equal(notes[1].date, '2026-06-01');
+  assert.equal(notes[1].note, 'تدوينة أولى');
+});
+
+test('formatHabitNotesForShare: formats Arabic reflection diary summary correctly', () => {
+  const habit = createMockHabit({ name: 'القراءة اليومية' });
+  const checkins: HabitCheckin[] = [
+    { id: 'c1', habitId: habit.id, date: '2026-06-01', count: 1, completed: true, updatedAt: '', note: 'أنهيت الفصل الخامس من الكتاب' },
+    { id: 'c2', habitId: habit.id, date: '2026-06-02', count: 1, completed: true, updatedAt: '', note: 'فكرة ملهمة حول الانضباط الذاتي' },
+  ];
+
+  const shareText = formatHabitNotesForShare(habit, checkins);
+  assert.ok(shareText.includes('مذكرات إنجازي في عادة: القراءة اليومية'));
+  assert.ok(shareText.includes('إجمالي الخواطر والتدوينات: 2'));
+  assert.ok(shareText.includes('أنهيت الفصل الخامس'));
+  assert.ok(shareText.includes('فكرة ملهمة حول الانضباط الذاتي'));
+  assert.ok(shareText.includes('تطبيق إنجاز'));
+
+  // Test empty notes list
+  const emptyText = formatHabitNotesForShare(habit, []);
+  assert.ok(emptyText.includes('لا توجد ملاحظات مسجلة بعد'));
 });
 
 

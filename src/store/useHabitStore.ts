@@ -59,6 +59,8 @@ interface HabitState {
   toggleCheckin: (habitId: string, date?: string) => Promise<boolean>;
   incrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   decrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
+  updateCheckinNote: (habitId: string, date: string, note: string) => Promise<void>;
+  deleteCheckinNote: (habitId: string, date: string) => Promise<void>;
   seedData: () => Promise<void>;
   resetAllData: () => Promise<void>;
   exportBackup: () => Promise<BackupPayload>;
@@ -245,28 +247,48 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     }
 
     const existingCheckin = get().checkins.find(
-      (c) => c.habitId === habitId && c.date === date && c.completed
+      (c) => c.habitId === habitId && c.date === date
     );
 
-    if (existingCheckin) {
-      // Remove checkin
-      set((state) => ({
-        checkins: state.checkins.filter(
-          (c) => !(c.habitId === habitId && c.date === date)
-        ),
-      }));
-      await removeCheckinRecord(habitId, date);
+    if (existingCheckin && existingCheckin.completed) {
+      // Untoggle: If it has a note, preserve the note with count 0 and completed false
+      if (existingCheckin.note) {
+        const updatedCheckin: HabitCheckin = {
+          ...existingCheckin,
+          count: 0,
+          completed: false,
+          updatedAt: dayjs().toISOString(),
+        };
+        set((state) => ({
+          checkins: [
+            ...state.checkins.filter(
+              (c) => !(c.habitId === habitId && c.date === date)
+            ),
+            updatedCheckin,
+          ],
+        }));
+        await saveCheckinRecord(updatedCheckin);
+      } else {
+        // Remove checkin record
+        set((state) => ({
+          checkins: state.checkins.filter(
+            (c) => !(c.habitId === habitId && c.date === date)
+          ),
+        }));
+        await removeCheckinRecord(habitId, date);
+      }
       return false; // Became unchecked
     } else {
-      // Add checkin (full completion with targetCount)
+      // Add or complete checkin (full completion with targetCount, preserving any note)
       const targetCount = Math.max(1, habit.targetCount || 1);
       const newCheckin: HabitCheckin = {
-        id: `chk_${habitId}_${date}`,
+        id: existingCheckin ? existingCheckin.id : `chk_${habitId}_${date}`,
         habitId,
         date,
         count: targetCount,
         completed: true,
         updatedAt: dayjs().toISOString(),
+        note: existingCheckin?.note,
       };
 
       set((state) => ({
@@ -315,6 +337,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       count: newCount,
       completed: isCompleted,
       updatedAt: dayjs().toISOString(),
+      note: existing?.note,
     };
 
     set((state) => ({
@@ -347,12 +370,31 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const newCount = existing.count - Math.max(1, step);
 
     if (newCount <= 0) {
-      set((state) => ({
-        checkins: state.checkins.filter(
-          (c) => !(c.habitId === habitId && c.date === date)
-        ),
-      }));
-      await removeCheckinRecord(habitId, date);
+      if (existing.note) {
+        // Preserve note with count 0 and completed false
+        const updatedCheckin: HabitCheckin = {
+          ...existing,
+          count: 0,
+          completed: false,
+          updatedAt: dayjs().toISOString(),
+        };
+        set((state) => ({
+          checkins: [
+            ...state.checkins.filter(
+              (c) => !(c.habitId === habitId && c.date === date)
+            ),
+            updatedCheckin,
+          ],
+        }));
+        await saveCheckinRecord(updatedCheckin);
+      } else {
+        set((state) => ({
+          checkins: state.checkins.filter(
+            (c) => !(c.habitId === habitId && c.date === date)
+          ),
+        }));
+        await removeCheckinRecord(habitId, date);
+      }
     } else {
       const targetCount = Math.max(1, habit.targetCount || 1);
       const updatedCheckin: HabitCheckin = {
@@ -376,6 +418,75 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       try {
         Vibration.vibrate(8);
       } catch (_) {}
+    }
+  },
+
+  updateCheckinNote: async (habitId: string, date: string, note: string) => {
+    const habit = get().habits.find((h) => h.id === habitId);
+    if (!habit) return;
+
+    const trimmedNote = note.trim();
+    if (!trimmedNote) {
+      await get().deleteCheckinNote(habitId, date);
+      return;
+    }
+
+    const existing = get().checkins.find(
+      (c) => c.habitId === habitId && c.date === date
+    );
+
+    const updatedCheckin: HabitCheckin = {
+      id: existing ? existing.id : `chk_${habitId}_${date}`,
+      habitId,
+      date,
+      count: existing ? existing.count : (habit.targetCount || 1),
+      completed: existing ? existing.completed : true,
+      updatedAt: dayjs().toISOString(),
+      note: trimmedNote,
+    };
+
+    set((state) => ({
+      checkins: [
+        ...state.checkins.filter(
+          (c) => !(c.habitId === habitId && c.date === date)
+        ),
+        updatedCheckin,
+      ],
+    }));
+
+    await saveCheckinRecord(updatedCheckin);
+  },
+
+  deleteCheckinNote: async (habitId: string, date: string) => {
+    const existing = get().checkins.find(
+      (c) => c.habitId === habitId && c.date === date
+    );
+    if (!existing) return;
+
+    if (existing.count <= 0 && !existing.completed) {
+      // If habit wasn't completed and has zero count, delete checkin record
+      set((state) => ({
+        checkins: state.checkins.filter(
+          (c) => !(c.habitId === habitId && c.date === date)
+        ),
+      }));
+      await removeCheckinRecord(habitId, date);
+    } else {
+      // Keep completion/count, just clear note
+      const updatedCheckin: HabitCheckin = {
+        ...existing,
+        note: undefined,
+        updatedAt: dayjs().toISOString(),
+      };
+      set((state) => ({
+        checkins: [
+          ...state.checkins.filter(
+            (c) => !(c.habitId === habitId && c.date === date)
+          ),
+          updatedCheckin,
+        ],
+      }));
+      await saveCheckinRecord(updatedCheckin);
     }
   },
 

@@ -867,6 +867,149 @@ npm run typecheck -> tsc --noEmit -> 0 errors!
 2. **قواعد العد والإعراب العربي الدقيق في النصوص:** مراعاة صيغ التمييز العددي في صياغة نصوص المشاركة (مثل "يوم" و"أيام" بحسب السلسلة والأيام المتبقية) لتقديم تجربة استخدام عربية رفيعة المستوى.
 3. **تصميم واجهات متكيفة وسهلة القراءة:** استخدام أعمدة نسبية رأسية تفاعلية تتكيف مع ألوان العادة وثيم النظام الفاتح والداكن بدقة متناهية.
 
+---
+
+## الدورة التاسعة (Cycle 9) - مذكرات الخواطر اليومية لكل إنجاز، توثيق العادات، وتحصين محرك النسخ الاحتياطي وقاعدة البيانات
+- **التاريخ:** 11 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة التاسعة
+استهدفت هذه الدورة ترقية تطبيق "إنجاز" من مجرد أداة لإحصاء وتتبع الأرقام والسلاسل إلى منصة تدريب ذاتي وتوثيق تأملي واعي (Reflective Habit Journaling):
+1. **مذكرات الخواطر والملاحظات اليومية لكل عادة (Daily Habit Checkin Notes & Reflections):**
+   - تمكين المستخدم من تسجيل ملاحظة أو فكرة أو سبب الإنجاز (Reflection Note) مع كل عملية إنجاز يومية (مثال: "أنهيت الفصل الخامس"، "ركضت 3 كم في الصباح الباكر"، "شعور ممتاز بعد الورد").
+2. **ترقية مخطط قاعدة بيانات SQLite ودعم الترحيل التلقائي السلس (Safe Database Schema Migration):**
+   - إضافة عمود `note TEXT` لجدول `checkins`، وتأمين الترحيل الذاتي عند بدء التطبيق عبر `ALTER TABLE checkins ADD COLUMN note TEXT;` داخل معالج استثناءات لمنع انهيار قواعد البيانات القديمة الموجودة لدى المستخدمين.
+3. **تحصين متجر Zustand وحماية الملاحظات عند التراجع عن الإنجاز:**
+   - الحفاظ على الملاحظات المدونة حتى لو قام المستخدم بإلغاء الإنجاز بالخطأ عبر ضبط `completed: false` بدلاً من حذف سجل الإنجاز كاملاً، مع توفير أفعال صريحة لإضافة وتعديل وحذف الملاحظات (`updateCheckinNote`, `deleteCheckinNote`).
+4. **تحصين محرك النسخ الاحتياطي والاستعادة (`backupUtils.ts`):**
+   - دعم تصدير واستيراد الملاحظات في كائن النسخ الاحتياطي، مع إضافة تحقق صارم من نوع الحقل لرفض أي قيم غير نصية قد تحقن في ملف النسخ.
+5. **مكون واجهة المستخدم المخصص لمذكرات العادة (`HabitNotesSection.tsx`):**
+   - بناء مكون تفاعلي فاخر لشاشة تفاصيل العادة يضم:
+     - بطاقة مقتبسة لخاطرة اليوم مع أزرار التعديل والحذف.
+     - محرر نصوص منسدل مع عداد الأحرف (حتى 250 حرف) وزر حفظ متجاوب.
+     - سجل تاريخي قابل للطي لخواطر الإنجاز السابقة مع إمكانية تعديلها أو حذفها.
+     - زر مشاركة مباشر لتقرير مذكرات وخواطر العادة عبر النظام.
+6. **مؤشر بصري دقيق في بطاقة العادة الرئيسية (`HabitCard.tsx`):**
+   - إظهار شارة نصية وأيقونة مصغرة (`document-text-outline` + "ملاحظة") في صف البيانات الإضافية عندما تحتوي العادة على تدوينة لليوم في القائمتين الرئيسية وغير المجدولة.
+7. **إثراء رسائل المشاركة الاجتماعية:**
+   - تضمين آخر خاطرة مدونة تلقائياً في بطاقة المشاركة المخصصة للعادة عند مشاركة إحصائياتها مع الأصدقاء.
+8. **رفع التغطية الاختبارية إلى 48 اختباراً مؤتمتاً ناجحاً 100%:**
+   - اختبار خوارزميات استخراج الملاحظات وترتيبها وتنسيق نصوص المشاركة والتحقق من صحة النسخ الاحتياطية.
+
+---
+
+### 2. التغييرات الفنية المنفذة بالتفصيل
+
+#### أ. طبقة الأنواع وقاعدة البيانات (`src/types/habit.ts` & `src/services/database.ts`):
+- في `HabitCheckin`: إضافة خاصية `note?: string` اختيارية.
+- في `database.ts`:
+  - تحديث مخطط إنشاء جدول `checkins` ليشمل `note TEXT`.
+  - إضافة استعلام الترحيل التلقائي الآمن داخل `initDatabase()`:
+    ```sql
+    ALTER TABLE checkins ADD COLUMN note TEXT;
+    ```
+  - تحديث `fetchAllCheckins` و `saveCheckinRecord` لقراءة وحفظ قيمة الملاحظة.
+- في `mockData.ts`:
+  - تزويد البيانات التجريبية الأولية بنماذج خواطر واقعية باللغة العربية لعادات القراءة والرياضة والأذكار.
+
+#### ب. المتجر وحفظ البيانات (`src/store/useHabitStore.ts`):
+- إضافة فعلين جديدين لواجهة `HabitState`:
+  - `updateCheckinNote(habitId: string, date: string, note: string): Promise<void>`
+  - `deleteCheckinNote(habitId: string, date: string): Promise<void>`
+- تعزيز `toggleCheckin`: إذا كان السجل يحتوي على ملاحظة، لا يُحذف السجل بل يُضبط العداد على صفر مع `completed: false`؛ وعند إعادة الإنجاز يتم استرجاع وتثبيت الملاحظة.
+- تعزيز `incrementCheckin` و `decrementCheckin` للاحتفاظ بأي ملاحظة سابقة أثناء تغيير العداد.
+
+#### ج. الدوال الرياضية ومحرك المشاركة والتحقق (`src/utils/habitUtils.ts` & `src/utils/backupUtils.ts`):
+- `getHabitCheckinNotes(allCheckins, habitId)`: استخراج كافة الملاحظات غير الفارغة التابعة للعادة وترتيبها تنازلياً حسب التاريخ.
+- `formatHabitNotesForShare(habit, notes)`: صياغة ملخص عربي أنيق لخواطر وتدوينات العادة معد للمشاركة عبر منصات التواصل.
+- تحديث `formatHabitStatsForShare`: دعم تمرير `latestNote?: string` لإبراز آخر تدوينة مع مقتبس نصي تحفيزي في بطاقة إنجاز العادة.
+- في `validateBackupJson`: التحقق الصارم من أن أي حقل `note` متواجد في مصفوفة `checkins` هو نص (`typeof c.note === 'string'`).
+
+#### د. المكونات وواجهات المستخدم (`HabitNotesSection.tsx` & `HabitDetailsScreen.tsx` & `HabitCard.tsx` & `HomeScreen.tsx`):
+- إنشاء المكون المخصص `HabitNotesSection.tsx`:
+  - دعم كامل لاتجاه RTL والخطوط والألوان المتوافقة مع الثيم.
+  - إمكانية تدوين خاطرة جديدة أو تعديل وحذف الخواطر السابقة.
+  - مؤشر حرفي ديناميكي ينبه المستخدم بالأحمر عند الاقتراب من الحد الأقصى (250 حرف).
+- في `HabitDetailsScreen.tsx`:
+  - دمج قسم المذكرات مباشرة تحت بطاقة السلسلة والمحطات.
+  - تمرير آخر خاطرة لزر مشاركة إحصائيات العادة بالرأس العلوي.
+- في `HabitCard.tsx` و `HomeScreen.tsx`:
+  - إضافة شارة `hasNote` في صف الميتا لتنبيه المستخدم بالتدوينة المسجلة.
+
+---
+
+### 3. نتائج الاختبارات وفحص البناء والجودة
+- **عدد الاختبارات:** 48 اختباراً شاملاً (إضافة 3 اختبارات جديدة تغطي استخراج الملاحظات وصياغة مذكرات المشاركة وفحص أمان النسخ الاحتياطي).
+- **نسبة النجاح:** 100% (48 pass, 0 fail).
+- **فحص الأنواع الصارم (TypeScript):** 0 أخطاء (`tsc --noEmit`).
+
+```bash
+# نتائج اختبارات Node Test Runner الكاملة:
+✔ createBackupPayload: constructs standard schema envelope (7.9ms)
+✔ validateBackupJson: validates well-formed JSON string (1.5ms)
+✔ validateBackupJson: rejects malformed or invalid backups (1.1ms)
+✔ mergeBackupData: deduplicates habits and preserves existing ones (1.8ms)
+✔ mergeBackupData: merges checkins updating to newer timestamps (2.8ms)
+✔ validateBackupJson: correctly validates and preserves checkin note field (1.3ms)
+✔ isHabitDueOnDate: daily habit is due every day after creation (17.2ms)
+✔ isHabitDueOnDate: specific days habit is only due on scheduled days (2.2ms)
+✔ isHabitDueOnDate: inactive habit respects requireActive parameter (1.2ms)
+✔ isHabitDueOnDate: archived habit is not due after archive date (2.1ms)
+✔ calculateHabitStats: preserves streak if today is not yet completed (12.1ms)
+✔ calculateHabitStats: increments streak when today is completed (4.3ms)
+✔ calculateHabitStats: ignores future date checkins and calculates capped completion rate (3.8ms)
+✔ calculateHabitStats: paused habit retains historical stats (4.3ms)
+✔ getHabitsForDate: returns active due habits and preserved completed paused habits (2.2ms)
+✔ calculateWeekAdherence: identifies future days, today, and adherence rates (4.5ms)
+✔ hasEverHadPerfectDay: correctly detects past 100% completion days (1.7ms)
+✔ calculateOverallStats: computes accurate rates, permanent perfect day, and weekly adherence (10.2ms)
+✔ formatArabicDate: formats correctly in Arabic (0.5ms)
+✔ formatWeekRangeArabic: formats range with Arabic month and year (0.5ms)
+✔ filterHabitsByQuery: matches Arabic habit names and descriptions correctly (0.7ms)
+✔ calculateWeekAdherence: handles 0% completion rate without negative or false values (1.4ms)
+✔ calculateCheckinProgress: calculates progress, percentage, and completion status accurately (0.7ms)
+✔ getNextProgressCount: clamps increment and decrement safely within [0, targetCount] (0.4ms)
+✔ formatDailySummaryForShare: generates formatted Arabic summary for native sharing (1.1ms)
+✔ formatDailySummaryForShare: handles day with no due habits gracefully (0.3ms)
+✔ formatOverallStatsForShare: generates clean Arabic overall milestones report (32.0ms)
+✔ normalizeArabicNumerals: converts Eastern Arabic and Persian numerals to Western digits (1.5ms)
+✔ getHabitCategory: accurately maps icons to categories (0.4ms)
+✔ getHabitStreakStatus: determines correct streak status on completed, rest, and pending days (0.9ms)
+✔ sortHabits: sorts habits according to pending_first, reminder_time, streak, and default (83.2ms)
+✔ calculateMonthAdherence: computes correct metrics for a full month (3.1ms)
+✔ calculateMonthAdherence: handles empty habits list safely without NaN or division by zero (0.7ms)
+✔ formatMonthlySummaryForShare: formats month summary correctly for native sharing (0.3ms)
+✔ calculateStreakMilestone: computes correct tier and remaining days for streak progression (0.5ms)
+✔ calculateHabitConsistencyPattern: calculates adherence distribution across all 7 days of the week (2.8ms)
+✔ calculateHabitConsistencyPattern: handles new habit with no completions gracefully (0.4ms)
+✔ formatHabitStatsForShare: creates detailed Arabic share text for a specific habit (0.5ms)
+✔ getHabitCheckinNotes: extracts non-empty notes sorted descending by date (0.4ms)
+✔ formatHabitNotesForShare: formats Arabic reflection diary summary correctly (0.5ms)
+✔ isValidReminderTime: accurately validates 24-hour time format (5.7ms)
+✔ parseReminderTime: correctly extracts numeric hour and minute (2.7ms)
+✔ formatReminderTimeArabic: formats 12-hour AM/PM in Arabic (0.8ms)
+✔ mapDayIndexToExpoWeekday: converts Sunday=0 to Expo Sunday=1 (0.5ms)
+✔ generateHabitReminderTriggers: returns daily trigger for daily habit (1.2ms)
+✔ generateHabitReminderTriggers: returns weekly triggers for specific days (0.7ms)
+✔ generateHabitReminderTriggers: returns empty array for paused or archived habits (0.8ms)
+✔ parseReminderTime: supports Arabic-Indic and Persian numeral strings (1.4ms)
+ℹ tests 48 | suites 0 | pass 48 | fail 0 | cancelled 0 | duration_ms 668ms
+
+# فحص أنواع TypeScript:
+npm run typecheck -> tsc --noEmit -> 0 errors!
+```
+
+---
+
+### 4. القرارات الهندسية في الدورة التاسعة
+1. **الترقية الآمنة والتوافقية الرجعية لقاعدة البيانات (Backward-Compatible Schema Migration):** تنفيذ ترحيل آمن لجدول `checkins` يضمن عدم فقدان بيانات المستخدمين الحالية عند تحديث التطبيق.
+2. **الاحتفاظ بالخواطر عند التراجع العرضي:** سلوك التراجع لا يقوم بمحو الخاطرة التي قد يكون كتبها المستخدم بعناية، بل يعلق حالة الإنجاز ويحتفظ بالنص في السجل.
+3. **عزل مكونات التدوين والتأمل:** فصل `HabitNotesSection` إلى مكون مستقل تماماً يسهل صيانته واختباره وتطويره مستقبلاً.
+
+
 
 
 

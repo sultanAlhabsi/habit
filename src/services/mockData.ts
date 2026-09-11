@@ -98,6 +98,17 @@ export const generateDemoCheckins = (): HabitCheckin[] => {
       const isCompleted = (habitIndex === 0 && i <= 5) ? true : Math.random() < completionProbability;
 
       if (isCompleted) {
+        let note: string | undefined;
+        if (habit.id === 'habit-2' && i === 1) {
+          note = 'قرأت فصلاً مميزاً عن قوة العادات الذرية وكيفية الاستمرار.';
+        } else if (habit.id === 'habit-2' && i === 4) {
+          note = 'إتمام ٢٠ صفحة في الصباح الباكر مع فنجان قهوة.';
+        } else if (habit.id === 'habit-1' && i === 0) {
+          note = 'شرب لترين كاملين بانتظام طوال اليوم وشعور بحيوية عالية.';
+        } else if (habit.id === 'habit-3' && i === 2) {
+          note = 'تمارين إحماء وتمارين سويدية لمدة نصف ساعة بنشاط ممتاز.';
+        }
+
         checkins.push({
           id: `checkin_${habit.id}_${date}`,
           habitId: habit.id,
@@ -105,6 +116,7 @@ export const generateDemoCheckins = (): HabitCheckin[] => {
           count: habit.targetCount,
           completed: true,
           updatedAt: dayjs().toISOString(),
+          note,
         });
       }
     }

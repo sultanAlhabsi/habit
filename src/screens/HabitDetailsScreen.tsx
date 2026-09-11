@@ -21,6 +21,7 @@ import { HabitHeatmap } from '../components/details/HabitHeatmap';
 import { HabitStatGrid } from '../components/details/HabitStatGrid';
 import { StreakMilestoneCard } from '../components/details/StreakMilestoneCard';
 import { HabitConsistencyCard } from '../components/details/HabitConsistencyCard';
+import { HabitNotesSection } from '../components/details/HabitNotesSection';
 import {
   calculateHabitStats,
   getHabitCategory,
@@ -28,6 +29,7 @@ import {
   calculateStreakMilestone,
   calculateHabitConsistencyPattern,
   formatHabitStatsForShare,
+  getHabitCheckinNotes,
 } from '../utils/habitUtils';
 
 interface HabitDetailsScreenProps {
@@ -47,6 +49,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     toggleCheckin,
     incrementCheckin,
     decrementCheckin,
+    updateCheckinNote,
+    deleteCheckinNote,
     toggleHabitActive,
     deleteHabit,
     archiveHabit,
@@ -88,10 +92,12 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   const streakStatus = getHabitStreakStatus(habit, checkins, todayStr);
   const milestoneInfo = calculateStreakMilestone(stats.currentStreak);
   const consistencyPattern = calculateHabitConsistencyPattern(habit, checkins, todayStr);
+  const allHabitNotes = getHabitCheckinNotes(checkins, habit.id);
 
   const handleShare = async () => {
     try {
-      const shareMessage = formatHabitStatsForShare(habit, stats, milestoneInfo);
+      const latestNote = allHabitNotes.length > 0 ? allHabitNotes[0].note : undefined;
+      const shareMessage = formatHabitStatsForShare(habit, stats, milestoneInfo, latestNote);
       await Share.share({ message: shareMessage });
     } catch {
       // Gracefully handle dismissed share dialog
@@ -439,6 +445,20 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
         {/* Behavioral Psychology Streak Milestone Tier */}
         <StreakMilestoneCard milestoneInfo={milestoneInfo} habitColor={habit.color} />
+
+        {/* Daily Reflection Notes & Habit Diary */}
+        <HabitNotesSection
+          habit={habit}
+          selectedDate={todayStr}
+          currentCheckin={todayCheckin}
+          allNotes={allHabitNotes}
+          onSaveNote={async (date, note) => {
+            await updateCheckinNote(habit.id, date, note);
+          }}
+          onDeleteNote={async (date) => {
+            await deleteCheckinNote(habit.id, date);
+          }}
+        />
 
         {/* Day-of-Week Consistency Pattern */}
         <HabitConsistencyCard

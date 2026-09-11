@@ -494,6 +494,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 streak={stats.currentStreak}
                 isFuture={isFutureDate}
                 isOffSchedule={!isDue}
+                hasNote={Boolean(checkin?.note?.trim())}
                 onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                 onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                 onDecrement={() => decrementCheckin(habit.id, selectedDate)}
@@ -557,6 +558,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     streak={stats.currentStreak}
                     isFuture={isFutureDate}
                     isOffSchedule={true}
+                    hasNote={Boolean(checkin?.note?.trim())}
                     onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                     onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                     onDecrement={() => decrementCheckin(habit.id, selectedDate)}

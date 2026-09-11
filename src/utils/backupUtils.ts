@@ -101,7 +101,8 @@ export const validateBackupJson = (rawJson: string): ValidationResult => {
       typeof c.id !== 'string' ||
       typeof c.habitId !== 'string' ||
       typeof c.date !== 'string' ||
-      typeof c.completed !== 'boolean'
+      typeof c.completed !== 'boolean' ||
+      (c.note !== undefined && typeof c.note !== 'string')
     ) {
       return { valid: false, error: `سجل الإنجاز رقم ${j + 1} يحتوي على بيانات تالفة` };
     }

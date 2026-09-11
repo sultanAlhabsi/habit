@@ -980,18 +980,68 @@ export const calculateHabitConsistencyPattern = (
 export const formatHabitStatsForShare = (
   habit: Habit,
   stats: HabitStats,
-  milestone: StreakMilestoneInfo
+  milestone: StreakMilestoneInfo,
+  latestNote?: string
 ): string => {
   const streakUnit = stats.currentStreak === 1 ? 'يوم' : stats.currentStreak <= 10 ? 'أيام' : 'يوم';
   const bestStreakUnit = stats.bestStreak === 1 ? 'يوم' : stats.bestStreak <= 10 ? 'أيام' : 'يوم';
 
-  return [
+  const lines = [
     `🎯 إنجازي في عادة: ${habit.name}`,
     `• السلسلة الحالية: ${stats.currentStreak} ${streakUnit} متتالية 🔥`,
     `• أطول سلسلة: ${stats.bestStreak} ${bestStreakUnit} 🏆`,
     `• مرحلة الالتزام: ${milestone.currentTier.name} (${milestone.currentTier.days} يوم)`,
     `• إجمالي الإنجازات: ${stats.totalCompletions} ${habit.unit}`,
     `• نسبة الالتزام: ${stats.completionRate}%`,
+  ];
+
+  if (latestNote && latestNote.trim()) {
+    lines.push(`• آخر خاطرة: "${latestNote.trim()}"`);
+  }
+
+  lines.push('', 'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨');
+  return lines.join('\n');
+};
+
+/**
+ * Retrieves all checkin records with non-empty reflection notes for a habit,
+ * ordered chronologically descending (newest first).
+ */
+export const getHabitCheckinNotes = (
+  allCheckins: HabitCheckin[],
+  habitId: string
+): HabitCheckin[] => {
+  return allCheckins
+    .filter(
+      (c) =>
+        c.habitId === habitId &&
+        typeof c.note === 'string' &&
+        c.note.trim().length > 0
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+};
+
+/**
+ * Format habit reflection diary notes for native sharing
+ */
+export const formatHabitNotesForShare = (
+  habit: Habit,
+  notes: HabitCheckin[]
+): string => {
+  if (!notes || notes.length === 0) {
+    return `📝 خواطر ويوميات عادة: ${habit.name}\nلا توجد ملاحظات مسجلة بعد.`;
+  }
+
+  const formattedNotes = notes.slice(0, 5).map((n) => {
+    const formattedDate = formatArabicDate(n.date);
+    return `• ${formattedDate}:\n  "${n.note?.trim()}"`;
+  });
+
+  return [
+    `📖 مذكرات إنجازي في عادة: ${habit.name}`,
+    `إجمالي الخواطر والتدوينات: ${notes.length}`,
+    '',
+    ...formattedNotes,
     '',
     'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
   ].join('\n');

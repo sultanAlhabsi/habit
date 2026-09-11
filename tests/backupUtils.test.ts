@@ -149,3 +149,41 @@ test('mergeBackupData: merges checkins updating to newer timestamps', () => {
   const updatedC1 = merged.checkins.find((c) => c.habitId === 'h1' && c.date === '2026-09-01');
   assert.equal(updatedC1?.count, 2);
 });
+
+test('validateBackupJson: correctly validates and preserves checkin note field', () => {
+  const checkinWithNote: HabitCheckin = {
+    id: 'c_note_1',
+    habitId: 'h1',
+    date: '2026-09-05',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-05T08:00:00.000Z',
+    note: 'شعور ممتاز بعد إتمام الورد اليومي',
+  };
+
+  const payload = createBackupPayload([mockHabit1], [checkinWithNote]);
+  const validation = validateBackupJson(JSON.stringify(payload));
+  assert.equal(validation.valid, true);
+  if (validation.valid) {
+    assert.equal(validation.data.checkins[0].note, 'شعور ممتاز بعد إتمام الورد اليومي');
+  }
+
+  // Reject corrupted checkin note (e.g. number instead of string)
+  const badPayload = {
+    appName: 'enjaz-habits',
+    version: 1,
+    habits: [mockHabit1],
+    checkins: [
+      {
+        id: 'c_bad_note',
+        habitId: 'h1',
+        date: '2026-09-05',
+        count: 1,
+        completed: true,
+        note: 12345, // invalid type
+      },
+    ],
+  };
+  const badValidation = validateBackupJson(JSON.stringify(badPayload));
+  assert.equal(badValidation.valid, false);
+});

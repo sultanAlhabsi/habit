@@ -16,6 +16,7 @@ interface HabitCardProps {
   currentCount?: number;
   isFuture?: boolean;
   isOffSchedule?: boolean;
+  hasNote?: boolean;
   onToggleCheckin: () => void;
   onPressDetails: () => void;
   onIncrement?: () => void;
@@ -29,6 +30,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   currentCount = 0,
   isFuture = false,
   isOffSchedule = false,
+  hasNote = false,
   onToggleCheckin,
   onPressDetails,
   onIncrement,
@@ -345,6 +347,32 @@ export const HabitCard: React.FC<HabitCardProps> = ({
               >
                 • غير مجدولة اليوم
               </Text>
+            )}
+
+            {hasNote && (
+              <View
+                accessibilityLabel="توجد ملاحظة مسجلة لهذا اليوم"
+                style={{
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  marginRight: 6,
+                }}
+              >
+                <Ionicons name="document-text-outline" size={12} color={theme.primary} />
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: theme.primary,
+                      fontSize: 10,
+                      marginRight: 2,
+                      fontWeight: '600',
+                    },
+                  ]}
+                >
+                  ملاحظة
+                </Text>
+              </View>
             )}
           </View>
         </View>

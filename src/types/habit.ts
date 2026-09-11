@@ -17,12 +17,13 @@ export interface Habit {
 }
 
 export interface HabitCheckin {
-  id: string;
+  id: string; // chk_habitId_date
   habitId: string;
   date: string; // YYYY-MM-DD
-  count: number;
+  count: number; // For multi-target habits
   completed: boolean;
-  updatedAt: string;
+  updatedAt: string; // ISO date
+  note?: string; // Daily reflection note / achievement diary entry
 }
 
 export interface HabitStats {
