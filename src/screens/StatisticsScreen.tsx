@@ -17,7 +17,7 @@ import {
   calculateWeekAdherence,
   formatWeekRangeArabic,
   formatOverallStatsForShare,
-  formatArabicDaysCount,
+  formatArabicStreakDays,
 } from '../utils/habitUtils';
 
 export const StatisticsScreen: React.FC = () => {
@@ -57,7 +57,7 @@ export const StatisticsScreen: React.FC = () => {
 
   const kpis = [
     { title: 'إنجاز اليوم', value: `${overall.todayCompletionRate}%` },
-    { title: 'أعلى سلسلة', value: formatArabicDaysCount(overall.bestOverallStreak) },
+    { title: 'أعلى سلسلة', value: formatArabicStreakDays(overall.bestOverallStreak) },
     { title: 'إجمالي المرات', value: `${overall.totalCheckinsEver}` },
     { title: 'العادات النشطة', value: `${overall.activeHabits}` },
   ];
@@ -179,7 +179,7 @@ export const StatisticsScreen: React.FC = () => {
               >
                 <View style={styles.rankLeft}>
                   <Text style={[typography.subMedium, { color: theme.text }]}>
-                    {formatArabicDaysCount(item.stats.currentStreak)} 🔥
+                    {formatArabicStreakDays(item.stats.currentStreak)} 🔥
                   </Text>
                 </View>
 

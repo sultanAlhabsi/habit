@@ -1,7 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { Habit } from '../types/habit';
-import { generateHabitReminderTriggers } from '../utils/notificationUtils';
+import {
+  generateHabitReminderTriggers,
+  generateEveningReviewTrigger,
+  EVENING_REVIEW_REMINDER_ID,
+} from '../utils/notificationUtils';
 
 let isNotificationsConfigured = false;
 
@@ -23,14 +27,19 @@ export const initNotifications = async (): Promise<void> => {
     });
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('habit-reminders', {
-        name: 'تذكيرات العادات',
-        description: 'تنبيهات يومية وأسبوعية لتذكيرك بإنجاز عاداتك',
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#2A4B3A',
-        sound: 'default',
-      });
+      try {
+        await Notifications.setNotificationChannelAsync('habit-reminders', {
+          name: 'تذكيرات العادات',
+          description: 'تنبيهات يومية وأسبوعية لتذكيرك بإنجاز عاداتك',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#2A4B3A',
+          sound: 'default',
+        });
+      } catch (channelError) {
+        // Channel provider is null in Expo Go Android SDK 57
+        console.warn('[NotificationService] Notification channel creation skipped in Expo Go:', channelError);
+      }
     }
 
     isNotificationsConfigured = true;
@@ -146,11 +155,60 @@ export const scheduleHabitReminder = async (habit: Habit): Promise<void> => {
 };
 
 /**
+ * Cancel the scheduled evening review reminder.
+ */
+export const cancelEveningReviewReminder = async (): Promise<void> => {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(EVENING_REVIEW_REMINDER_ID);
+  } catch (error) {
+    console.warn('[NotificationService] Error cancelling evening review reminder:', error);
+  }
+};
+
+/**
+ * Schedule or update the daily evening reflection reminder.
+ */
+export const scheduleEveningReviewReminder = async (
+  timeStr: string,
+  notificationsEnabled: boolean
+): Promise<void> => {
+  try {
+    await initNotifications();
+    await cancelEveningReviewReminder();
+
+    if (!notificationsEnabled) return;
+
+    const triggerDesc = generateEveningReviewTrigger(timeStr);
+    if (!triggerDesc) return;
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: triggerDesc.identifier,
+      content: {
+        title: 'المراجعة المسائية • إنجاز 🌙',
+        body: 'كيف كان يومك اليوم؟ تفقد عاداتك وسجل إنجازاتك وخاطرتك اليومية ✨',
+        sound: true,
+        data: { type: 'evening_review' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        channelId: 'habit-reminders',
+        hour: triggerDesc.hour,
+        minute: triggerDesc.minute,
+      },
+    });
+  } catch (error) {
+    console.warn('[NotificationService] Error scheduling evening review reminder:', error);
+  }
+};
+
+/**
  * Reschedule all habit reminders based on global preference.
  */
 export const rescheduleAllHabitReminders = async (
   habits: Habit[],
-  notificationsEnabled: boolean
+  notificationsEnabled: boolean,
+  eveningReminderEnabled = false,
+  eveningReminderTime = '21:00'
 ): Promise<void> => {
   try {
     await initNotifications();
@@ -167,6 +225,10 @@ export const rescheduleAllHabitReminders = async (
       if (habit.isActive && !habit.archivedAt && habit.reminderTime) {
         await scheduleHabitReminder(habit);
       }
+    }
+
+    if (eveningReminderEnabled) {
+      await scheduleEveningReviewReminder(eveningReminderTime, true);
     }
   } catch (error) {
     console.warn('[NotificationService] Error rescheduling all reminders:', error);

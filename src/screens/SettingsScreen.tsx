@@ -25,6 +25,11 @@ import {
   exportCsvViaShare,
 } from '../services/backupService';
 import { exportFullReportToCsv } from '../utils/habitUtils';
+import {
+  formatReminderTimeArabic,
+  isValidReminderTime,
+  normalizeArabicNumerals,
+} from '../utils/notificationUtils';
 
 export const SettingsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -37,6 +42,9 @@ export const SettingsScreen: React.FC = () => {
     toggleHaptics,
     notificationsEnabled,
     toggleNotifications,
+    eveningReminderEnabled,
+    eveningReminderTime,
+    setEveningReminder,
     exportBackup,
     importBackup,
     seedData,
@@ -323,14 +331,110 @@ export const SettingsScreen: React.FC = () => {
           </Pressable>
 
           {notificationsEnabled && (
-            <View style={{ marginTop: 10 }}>
-              <Button
-                title="إرسال إشعار تجريبي الآن"
-                variant="outline"
-                size="sm"
-                onPress={handleTestNotification}
-              />
-            </View>
+            <>
+              <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
+
+              {/* Evening Reflection Reminder */}
+              <Pressable
+                accessibilityRole="switch"
+                accessibilityState={{ checked: eveningReminderEnabled }}
+                onPress={() => setEveningReminder(!eveningReminderEnabled)}
+                style={[styles.settingRow, { minHeight: touchTarget }]}
+              >
+                <View style={styles.radioIndicator}>
+                  <Ionicons
+                    name={eveningReminderEnabled ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={20}
+                    color={eveningReminderEnabled ? theme.primary : theme.textMuted}
+                  />
+                </View>
+
+                <View style={styles.settingText}>
+                  <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+                    تذكير المراجعة المسائية 🌙
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
+                    تنبيه يومي لمراجعة عاداتك وتدوين يومياتك قبل نهاية اليوم
+                  </Text>
+                </View>
+              </Pressable>
+
+              {eveningReminderEnabled && (
+                <View
+                  style={[
+                    styles.eveningTimeContainer,
+                    {
+                      backgroundColor: theme.cardSecondary,
+                      borderColor: theme.border,
+                      borderRadius: radius.md,
+                    },
+                  ]}
+                >
+                  <View style={styles.eveningTimeHeader}>
+                    <Ionicons name="time-outline" size={15} color={theme.primary} />
+                    <Text
+                      style={[
+                        typography.caption,
+                        { color: theme.text, fontWeight: '600', marginRight: 6 },
+                      ]}
+                    >
+                      موعد التذكير: {formatReminderTimeArabic(eveningReminderTime)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.quickTimeRow}>
+                    {[
+                      { time: '20:00', label: '08:00 م' },
+                      { time: '20:30', label: '08:30 م' },
+                      { time: '21:00', label: '09:00 م' },
+                      { time: '21:30', label: '09:30 م' },
+                      { time: '22:00', label: '10:00 م' },
+                    ].map((item) => {
+                      const isSelected = eveningReminderTime === item.time;
+                      return (
+                        <Pressable
+                          key={item.time}
+                          accessibilityRole="button"
+                          accessibilityLabel={`اختيار موعد ${item.label}`}
+                          onPress={() => setEveningReminder(true, item.time)}
+                          style={({ pressed }) => [
+                            styles.quickTimeChip,
+                            {
+                              backgroundColor: isSelected ? theme.primary : theme.background,
+                              borderColor: isSelected ? theme.primary : theme.border,
+                              borderRadius: radius.sm,
+                              opacity: pressed ? 0.7 : 1,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isSelected ? '#FFFFFF' : theme.text,
+                                fontWeight: isSelected ? '700' : '500',
+                                fontSize: 11,
+                              },
+                            ]}
+                          >
+                            {item.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              <View style={{ marginTop: 12 }}>
+                <Button
+                  title="إرسال إشعار تجريبي الآن"
+                  variant="outline"
+                  size="sm"
+                  onPress={handleTestNotification}
+                />
+              </View>
+            </>
           )}
         </Card>
 
@@ -618,5 +722,26 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
+  },
+  eveningTimeContainer: {
+    marginTop: 8,
+    marginBottom: 6,
+    padding: 12,
+    borderWidth: 1,
+  },
+  eveningTimeHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  quickTimeRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  quickTimeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
   },
 });

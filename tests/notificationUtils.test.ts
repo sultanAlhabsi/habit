@@ -6,6 +6,8 @@ import {
   formatReminderTimeArabic,
   mapDayIndexToExpoWeekday,
   generateHabitReminderTriggers,
+  generateEveningReviewTrigger,
+  EVENING_REVIEW_REMINDER_ID,
 } from '../src/utils/notificationUtils.ts';
 import type { Habit } from '../src/types/habit.ts';
 
@@ -111,4 +113,24 @@ test('parseReminderTime: supports Arabic-Indic and Persian numeral strings', () 
   assert.deepEqual(parseReminderTime('۰۵:۴۵'), { hour: 5, minute: 45 });
   assert.deepEqual(parseReminderTime('۱۴:۰۹'), { hour: 14, minute: 9 });
 });
+
+test('generateEveningReviewTrigger: generates daily trigger descriptor for evening reflection', () => {
+  const trigger = generateEveningReviewTrigger('21:30');
+  assert.notEqual(trigger, null);
+  assert.equal(trigger?.identifier, EVENING_REVIEW_REMINDER_ID);
+  assert.equal(trigger?.type, 'daily');
+  assert.equal(trigger?.hour, 21);
+  assert.equal(trigger?.minute, 30);
+
+  // Supports Eastern Arabic numerals
+  const arabicTrigger = generateEveningReviewTrigger('٢٠:١٥');
+  assert.notEqual(arabicTrigger, null);
+  assert.equal(arabicTrigger?.hour, 20);
+  assert.equal(arabicTrigger?.minute, 15);
+
+  // Returns null for invalid time format
+  assert.equal(generateEveningReviewTrigger('invalid'), null);
+  assert.equal(generateEveningReviewTrigger('25:00'), null);
+});
+
 

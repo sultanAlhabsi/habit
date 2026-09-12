@@ -144,3 +144,27 @@ export const generateHabitReminderTriggers = (
     },
   ];
 };
+
+/**
+ * Identifier for the global evening review reminder.
+ */
+export const EVENING_REVIEW_REMINDER_ID = 'enjaz_evening_review_reminder';
+
+/**
+ * Generates a daily trigger descriptor for the evening review reminder.
+ * Returns null if the provided time string is invalid.
+ */
+export const generateEveningReviewTrigger = (
+  timeStr: string
+): ReminderTriggerDescriptor | null => {
+  const parsed = parseReminderTime(timeStr);
+  if (!parsed) return null;
+
+  return {
+    identifier: EVENING_REVIEW_REMINDER_ID,
+    type: 'daily',
+    hour: parsed.hour,
+    minute: parsed.minute,
+  };
+};
+

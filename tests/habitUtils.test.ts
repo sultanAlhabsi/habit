@@ -1330,5 +1330,47 @@ test('formatArabicCount: handles active habits singular, dual, and plural rules'
   assert.equal(formatHabits(25), '25 عادة نشطة');
 });
 
+test('formatArabicCount: handles archived habits singular, dual, and plural rules', () => {
+  const formatArchived = (count: number) =>
+    formatArabicCount(
+      count,
+      'عادة مؤرشفة واحدة',
+      'عادتان مؤرشفتان',
+      'عادات مؤرشفة',
+      'عادة مؤرشفة'
+    );
+
+  assert.equal(formatArchived(0), '0 عادة مؤرشفة');
+  assert.equal(formatArchived(1), 'عادة مؤرشفة واحدة');
+  assert.equal(formatArchived(2), 'عادتان مؤرشفتان');
+  assert.equal(formatArchived(3), '3 عادات مؤرشفة');
+  assert.equal(formatArchived(10), '10 عادات مؤرشفة');
+  assert.equal(formatArchived(12), '12 عادة مؤرشفة');
+});
+
+test('filterHabitsByQuery: successfully filters archived habits by name and description', () => {
+  const archivedHabits: Habit[] = [
+    createMockHabit({ id: 'a1', name: 'الاستيقاظ مبكراً', description: 'الساعة السادسة صباحاً', archivedAt: '2026-01-01' }),
+    createMockHabit({ id: 'a2', name: 'جلسة تأمل', description: 'تنفس واسترخاء', archivedAt: '2026-01-02' }),
+    createMockHabit({ id: 'a3', name: 'تعلم لغة جديدة', description: 'تطبيق دولينجو', archivedAt: '2026-01-03' }),
+  ];
+
+  const res1 = filterHabitsByQuery(archivedHabits, 'تأمل');
+  assert.equal(res1.length, 1);
+  assert.equal(res1[0].id, 'a2');
+
+  const res2 = filterHabitsByQuery(archivedHabits, 'صباحا'); // normalized without tashkeel / tanween
+  assert.equal(res2.length, 1);
+  assert.equal(res2[0].id, 'a1');
+
+  const res3 = filterHabitsByQuery(archivedHabits, 'دولينجو');
+  assert.equal(res3.length, 1);
+  assert.equal(res3[0].id, 'a3');
+
+  const resEmpty = filterHabitsByQuery(archivedHabits, 'غير موجود');
+  assert.equal(resEmpty.length, 0);
+});
+
+
 
 

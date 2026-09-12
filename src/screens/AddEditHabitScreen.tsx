@@ -63,7 +63,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [unit, setUnit] = useState(templateHabit?.unit || 'مرة');
   const [reminderTime, setReminderTime] = useState(templateHabit?.reminderTime || '08:00');
   const [hasReminder, setHasReminder] = useState(Boolean(templateHabit?.reminderTime));
-  const [isPinned, setIsPinned] = useState(Boolean(existingHabit?.isPinned));
+  const [isPinned, setIsPinned] = useState(Boolean(templateHabit?.isPinned));
 
   const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
 

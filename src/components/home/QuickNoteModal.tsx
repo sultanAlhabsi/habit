@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   backdropPressable: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   modalContent: {
     width: '100%',

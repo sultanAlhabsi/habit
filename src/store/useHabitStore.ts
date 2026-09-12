@@ -23,6 +23,8 @@ import {
   cancelHabitReminders,
   rescheduleAllHabitReminders,
   requestNotificationPermissions,
+  scheduleEveningReviewReminder,
+  cancelEveningReviewReminder,
 } from '../services/notificationService';
 import {
   BackupPayload,
@@ -41,6 +43,8 @@ interface HabitState {
   themeMode: ThemeMode;
   hapticsEnabled: boolean;
   notificationsEnabled: boolean;
+  eveningReminderEnabled: boolean;
+  eveningReminderTime: string;
 
   // Actions
   init: () => Promise<void>;
@@ -50,6 +54,7 @@ interface HabitState {
   setThemeMode: (mode: ThemeMode) => void;
   toggleHaptics: () => void;
   toggleNotifications: () => Promise<void>;
+  setEveningReminder: (enabled: boolean, time?: string) => Promise<void>;
   addHabit: (data: Omit<Habit, 'id' | 'createdAt'>) => Promise<Habit>;
   updateHabit: (habit: Habit) => Promise<void>;
   deleteHabit: (habitId: string) => Promise<void>;
@@ -78,20 +83,26 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   themeMode: 'system',
   hapticsEnabled: true,
   notificationsEnabled: true,
+  eveningReminderEnabled: false,
+  eveningReminderTime: '21:00',
 
   init: async () => {
     try {
       set({ isLoading: true });
       await initDatabase();
-      const [habits, checkins, hapticsPref, notifPref, sortPref] = await Promise.all([
-        fetchAllHabits(),
-        fetchAllCheckins(),
-        getPreference('haptics_enabled', 'true'),
-        getPreference('notifications_enabled', 'true'),
-        getPreference('habit_sort_preference', 'default'),
-      ]);
+      const habits = await fetchAllHabits();
+      const checkins = await fetchAllCheckins();
+      const allPrefs = await getAllPreferences();
+      const hapticsPref = allPrefs['haptics_enabled'] ?? 'true';
+      const notifPref = allPrefs['notifications_enabled'] ?? 'true';
+      const sortPref = allPrefs['habit_sort_preference'] ?? 'default';
+      const eveningNotifPref = allPrefs['evening_reminder_enabled'] ?? 'false';
+      const eveningTimePref = allPrefs['evening_reminder_time'] ?? '21:00';
 
       const notificationsEnabled = notifPref !== 'false';
+      const eveningReminderEnabled = eveningNotifPref === 'true';
+      const eveningReminderTime = eveningTimePref;
+
       const validSortOptions: HabitSortOption[] = [
         'default',
         'pending_first',
@@ -108,12 +119,19 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         checkins,
         hapticsEnabled: hapticsPref !== 'false',
         notificationsEnabled,
+        eveningReminderEnabled,
+        eveningReminderTime,
         sortOption,
         isLoading: false,
       });
 
       // Synchronize notifications with system schedule
-      await rescheduleAllHabitReminders(habits, notificationsEnabled);
+      await rescheduleAllHabitReminders(
+        habits,
+        notificationsEnabled,
+        eveningReminderEnabled,
+        eveningReminderTime
+      );
     } catch (err) {
       console.error('[Store] Init error:', err);
       set({ isLoading: false });
@@ -150,7 +168,25 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     }
     set({ notificationsEnabled: nextVal });
     await setPreference('notifications_enabled', String(nextVal));
-    await rescheduleAllHabitReminders(get().habits, nextVal);
+    await rescheduleAllHabitReminders(
+      get().habits,
+      nextVal,
+      get().eveningReminderEnabled,
+      get().eveningReminderTime
+    );
+  },
+
+  setEveningReminder: async (enabled: boolean, time?: string) => {
+    const newTime = time || get().eveningReminderTime;
+    if (enabled && get().notificationsEnabled) {
+      await requestNotificationPermissions();
+      await scheduleEveningReviewReminder(newTime, true);
+    } else {
+      await cancelEveningReviewReminder();
+    }
+    set({ eveningReminderEnabled: enabled, eveningReminderTime: newTime });
+    await setPreference('evening_reminder_enabled', String(enabled));
+    await setPreference('evening_reminder_time', newTime);
   },
 
   addHabit: async (data) => {
@@ -515,19 +551,22 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   seedData: async () => {
     set({ isLoading: true });
     await seedDatabase();
-    const [habits, checkins] = await Promise.all([
-      fetchAllHabits(),
-      fetchAllCheckins(),
-    ]);
+    const habits = await fetchAllHabits();
+    const checkins = await fetchAllCheckins();
     set({ habits, checkins, isLoading: false });
-    await rescheduleAllHabitReminders(habits, get().notificationsEnabled);
+    await rescheduleAllHabitReminders(
+      habits,
+      get().notificationsEnabled,
+      get().eveningReminderEnabled,
+      get().eveningReminderTime
+    );
   },
 
   resetAllData: async () => {
     set({ isLoading: true });
     await resetDatabase();
     set({ habits: [], checkins: [], isLoading: false });
-    await rescheduleAllHabitReminders([], false);
+    await rescheduleAllHabitReminders([], false, false);
   },
 
   exportBackup: async () => {
