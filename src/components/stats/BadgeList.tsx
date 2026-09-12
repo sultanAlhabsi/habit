@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
-import { toArabicNumerals } from '../../utils/habitUtils';
+import { toArabicNumerals, formatArabicCount } from '../../utils/habitUtils';
 
 interface Milestone {
   id: string;
@@ -143,7 +143,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
               { color: theme.primary, fontWeight: '600', fontSize: 11 },
             ]}
           >
-            {unlockedCount} من {milestones.length} محطات
+            {unlockedCount} من {formatArabicCount(milestones.length, 'محطة', 'محطتان', 'محطات', 'محطة')}
           </Text>
         </View>
       </View>

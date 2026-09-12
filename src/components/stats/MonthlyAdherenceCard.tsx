@@ -9,6 +9,7 @@ import { ProgressBar } from '../common/ProgressBar';
 import {
   calculateMonthAdherence,
   formatMonthlySummaryForShare,
+  formatArabicCount,
 } from '../../utils/habitUtils';
 
 interface MonthlyAdherenceCardProps {
@@ -127,7 +128,7 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = ({
             {stats.totalCompletions}
           </Text>
           <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' }]}>
-            من {stats.totalDueOpportunities} فرصة
+            من {formatArabicCount(stats.totalDueOpportunities, 'فرصة', 'فرصتان', 'فرص', 'فرصة')}
           </Text>
         </View>
 
@@ -139,7 +140,13 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = ({
             {stats.perfectDaysCount}
           </Text>
           <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' }]}>
-            {stats.perfectDaysCount === 1 ? 'يوم مثالي' : 'أيام مثالية'}
+            {stats.perfectDaysCount === 1
+              ? 'يوم مثالي'
+              : stats.perfectDaysCount === 2
+              ? 'يومان مثاليان'
+              : stats.perfectDaysCount >= 3 && stats.perfectDaysCount <= 10
+              ? 'أيام مثالية'
+              : 'يوم مثالي'}
           </Text>
         </View>
 

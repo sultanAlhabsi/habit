@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,11 @@ import {
 import { HABIT_PALETTES } from '../theme/colors';
 import { isValidReminderTime } from '../utils/notificationUtils';
 import { normalizeArabicNumerals } from '../utils/habitUtils';
+import { HabitTemplateModal } from '../components/habits/HabitTemplateModal';
+import {
+  HabitTemplate,
+  getHabitTemplateById,
+} from '../utils/habitTemplates';
 
 
 interface AddEditHabitScreenProps {
@@ -41,6 +46,9 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
 
   const habitId = route.params?.habitId;
   const duplicateFromId = route.params?.duplicateFromId;
+  const initialTemplateId = route.params?.initialTemplateId;
+  const initialTemplate = initialTemplateId ? getHabitTemplateById(initialTemplateId) : null;
+
   const existingHabit = habitId ? habits.find((h) => h.id === habitId) : null;
   const duplicateSourceHabit = duplicateFromId ? habits.find((h) => h.id === duplicateFromId) : null;
   const isEditing = Boolean(existingHabit);
@@ -49,21 +57,70 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const templateHabit = existingHabit || duplicateSourceHabit;
 
   const [name, setName] = useState(
-    existingHabit?.name || (duplicateSourceHabit ? `${duplicateSourceHabit.name} (نسخة)` : '')
+    existingHabit?.name ||
+      (duplicateSourceHabit ? `${duplicateSourceHabit.name} (نسخة)` : '') ||
+      (initialTemplate?.name || '')
   );
-  const [description, setDescription] = useState(templateHabit?.description || '');
-  const [selectedIcon, setSelectedIcon] = useState(templateHabit?.icon || 'fitness-outline');
+  const [description, setDescription] = useState(
+    templateHabit?.description || initialTemplate?.description || ''
+  );
+  const [selectedIcon, setSelectedIcon] = useState(
+    templateHabit?.icon || initialTemplate?.icon || 'fitness-outline'
+  );
   const [iconCategoryFilter, setIconCategoryFilter] = useState<string>('الكل');
-  const [selectedColor, setSelectedColor] = useState(templateHabit?.color || HABIT_PALETTES[0].hex);
-  const [frequency, setFrequency] = useState<HabitFrequency>(templateHabit?.frequency || 'daily');
-  const [frequencyDays, setFrequencyDays] = useState<number[]>(
-    templateHabit?.frequencyDays || [0, 1, 2, 3, 4, 5, 6]
+  const [selectedColor, setSelectedColor] = useState(
+    templateHabit?.color || initialTemplate?.color || HABIT_PALETTES[0].hex
   );
-  const [targetCount, setTargetCount] = useState(String(templateHabit?.targetCount || '1'));
-  const [unit, setUnit] = useState(templateHabit?.unit || 'مرة');
-  const [reminderTime, setReminderTime] = useState(templateHabit?.reminderTime || '08:00');
-  const [hasReminder, setHasReminder] = useState(Boolean(templateHabit?.reminderTime));
+  const [frequency, setFrequency] = useState<HabitFrequency>(
+    templateHabit?.frequency || initialTemplate?.frequency || 'daily'
+  );
+  const [frequencyDays, setFrequencyDays] = useState<number[]>(
+    templateHabit?.frequencyDays || initialTemplate?.frequencyDays || [0, 1, 2, 3, 4, 5, 6]
+  );
+  const [targetCount, setTargetCount] = useState(
+    String(templateHabit?.targetCount || initialTemplate?.targetCount || '1')
+  );
+  const [unit, setUnit] = useState(
+    templateHabit?.unit || initialTemplate?.unit || 'مرة'
+  );
+  const [reminderTime, setReminderTime] = useState(
+    templateHabit?.reminderTime || initialTemplate?.reminderTime || '08:00'
+  );
+  const [hasReminder, setHasReminder] = useState(
+    Boolean(templateHabit?.reminderTime || initialTemplate?.reminderTime)
+  );
   const [isPinned, setIsPinned] = useState(Boolean(templateHabit?.isPinned));
+  const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(
+    Boolean(route.params?.openTemplates)
+  );
+
+  const applyTemplate = (template: HabitTemplate) => {
+    setName(template.name);
+    setDescription(template.description);
+    setSelectedIcon(template.icon);
+    setSelectedColor(template.color);
+    setFrequency(template.frequency);
+    setFrequencyDays(template.frequencyDays);
+    setTargetCount(String(template.targetCount));
+    setUnit(template.unit);
+    if (template.reminderTime) {
+      setReminderTime(template.reminderTime);
+      setHasReminder(true);
+    } else {
+      setHasReminder(false);
+    }
+  };
+
+  const featuredTemplates = useMemo(() => {
+    return [
+      getHabitTemplateById('template_water'),
+      getHabitTemplateById('template_quran'),
+      getHabitTemplateById('template_steps'),
+      getHabitTemplateById('template_reading'),
+      getHabitTemplateById('template_pomodoro'),
+      getHabitTemplateById('template_adhkar'),
+    ].filter(Boolean) as HabitTemplate[];
+  }, []);
 
   const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
 
@@ -180,6 +237,94 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           paddingBottom: insets.bottom + 40,
         }}
       >
+        {/* Curated Habit Templates Quick Picker */}
+        {!isEditing && !isDuplicating && (
+          <Card
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: theme.cardSecondary,
+                borderColor: theme.border,
+                marginBottom: spacing.base,
+              },
+            ]}
+          >
+            <View style={styles.templateCardHeaderRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="تصفح جميع نماذج العادات الجاهزة"
+                onPress={() => setIsTemplateModalVisible(true)}
+                style={({ pressed }) => [
+                  styles.browseTemplatesBtn,
+                  {
+                    backgroundColor: theme.card,
+                    borderColor: theme.border,
+                    borderRadius: radius.full,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="sparkles-outline" size={13} color={theme.primary} style={{ marginLeft: 4 }} />
+                <Text style={[typography.caption, { color: theme.primary, fontWeight: '700' }]}>
+                  تصفح الكل (24)
+                </Text>
+              </Pressable>
+
+              <View style={styles.templateCardTitleGroup}>
+                <Text style={[typography.subMedium, { color: theme.text, textAlign: 'right', fontWeight: '700' }]}>
+                  نماذج عادات جاهزة ✨
+                </Text>
+                <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', fontSize: 11 }]}>
+                  اختر نموذجًا لتعبئة الإعدادات تلقائيًا
+                </Text>
+              </View>
+            </View>
+
+            {/* Quick Chips of popular habits */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.quickChipsContent}
+              style={{ marginTop: 10 }}
+            >
+              {featuredTemplates.map((template) => {
+                return (
+                  <Pressable
+                    key={template.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={`استخدام نموذج ${template.name}`}
+                    onPress={() => applyTemplate(template)}
+                    style={({ pressed }) => [
+                      styles.quickTemplateChip,
+                      {
+                        backgroundColor: theme.card,
+                        borderColor: theme.border,
+                        borderRadius: radius.md,
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.quickChipIcon,
+                        {
+                          backgroundColor: `${template.color}15`,
+                          borderRadius: radius.sm,
+                        },
+                      ]}
+                    >
+                      <Ionicons name={template.icon as any} size={15} color={template.color} />
+                    </View>
+                    <Text style={[typography.caption, { color: theme.text, fontWeight: '600', marginRight: 6 }]}>
+                      {template.name}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Card>
+        )}
+
         {/* Basic Info */}
         <Card style={styles.sectionCard}>
           <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
@@ -691,6 +836,13 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           />
         </View>
       </ScrollView>
+
+      {/* Curated Habit Templates Modal */}
+      <HabitTemplateModal
+        visible={isTemplateModalVisible}
+        onClose={() => setIsTemplateModalVisible(false)}
+        onSelectTemplate={applyTemplate}
+      />
     </View>
   );
 };
@@ -810,6 +962,42 @@ const styles = StyleSheet.create({
   pinTextSide: {
     flex: 1,
     paddingLeft: 12,
+  },
+  templateCardHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  templateCardTitleGroup: {
+    flex: 1,
+    paddingRight: 6,
+  },
+  browseTemplatesBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+  },
+  quickChipsContent: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 2,
+    gap: 8,
+  },
+  quickTemplateChip: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+  },
+  quickChipIcon: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
   },
 });
 

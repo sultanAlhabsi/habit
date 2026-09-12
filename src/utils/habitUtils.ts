@@ -337,22 +337,31 @@ export const calculateWeekAdherence = (
     const isFuture = day.isAfter(today, 'day');
 
     const dueHabits = habits.filter((h) => isHabitDueOnDate(h, dStr, false));
-    const completed = dueHabits.filter((h) =>
+    const completedOffScheduleHabits = habits.filter(
+      (h) =>
+        !dueHabits.some((dh) => dh.id === h.id) &&
+        completedCheckins.some((c) => c.habitId === h.id && c.date === dStr)
+    );
+
+    const completedDueCount = dueHabits.filter((h) =>
       completedCheckins.some((c) => c.habitId === h.id && c.date === dStr)
     ).length;
 
+    const totalCompleted = completedDueCount + completedOffScheduleHabits.length;
+    const totalOpportunities = dueHabits.length + completedOffScheduleHabits.length;
+
     const rate =
-      isFuture || dueHabits.length === 0
+      isFuture || totalOpportunities === 0
         ? 0
-        : Math.round((completed / dueHabits.length) * 100);
+        : Math.min(100, Math.round((totalCompleted / totalOpportunities) * 100));
 
     weeklyAdherence.push({
       dayName: dayNamesArabic[dayIdx],
       dayShort: dayShortArabic[dayIdx],
       date: dStr,
       dayIndex: dayIdx,
-      completedCount: completed,
-      totalCount: dueHabits.length,
+      completedCount: totalCompleted,
+      totalCount: totalOpportunities,
       rate,
       isFuture,
       isToday,

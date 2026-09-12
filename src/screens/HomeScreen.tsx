@@ -457,13 +457,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
         {/* Habits List or Empty States */}
         {baseHabits.length === 0 && !isSearchActive ? (
-          <EmptyState
-            icon="leaf-outline"
-            title="لا توجد عادات لهذا اليوم"
-            description="أنشئ عاداتك اليومية لتبدأ في بناء جدولك ومتابعة التزامك"
-            actionTitle="إضافة عادة"
-            onActionPress={() => navigation.navigate('AddEditHabit', {})}
-          />
+          <View style={{ alignItems: 'center' }}>
+            <EmptyState
+              icon="leaf-outline"
+              title="لا توجد عادات لهذا اليوم"
+              description="أنشئ عاداتك اليومية لتبدأ في بناء جدولك ومتابعة التزامك"
+              actionTitle="إضافة عادة جديدة"
+              onActionPress={() => navigation.navigate('AddEditHabit', {})}
+            />
+            {habits.length === 0 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="استعراض نماذج العادات الجاهزة"
+                onPress={() => navigation.navigate('AddEditHabit', { openTemplates: true })}
+                style={({ pressed }) => [
+                  styles.emptyStateTemplatesBtn,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.border,
+                    borderRadius: radius.md,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="sparkles" size={15} color={theme.primary} style={{ marginLeft: 6 }} />
+                <Text style={[typography.subMedium, { color: theme.primary, fontWeight: '600' }]}>
+                  استكشف نماذج العادات الجاهزة (24 نموذج)
+                </Text>
+              </Pressable>
+            )}
+          </View>
         ) : categoryFilteredHabits.length === 0 ? (
           selectedCategory !== 'الكل' ? (
             <EmptyState
@@ -852,6 +875,16 @@ const styles = StyleSheet.create({
   sortOptionRight: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
+  },
+  emptyStateTemplatesBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    marginTop: -8,
+    marginBottom: 20,
   },
 });
 

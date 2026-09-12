@@ -1371,6 +1371,79 @@ test('filterHabitsByQuery: successfully filters archived habits by name and desc
   assert.equal(resEmpty.length, 0);
 });
 
+test('calculateWeekAdherence: rewards completed off-schedule habits without penalizing uncompleted ones', () => {
+  const pastMonday = dayjs().subtract(1, 'week').startOf('week').add(1, 'day'); // Monday of previous week
+  const mondayStr = pastMonday.format('YYYY-MM-DD');
 
+  // Habit scheduled only for Friday (day index 5)
+  const fridayHabit = createMockHabit({
+    id: 'fri_habit',
+    frequency: 'specific_days',
+    frequencyDays: [5],
+  });
 
+  // Habit scheduled daily
+  const dailyHabit = createMockHabit({
+    id: 'daily_habit',
+    frequency: 'daily',
+  });
 
+  // User completed BOTH daily habit AND the off-schedule fridayHabit on Monday!
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: dailyHabit.id,
+      date: mondayStr,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+    {
+      id: 'c2',
+      habitId: fridayHabit.id,
+      date: mondayStr,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+
+  const week = calculateWeekAdherence([dailyHabit, fridayHabit], checkins, mondayStr);
+  const mondayAdherence = week.find((d) => d.date === mondayStr);
+
+  assert.ok(mondayAdherence);
+  // Both the due daily habit and the completed off-schedule habit are counted!
+  assert.equal(mondayAdherence?.completedCount, 2);
+  assert.equal(mondayAdherence?.totalCount, 2);
+  assert.equal(mondayAdherence?.rate, 100);
+
+  // Check Sunday (day index 0) where daily habit was due but NOT completed, and fridayHabit was NOT due and NOT completed
+  const sundayStr = dayjs(pastMonday).startOf('week').format('YYYY-MM-DD');
+  const sundayAdherence = week.find((d) => d.date === sundayStr);
+  assert.ok(sundayAdherence);
+  // Only dailyHabit was due; fridayHabit was NOT due and wasn't completed, so totalCount is 1, not 2
+  assert.equal(sundayAdherence?.totalCount, 1);
+  assert.equal(sundayAdherence?.completedCount, 0);
+  assert.equal(sundayAdherence?.rate, 0);
+});
+
+test('formatArabicCount: accurately applies Arabic grammatical rules for milestones and opportunities', () => {
+  const formatMilestones = (count: number) =>
+    formatArabicCount(count, 'محطة', 'محطتان', 'محطات', 'محطة');
+
+  assert.equal(formatMilestones(1), 'محطة');
+  assert.equal(formatMilestones(2), 'محطتان');
+  assert.equal(formatMilestones(5), '5 محطات');
+  assert.equal(formatMilestones(10), '10 محطات');
+  assert.equal(formatMilestones(11), '11 محطة');
+  assert.equal(formatMilestones(15), '15 محطة');
+  assert.equal(formatMilestones(24), '24 محطة');
+
+  const formatOpps = (count: number) =>
+    formatArabicCount(count, 'فرصة', 'فرصتان', 'فرص', 'فرصة');
+
+  assert.equal(formatOpps(1), 'فرصة');
+  assert.equal(formatOpps(2), 'فرصتان');
+  assert.equal(formatOpps(7), '7 فرص');
+  assert.equal(formatOpps(30), '30 فرصة');
+});
