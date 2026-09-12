@@ -94,15 +94,18 @@ export const getHabitCategory = (iconName?: string): string => {
 export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = true): boolean => {
   if (requireActive && (!habit.isActive || habit.archivedAt)) return false;
 
-  const targetDate = dayjs(dateStr).startOf('day');
-  const createdDate = dayjs(habit.createdAt).startOf('day');
+  const targetDateStr = dateStr;
+  const createdDateStr = habit.createdAt.substring(0, 10);
 
   // If date is before habit creation, it wasn't due then
-  if (targetDate.isBefore(createdDate)) return false;
+  if (targetDateStr < createdDateStr) return false;
 
   // If habit was archived, it was not due on dates after archive date
-  if (habit.archivedAt && targetDate.isAfter(dayjs(habit.archivedAt).startOf('day'))) {
-    return false;
+  if (habit.archivedAt) {
+    const archivedDateStr = habit.archivedAt.substring(0, 10);
+    if (targetDateStr > archivedDateStr) {
+      return false;
+    }
   }
 
   if (habit.frequency === 'daily') {
@@ -110,7 +113,9 @@ export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = 
   }
 
   if (habit.frequency === 'specific_days') {
-    const dayOfWeek = targetDate.day(); // 0 is Sunday, 6 is Saturday
+    // Parse manually to avoid dayjs overhead for day of week extraction
+    const targetDateObj = new Date(dateStr + 'T00:00:00');
+    const dayOfWeek = targetDateObj.getDay(); // 0 is Sunday, 6 is Saturday
     return Array.isArray(habit.frequencyDays) && habit.frequencyDays.includes(dayOfWeek);
   }
 
@@ -126,72 +131,55 @@ export const calculateHabitStats = (
   allCheckins: HabitCheckin[],
   referenceDate?: string | dayjs.Dayjs
 ): HabitStats => {
-  const today = (referenceDate ? dayjs(referenceDate) : dayjs()).startOf('day');
-  const todayStr = today.format('YYYY-MM-DD');
+  const todayStr = referenceDate
+    ? (typeof referenceDate === 'string' ? referenceDate : referenceDate.format('YYYY-MM-DD'))
+    : dayjs().format('YYYY-MM-DD');
 
   // Filter valid completed checkins up to today (ignore any accidental future dates)
-  const habitCheckins = allCheckins.filter(
-    (c) => c.habitId === habit.id && c.completed && !dayjs(c.date).startOf('day').isAfter(today)
-  );
+  const completedDates = new Set<string>();
 
-  const completedDates = new Set(habitCheckins.map((c) => c.date));
+  for (let i = 0; i < allCheckins.length; i++) {
+    const c = allCheckins[i];
+    if (c.habitId === habit.id && c.completed && c.date <= todayStr) {
+      completedDates.add(c.date);
+    }
+  }
+
   const totalCompletions = completedDates.size;
-  const createdDate = dayjs(habit.createdAt).startOf('day');
+  const createdDateStr = habit.createdAt.substring(0, 10);
 
-  // Find earliest relevant date (created date or earliest checkin)
-  let earliestDate = createdDate;
-  completedDates.forEach((dStr) => {
-    const d = dayjs(dStr).startOf('day');
-    if (d.isBefore(earliestDate)) {
-      earliestDate = d;
+  // Find earliest relevant date string natively
+  let earliestDateStr = createdDateStr;
+  if (earliestDateStr > todayStr) {
+    earliestDateStr = todayStr;
+  }
+
+  for (const dStr of completedDates) {
+    if (dStr < earliestDateStr) {
+      earliestDateStr = dStr;
     }
-  });
+  }
 
-  // Calculate current streak
+  const earliestDateObj = new Date(earliestDateStr + "T00:00:00");
+  const todayDateObj = new Date(todayStr + "T00:00:00");
+
+  // Native date diff in days
+  const totalHistoryDays = Math.max(1, Math.round((todayDateObj.getTime() - earliestDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
   let currentStreak = 0;
-  const isTodayDue = isHabitDueOnDate(habit, todayStr, false);
-  const isTodayCompleted = completedDates.has(todayStr);
-
-  let checkDate = today;
-  if (isTodayCompleted) {
-    currentStreak = 1;
-    checkDate = today.subtract(1, 'day');
-  } else {
-    // If not completed today, start counting from yesterday (streak not broken until today ends)
-    checkDate = today.subtract(1, 'day');
-  }
-
-  const maxBackwardDays = Math.min(3650, Math.max(1, today.diff(earliestDate, 'day') + 1));
-  for (let i = 0; i < maxBackwardDays; i++) {
-    if (checkDate.isBefore(earliestDate)) break;
-    const dateStr = checkDate.format('YYYY-MM-DD');
-    const isDue = isHabitDueOnDate(habit, dateStr, false);
-    const isCompleted = completedDates.has(dateStr);
-
-    if (isDue) {
-      if (isCompleted) {
-        currentStreak++;
-      } else {
-        // Streak is broken
-        break;
-      }
-    } else if (isCompleted) {
-      // Completed on an off day, still counts towards streak
-      currentStreak++;
-    }
-
-    checkDate = checkDate.subtract(1, 'day');
-  }
-
-  // Calculate best streak and total due days chronologically
-  let bestStreak = currentStreak;
+  let bestStreak = 0;
   let runningStreak = 0;
   let totalDueDays = 0;
 
-  const totalHistoryDays = Math.max(1, today.diff(earliestDate, 'day') + 1);
+  // Use a native JS Date and simple iteration to avoid thousands of dayjs object creations
+  const d = new Date(earliestDateObj.getTime());
+
   for (let i = 0; i < totalHistoryDays; i++) {
-    const curDate = earliestDate.add(i, 'day');
-    const curStr = curDate.format('YYYY-MM-DD');
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const curStr = `${y}-${m}-${day}`;
+
     const isDue = isHabitDueOnDate(habit, curStr, false);
     const isCompleted = completedDates.has(curStr);
 
@@ -204,15 +192,15 @@ export const calculateHabitStats = (
       if (runningStreak > bestStreak) {
         bestStreak = runningStreak;
       }
+      currentStreak++;
     } else if (isDue) {
       if (curStr !== todayStr) {
         runningStreak = 0;
+        currentStreak = 0; // Streak broken
       }
     }
-  }
 
-  if (currentStreak > bestStreak) {
-    bestStreak = currentStreak;
+    d.setDate(d.getDate() + 1);
   }
 
   // Effective opportunities includes both due days and off-day completions
