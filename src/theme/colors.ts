@@ -1,12 +1,39 @@
 // Refined, human-curated palette for calm, everyday habit tracking
 // Avoids neon/saturated colors in favor of grounded, earthy, understated tones
 export const HABIT_PALETTES = [
+  // درجات الأخضر والطبيعة
   { id: 'sage', hex: '#2A4B3A', label: 'أخضر غابي' },
-  { id: 'slate', hex: '#334155', label: 'رمادي حجري' },
-  { id: 'ochre', hex: '#854D0E', label: 'عسلي دافئ' },
+  { id: 'olive', hex: '#4D533C', label: 'زيتي وقور' },
+  { id: 'emerald', hex: '#0F766E', label: 'زمردي هادئ' },
+  { id: 'mint', hex: '#15803D', label: 'عشبي نضر' },
+  { id: 'moss', hex: '#3F6212', label: 'طحلبي دافئ' },
+
+  // درجات الأزرق والنيلي
   { id: 'navy', hex: '#1E3A8A', label: 'أزرق كحلي' },
+  { id: 'ocean', hex: '#0369A1', label: 'أزرق بحري' },
+  { id: 'indigo', hex: '#4338CA', label: 'نيلي هادئ' },
+  { id: 'teal', hex: '#0E7490', label: 'فيروزي داكن' },
+  { id: 'sky', hex: '#0284C7', label: 'سماوي رصين' },
+
+  // درجات التراب والعسل
   { id: 'terracotta', hex: '#9A3412', label: 'طوبي هادئ' },
+  { id: 'ochre', hex: '#854D0E', label: 'عسلي دافئ' },
+  { id: 'amber', hex: '#B45309', label: 'كهرماني' },
+  { id: 'copper', hex: '#C2410C', label: 'نحاسي دافئ' },
+  { id: 'sand', hex: '#78350F', label: 'رملي غامق' },
+
+  // درجات البنفسجي والوردي والخمري
   { id: 'plum', hex: '#581C87', label: 'خزامي هادئ' },
+  { id: 'violet', hex: '#6D28D9', label: 'بنفسجي وقور' },
+  { id: 'berry', hex: '#831843', label: 'توتي دافئ' },
+  { id: 'rose', hex: '#9F1239', label: 'وردي كلاسيكي' },
+  { id: 'burgundy', hex: '#881337', label: 'عنابي داكن' },
+
+  // درجات الرمادي والفحم والبرونز
+  { id: 'slate', hex: '#334155', label: 'رمادي حجري' },
+  { id: 'steel', hex: '#475569', label: 'رمادي فولاذي' },
+  { id: 'charcoal', hex: '#1C1917', label: 'فحمي عميق' },
+  { id: 'bronze', hex: '#57534E', label: 'برونزي هادئ' },
 ];
 
 export const LIGHT_THEME = {

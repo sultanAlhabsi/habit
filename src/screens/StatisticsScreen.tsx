@@ -178,9 +178,17 @@ export const StatisticsScreen: React.FC = () => {
                 ]}
               >
                 <View style={styles.rankLeft}>
-                  <Text style={[typography.subMedium, { color: theme.text }]}>
-                    {formatArabicStreakDays(item.stats.currentStreak)} 🔥
-                  </Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                    <Ionicons
+                      name="flame"
+                      size={14}
+                      color={item.stats.currentStreak > 0 ? (item.habit.color || theme.primary) : theme.textMuted}
+                      style={{ marginLeft: 4 }}
+                    />
+                    <Text style={[typography.subMedium, { color: theme.text }]}>
+                      {formatArabicStreakDays(item.stats.currentStreak)}
+                    </Text>
+                  </View>
                 </View>
 
                 <View style={styles.rankRight}>

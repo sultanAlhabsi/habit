@@ -227,9 +227,28 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
 
         {/* Color Palette (Subtle & Earthy) */}
         <Card style={styles.sectionCard}>
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
-            اللون
-          </Text>
+          <View
+            style={{
+              flexDirection: 'row-reverse',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 10,
+            }}
+          >
+            <Text style={[typography.caption, { color: theme.textSecondary }]}>
+              اللون
+            </Text>
+            {(() => {
+              const currentPal = HABIT_PALETTES.find(
+                (p) => p.hex.toLowerCase() === selectedColor.toLowerCase()
+              );
+              return currentPal ? (
+                <Text style={[typography.caption, { color: theme.primary, fontWeight: '600' }]}>
+                  {currentPal.label}
+                </Text>
+              ) : null;
+            })()}
+          </View>
           <View style={styles.colorRow}>
             {HABIT_PALETTES.map((colorItem) => {
               const isSelected = selectedColor === colorItem.hex;
@@ -634,7 +653,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                   { color: isPinned ? theme.background : theme.textSecondary, fontWeight: '500' },
                 ]}
               >
-                {isPinned ? 'مثبتة 📌' : 'عادية'}
+                {isPinned ? 'مثبتة' : 'عادية'}
               </Text>
             </View>
 

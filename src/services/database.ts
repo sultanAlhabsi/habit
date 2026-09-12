@@ -1,8 +1,9 @@
-import * as SQLite from 'expo-sqlite';
+import type * as SQLite from 'expo-sqlite';
 import dayjs from 'dayjs';
-import { Habit, HabitCheckin } from '../types/habit';
-import { INITIAL_HABITS, generateDemoCheckins } from './mockData';
+import type { Habit, HabitCheckin } from '../types/habit';
+import { INITIAL_HABITS, generateDemoCheckins } from './mockData.ts';
 
+let SQLiteModule: typeof import('expo-sqlite') | null = null;
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
@@ -13,18 +14,24 @@ let memoryCheckins: HabitCheckin[] = generateDemoCheckins();
 let memoryMeta: Record<string, string> = {
   theme_mode: 'system',
   haptics_enabled: 'true',
+  evening_reminder_enabled: 'false',
+  evening_reminder_time: '21:00',
+  habit_sort_preference: 'default',
+  notifications_enabled: 'true',
 };
 
-// Sequential query queue to eliminate concurrent execution race conditions on Android (NullPointerException in prepareAsync)
+// Sequential query queue to eliminate concurrent execution race conditions on Android
 let dbQueue: Promise<any> = Promise.resolve();
 
 const getDB = async (): Promise<SQLite.SQLiteDatabase | null> => {
   if (dbInstance) return dbInstance;
   try {
-    dbInstance = await SQLite.openDatabaseAsync('enjaz_habits.db');
+    if (!SQLiteModule) {
+      SQLiteModule = await import('expo-sqlite');
+    }
+    dbInstance = await SQLiteModule.openDatabaseAsync('enjaz_habits.db');
     return dbInstance;
   } catch (error) {
-    console.warn('[Database] Native SQLite not available, falling back to memory store:', error);
     return null;
   }
 };
@@ -107,26 +114,18 @@ export const initDatabase = async (): Promise<void> => {
             );
           `);
 
-          // Safe migration: Add note column if upgrading from earlier version
           try {
             await database.execAsync('ALTER TABLE checkins ADD COLUMN note TEXT;');
-          } catch {
-            // Column already exists or already migrated
-          }
+          } catch {}
 
-          // Safe migration: Add is_pinned column if upgrading from earlier version
           try {
             await database.execAsync('ALTER TABLE habits ADD COLUMN is_pinned INTEGER DEFAULT 0;');
-          } catch {
-            // Column already exists or already migrated
-          }
+          } catch {}
 
-          // Check if initial seed is needed
           const countResult = await database.getFirstAsync<{ count: number }>(
             'SELECT COUNT(*) as count FROM habits'
           );
           if (!countResult || countResult.count === 0) {
-            console.log('[Database] Seeding initial habits and history...');
             await seedDatabaseInternal(database);
           }
         } catch (error) {
@@ -238,7 +237,7 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
         archivedAt: r.archived_at,
       }));
     },
-    () => memoryHabits
+    () => [...memoryHabits]
   );
 };
 
@@ -292,7 +291,7 @@ export const fetchAllCheckins = async (): Promise<HabitCheckin[]> => {
         note: r.note || undefined,
       }));
     },
-    () => memoryCheckins
+    () => [...memoryCheckins]
   );
 };
 

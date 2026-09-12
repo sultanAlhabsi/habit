@@ -409,7 +409,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
                     <Button
-                      title={isCompletedOnDate ? 'مكتملة بالكامل ✓' : 'إكمال العادة الآن'}
+                      title={isCompletedOnDate ? 'مكتملة بالكامل' : 'إكمال العادة الآن'}
+                      iconName={isCompletedOnDate ? 'checkmark-circle' : 'checkmark-outline'}
                       variant={isCompletedOnDate ? 'outline' : 'primary'}
                       onPress={() => toggleCheckin(habit.id, selectedDate)}
                     />
@@ -464,12 +465,13 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   title={
                     isCompletedOnDate
                       ? isViewingToday
-                        ? 'مكتملة اليوم ✓'
-                        : 'مكتملة بهذا التاريخ ✓'
+                        ? 'مكتملة اليوم'
+                        : 'مكتملة بهذا التاريخ'
                       : isViewingToday
                       ? 'تسجيل إنجاز اليوم'
                       : 'تسجيل إنجاز لهذا التاريخ'
                   }
+                  iconName={isCompletedOnDate ? 'checkmark-circle' : 'checkmark-outline'}
                   variant={isCompletedOnDate ? 'outline' : 'primary'}
                   onPress={() => toggleCheckin(habit.id, selectedDate)}
                 />
@@ -581,12 +583,14 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             <>
               <Button
                 title="استعادة العادة من الأرشيف"
+                iconName="arrow-undo-outline"
                 variant="primary"
                 onPress={handleRestore}
                 style={{ marginBottom: spacing.sm }}
               />
               <Button
-                title="نسخ كعادة جديدة نشطة ⎘"
+                title="نسخ كعادة جديدة نشطة"
+                iconName="copy-outline"
                 variant="outline"
                 onPress={() => navigation.navigate('AddEditHabit', { duplicateFromId: habit.id })}
                 style={{ marginBottom: spacing.sm }}
@@ -595,25 +599,29 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
           ) : (
             <>
               <Button
-                title={habit.isPinned ? 'إلغاء تثبيت العادة' : 'تثبيت العادة في البداية 📌'}
+                title={habit.isPinned ? 'إلغاء تثبيت العادة' : 'تثبيت العادة في البداية'}
+                iconName={habit.isPinned ? 'pin-outline' : 'pin'}
                 variant="outline"
                 onPress={() => togglePinHabit(habit.id)}
                 style={{ marginBottom: spacing.sm }}
               />
               <Button
-                title="تكرار العادة كعادة جديدة ⎘"
+                title="تكرار العادة كعادة جديدة"
+                iconName="copy-outline"
                 variant="outline"
                 onPress={() => navigation.navigate('AddEditHabit', { duplicateFromId: habit.id })}
                 style={{ marginBottom: spacing.sm }}
               />
               <Button
                 title={habit.isActive ? 'إيقاف مؤقت للعادة' : 'استئناف العادة'}
+                iconName={habit.isActive ? 'pause-outline' : 'play-outline'}
                 variant="outline"
                 onPress={() => toggleHabitActive(habit.id)}
                 style={{ marginBottom: spacing.sm }}
               />
               <Button
                 title="أرشفة العادة"
+                iconName="archive-outline"
                 variant="outline"
                 onPress={handleArchiveConfirm}
                 style={{ marginBottom: spacing.sm }}
@@ -623,6 +631,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
           <Button
             title={isArchived ? 'حذف نهائي للعادة' : 'حذف العادة'}
+            iconName="trash-outline"
             variant="destructive"
             onPress={handleDeleteConfirm}
           />

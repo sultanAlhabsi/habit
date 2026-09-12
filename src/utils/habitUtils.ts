@@ -29,24 +29,75 @@ export const HABIT_CATEGORIES = ['الكل', 'صحة', 'إنتاجية', 'روت
 export type HabitCategory = (typeof HABIT_CATEGORIES)[number];
 
 const ICON_CATEGORY_MAP: Record<string, string> = {
+  // تطوير
   'book-outline': 'تطوير',
   'journal-outline': 'تطوير',
+  'school-outline': 'تطوير',
+  'library-outline': 'تطوير',
+  'bulb-outline': 'تطوير',
+  'language-outline': 'تطوير',
+  'pencil-outline': 'تطوير',
+  'color-palette-outline': 'تطوير',
+  'musical-notes-outline': 'تطوير',
+  'camera-outline': 'تطوير',
+  'mic-outline': 'تطوير',
+  'headset-outline': 'تطوير',
+  'people-outline': 'تطوير',
+  'chatbubbles-outline': 'تطوير',
+
+  // صحة
   'water-outline': 'صحة',
   'fitness-outline': 'صحة',
-  'moon-outline': 'صحة',
-  'heart-outline': 'صحة',
   'walk-outline': 'صحة',
+  'footsteps-outline': 'صحة',
   'bicycle-outline': 'صحة',
   'barbell-outline': 'صحة',
+  'moon-outline': 'صحة',
   'bed-outline': 'صحة',
+  'heart-outline': 'صحة',
   'pulse-outline': 'صحة',
+  'nutrition-outline': 'صحة',
+  'restaurant-outline': 'صحة',
+  'medkit-outline': 'صحة',
+  'body-outline': 'صحة',
+  'bandage-outline': 'صحة',
+
+  // إنتاجية
+  'laptop-outline': 'إنتاجية',
+  'briefcase-outline': 'إنتاجية',
+  'code-slash-outline': 'إنتاجية',
+  'trophy-outline': 'إنتاجية',
+  'rocket-outline': 'إنتاجية',
+  'timer-outline': 'إنتاجية',
+  'wallet-outline': 'إنتاجية',
+  'cash-outline': 'إنتاجية',
+  'calculator-outline': 'إنتاجية',
+  'trending-up-outline': 'إنتاجية',
+  'document-text-outline': 'إنتاجية',
+  'clipboard-outline': 'إنتاجية',
+  'folder-outline': 'إنتاجية',
+
+  // روتين
   'sunny-outline': 'روتين',
   'alarm-outline': 'روتين',
   'cafe-outline': 'روتين',
+  'home-outline': 'روتين',
+  'brush-outline': 'روتين',
+  'shirt-outline': 'روتين',
+  'calendar-outline': 'روتين',
+  'cart-outline': 'روتين',
+  'time-outline': 'روتين',
+  'hourglass-outline': 'روتين',
+  'car-outline': 'روتين',
+
+  // روحانية
   'sparkles-outline': 'روحانية',
   'leaf-outline': 'روحانية',
-  'laptop-outline': 'إنتاجية',
-  'trophy-outline': 'إنتاجية',
+  'flower-outline': 'روحانية',
+  'bonfire-outline': 'روحانية',
+  'compass-outline': 'روحانية',
+  'heart-half-outline': 'روحانية',
+  'planet-outline': 'روحانية',
 };
 
 /**
@@ -511,7 +562,7 @@ export const getHabitStreakStatus = (
   if (isCompleted) {
     return {
       status: 'completed',
-      message: 'تم إنجاز العادة بنجاح! سلسلتك في استمرار وتألق 🔥',
+      message: 'تم إنجاز العادة بنجاح! سلسلتك في استمرار وتألق',
       iconName: 'checkmark-circle-outline',
     };
   }
@@ -519,14 +570,14 @@ export const getHabitStreakStatus = (
   if (!isDue) {
     return {
       status: 'rest_day',
-      message: 'اليوم يوم استراحة مجدول لهذه العادة (السلسلة محفوظة) ☕',
+      message: 'اليوم يوم استراحة مجدول لهذه العادة (السلسلة محفوظة)',
       iconName: 'cafe-outline',
     };
   }
 
   return {
     status: 'pending',
-    message: 'بانتظار إنجازك اليوم للحفاظ على استمرارية سلسلتك ⏳',
+    message: 'بانتظار إنجازك اليوم للحفاظ على استمرارية سلسلتك',
     iconName: 'time-outline',
   };
 };
@@ -579,16 +630,16 @@ export const formatDailySummaryForShare = (
     }
 
     if (isCompleted) {
-      completedList.push(`✅ ${text}`);
+      completedList.push(`• [مكتملة] ${text}`);
     } else {
-      pendingList.push(`⏳ ${text}`);
+      pendingList.push(`• [متبقية] ${text}`);
     }
   });
 
   const completionRate = Math.round((completedList.length / dueHabits.length) * 100);
 
   const sections = [
-    `📊 تقرير إنجاز (${dateFormatted})`,
+    `تقرير إنجاز (${dateFormatted})`,
     `نسبة الالتزام: ${completionRate}% (${completedList.length} من ${dueHabits.length} مكتملة)`,
     '',
   ];
@@ -605,7 +656,7 @@ export const formatDailySummaryForShare = (
     sections.push('');
   }
 
-  sections.push('تم التوثيق عبر تطبيق إنجاز 🎯');
+  sections.push('تم التوثيق عبر تطبيق إنجاز');
 
   return sections.join('\n').trim();
 };
@@ -620,13 +671,13 @@ export const formatOverallStatsForShare = (
 ): string => {
   const overall = calculateOverallStats(habits, allCheckins, todayStr);
   return [
-    '🏆 إحصائياتي في تطبيق إنجاز:',
+    'إحصائياتي في تطبيق إنجاز:',
     `• نسبة إنجاز اليوم: ${overall.todayCompletionRate}%`,
-    `• أعلى سلسلة متتالية: ${overall.bestOverallStreak} يوم 🔥`,
-    `• إجمالي الإنجازات: ${overall.totalCheckinsEver} إنجاز 🎯`,
+    `• أعلى سلسلة متتالية: ${overall.bestOverallStreak} يوم`,
+    `• إجمالي الإنجازات: ${overall.totalCheckinsEver} إنجاز`,
     `• العادات النشطة: ${overall.activeHabits} عادات`,
     '',
-    'تطبيق إنجاز للالتزام وبناء العادات ✨',
+    'تطبيق إنجاز للالتزام وبناء العادات',
   ].join('\n');
 };
 
@@ -779,13 +830,13 @@ export const calculateMonthAdherence = (
  */
 export const formatMonthlySummaryForShare = (stats: MonthAdherenceStats): string => {
   return [
-    `📅 ملخص إنجازات شهر ${stats.monthLabel}:`,
+    `ملخص إنجازات شهر ${stats.monthLabel}:`,
     `• نسبة الالتزام الشهرية: ${stats.completionRate}%`,
-    `• إجمالي الإنجازات: ${stats.totalCompletions} إنجاز 🎯`,
-    `• الأيام المكتملة 100%: ${stats.perfectDaysCount} ${stats.perfectDaysCount === 1 ? 'يوم' : 'أيام'} 🌟`,
+    `• إجمالي الإنجازات: ${stats.totalCompletions} إنجاز`,
+    `• الأيام المكتملة 100%: ${stats.perfectDaysCount} ${stats.perfectDaysCount === 1 ? 'يوم' : 'أيام'}`,
     `• العادات النشطة: ${stats.activeHabitsCount}`,
     '',
-    'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
+    'تطبيق إنجاز لبناء العادات وتتبع الأهداف',
   ].join('\n');
 };
 
@@ -1036,9 +1087,9 @@ export const formatHabitStatsForShare = (
   const bestStreakUnit = stats.bestStreak === 1 ? 'يوم' : stats.bestStreak <= 10 ? 'أيام' : 'يوم';
 
   const lines = [
-    `🎯 إنجازي في عادة: ${habit.name}`,
-    `• السلسلة الحالية: ${stats.currentStreak} ${streakUnit} متتالية 🔥`,
-    `• أطول سلسلة: ${stats.bestStreak} ${bestStreakUnit} 🏆`,
+    `إنجازي في عادة: ${habit.name}`,
+    `• السلسلة الحالية: ${stats.currentStreak} ${streakUnit} متتالية`,
+    `• أطول سلسلة: ${stats.bestStreak} ${bestStreakUnit}`,
     `• مرحلة الالتزام: ${milestone.currentTier.name} (${milestone.currentTier.days} يوم)`,
     `• إجمالي الإنجازات: ${stats.totalCompletions} ${habit.unit}`,
     `• نسبة الالتزام: ${stats.completionRate}%`,
@@ -1048,7 +1099,7 @@ export const formatHabitStatsForShare = (
     lines.push(`• آخر خاطرة: "${latestNote.trim()}"`);
   }
 
-  lines.push('', 'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨');
+  lines.push('', 'تطبيق إنجاز لبناء العادات وتتبع الأهداف');
   return lines.join('\n');
 };
 
@@ -1078,7 +1129,7 @@ export const formatHabitNotesForShare = (
   notes: HabitCheckin[]
 ): string => {
   if (!notes || notes.length === 0) {
-    return `📝 خواطر ويوميات عادة: ${habit.name}\nلا توجد ملاحظات مسجلة بعد.`;
+    return `مذكرات وخواطر عادة: ${habit.name}\nلا توجد ملاحظات مسجلة بعد.`;
   }
 
   const formattedNotes = notes.slice(0, 5).map((n) => {
@@ -1087,12 +1138,12 @@ export const formatHabitNotesForShare = (
   });
 
   return [
-    `📖 مذكرات إنجازي في عادة: ${habit.name}`,
+    `مذكرات إنجازي في عادة: ${habit.name}`,
     `إجمالي الخواطر والتدوينات: ${notes.length}`,
     '',
     ...formattedNotes,
     '',
-    'تطبيق إنجاز لبناء العادات وتتبع الأهداف ✨',
+    'تطبيق إنجاز لبناء العادات وتتبع الأهداف',
   ].join('\n');
 };
 
@@ -1222,11 +1273,11 @@ export const calculateCategoryAnalytics = (
   if (activeHabits.length === 0) {
     insightMessage = 'أضف عاداتك الأولى في مختلف مجالات الحياة لبدء رحلة التوازن والتطوير.';
   } else if (topCategory && !focusCategory && topCategory.completionRate === 100) {
-    insightMessage = 'توازن استثنائي! التزام تام في جميع مجالات حياتك بنسبة 100% 🌟';
+    insightMessage = 'توازن استثنائي! التزام تام في جميع مجالات حياتك بنسبة 100%';
   } else if (topCategory && focusCategory) {
-    insightMessage = `أداؤك متميز في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%) 🔥، وركّز أكثر على ${focusCategory.category} (${focusCategory.completionRate}%) لتحقيق التوازن الشامل.`;
+    insightMessage = `أداؤك متميز في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%)، وركّز أكثر على ${focusCategory.category} (${focusCategory.completionRate}%) لتحقيق التوازن الشامل.`;
   } else if (topCategory) {
-    insightMessage = `استمرارية رائعة في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%)، وسّع نطاق عاداتك لتشمل مجالات جديدة ✨`;
+    insightMessage = `استمرارية رائعة في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%)، وسّع نطاق عاداتك لتشمل مجالات جديدة`;
   } else {
     insightMessage = 'واصل بناء عاداتك في مختلف المجالات للارتقاء بنمط حياتك اليومي.';
   }

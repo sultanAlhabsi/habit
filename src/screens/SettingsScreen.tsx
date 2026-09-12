@@ -350,9 +350,12 @@ export const SettingsScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.settingText}>
-                  <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
-                    تذكير المراجعة المسائية 🌙
-                  </Text>
+                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                    <Ionicons name="moon-outline" size={16} color={theme.primary} style={{ marginLeft: 6 }} />
+                    <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+                      تذكير المراجعة المسائية
+                    </Text>
+                  </View>
                   <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
                     تنبيه يومي لمراجعة عاداتك وتدوين يومياتك قبل نهاية اليوم
                   </Text>
@@ -429,6 +432,7 @@ export const SettingsScreen: React.FC = () => {
               <View style={{ marginTop: 12 }}>
                 <Button
                   title="إرسال إشعار تجريبي الآن"
+                  iconName="notifications-outline"
                   variant="outline"
                   size="sm"
                   onPress={handleTestNotification}
@@ -447,6 +451,7 @@ export const SettingsScreen: React.FC = () => {
           <View style={styles.backupActionsRow}>
             <Button
               title="تصدير نسخة احتياطية"
+              iconName="cloud-upload-outline"
               variant="outline"
               size="sm"
               onPress={handleExportBackup}
@@ -454,6 +459,7 @@ export const SettingsScreen: React.FC = () => {
             />
             <Button
               title="استعادة نسخة احتياطية"
+              iconName="cloud-download-outline"
               variant="outline"
               size="sm"
               onPress={() => setIsImportModalOpen(true)}
@@ -463,7 +469,8 @@ export const SettingsScreen: React.FC = () => {
 
           <View style={{ marginTop: 8 }}>
             <Button
-              title="تصدير السجلات إلى ملف إكسل (CSV) 📊"
+              title="تصدير السجلات إلى ملف إكسل (CSV)"
+              iconName="document-text-outline"
               variant="outline"
               size="sm"
               onPress={handleExportCsv}
@@ -474,6 +481,7 @@ export const SettingsScreen: React.FC = () => {
 
           <Button
             title="إضافة بيانات نموذجية"
+            iconName="sparkles-outline"
             variant="secondary"
             size="sm"
             onPress={handleSeed}
@@ -482,6 +490,7 @@ export const SettingsScreen: React.FC = () => {
 
           <Button
             title="مسح كافة البيانات"
+            iconName="trash-outline"
             variant="destructive"
             size="sm"
             onPress={handleReset}

@@ -38,6 +38,7 @@ interface HabitState {
   checkins: HabitCheckin[];
   selectedDate: string;
   isLoading: boolean;
+  isRefreshing: boolean;
   filter: 'all' | 'pending' | 'completed';
   sortOption: HabitSortOption;
   themeMode: ThemeMode;
@@ -48,6 +49,7 @@ interface HabitState {
 
   // Actions
   init: () => Promise<void>;
+  refreshHabits: () => Promise<void>;
   setSelectedDate: (date: string) => void;
   setFilter: (filter: 'all' | 'pending' | 'completed') => void;
   setSortOption: (option: HabitSortOption) => void;
@@ -78,6 +80,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   checkins: [],
   selectedDate: dayjs().format('YYYY-MM-DD'),
   isLoading: true,
+  isRefreshing: false,
   filter: 'all',
   sortOption: 'default',
   themeMode: 'system',
@@ -135,6 +138,19 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     } catch (err) {
       console.error('[Store] Init error:', err);
       set({ isLoading: false });
+    }
+  },
+
+  refreshHabits: async () => {
+    try {
+      set({ isRefreshing: true });
+      const habits = await fetchAllHabits();
+      const checkins = await fetchAllCheckins();
+      set({ habits, checkins });
+    } catch (error) {
+      console.warn('[Store] refreshHabits error:', error);
+    } finally {
+      set({ isRefreshing: false });
     }
   },
 

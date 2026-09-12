@@ -308,7 +308,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = ({
                 { color: theme.text, fontWeight: '600', marginRight: 6 },
               ]}
             >
-              تدوين خاطرة أو ملاحظة لإنجاز اليوم ✍️
+              تدوين خاطرة أو ملاحظة لإنجاز اليوم
             </Text>
           </Pressable>
         )}

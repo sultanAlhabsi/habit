@@ -184,8 +184,8 @@ export const scheduleEveningReviewReminder = async (
     await Notifications.scheduleNotificationAsync({
       identifier: triggerDesc.identifier,
       content: {
-        title: 'المراجعة المسائية • إنجاز 🌙',
-        body: 'كيف كان يومك اليوم؟ تفقد عاداتك وسجل إنجازاتك وخاطرتك اليومية ✨',
+        title: 'المراجعة المسائية • إنجاز',
+        body: 'كيف كان يومك اليوم؟ تفقد عاداتك وسجل إنجازاتك وخاطرتك اليومية.',
         sound: true,
         data: { type: 'evening_review' },
       },

@@ -147,8 +147,8 @@ export const HabitCard: React.FC<HabitCardProps> = ({
                 style={[
                   styles.checkCircle,
                   {
-                    borderColor: theme.primary,
-                    backgroundColor: theme.primary,
+                    borderColor: habit.color || theme.primary,
+                    backgroundColor: habit.color || theme.primary,
                   },
                 ]}
               >
@@ -306,18 +306,20 @@ export const HabitCard: React.FC<HabitCardProps> = ({
 
           <View style={styles.metaRow}>
             {streak > 0 && (
-              <Text
-                style={[
-                  typography.caption,
-                  {
-                    color: theme.textSecondary,
-                    textAlign: 'right',
-                    marginLeft: 8,
-                  },
-                ]}
-              >
-                {formatArabicStreakDays(streak)}
-              </Text>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginLeft: 8 }}>
+                <Ionicons name="flame" size={12} color={habit.color || theme.primary} style={{ marginLeft: 3 }} />
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: theme.textSecondary,
+                      textAlign: 'right',
+                    },
+                  ]}
+                >
+                  {formatArabicStreakDays(streak)}
+                </Text>
+              </View>
             )}
 
             <Text

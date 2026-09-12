@@ -9,6 +9,7 @@ import {
   TextInput,
   Share,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -64,6 +65,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     filter,
     sortOption,
     isLoading,
+    isRefreshing,
+    refreshHabits,
     setSelectedDate,
     setFilter,
     setSortOption,
@@ -283,6 +286,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={refreshHabits}
+            colors={[theme.primary]}
+            tintColor={theme.primary}
+          />
+        }
       >
         {/* Date Selector Strip */}
         <DateStrip
@@ -317,7 +328,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             <Ionicons name="sparkles" size={20} color={theme.primary} style={{ marginLeft: 8 }} />
             <View style={{ flex: 1 }}>
               <Text style={[typography.subMedium, { color: theme.primary, textAlign: 'right' }]}>
-                أحسنت! أتممت جميع عاداتك لليوم بنجاح 🎉
+                أحسنت! أتممت جميع عاداتك لليوم بنجاح
               </Text>
               <Text style={[typography.caption, { color: theme.textSecondary, marginTop: 2, textAlign: 'right' }]}>
                 حافظ على هذا الزخم والاستمرارية لبناء عادات راسخة.

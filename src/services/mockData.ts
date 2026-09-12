@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { Habit, HabitCheckin } from '../types/habit';
+import type { Habit, HabitCheckin } from '../types/habit';
 
 export const INITIAL_HABITS: Habit[] = [
   {

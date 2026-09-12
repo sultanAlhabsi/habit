@@ -197,13 +197,15 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
         <View style={styles.cardActions}>
           <Button
             title="استعادة"
+            iconName="arrow-undo-outline"
             variant="outline"
             size="sm"
             onPress={() => handleRestore(habit)}
             style={{ flex: 1, marginLeft: 6 }}
           />
           <Button
-            title="نسخ ⎘"
+            title="نسخ"
+            iconName="copy-outline"
             variant="outline"
             size="sm"
             onPress={() => navigation.navigate('AddEditHabit', { duplicateFromId: habit.id })}
@@ -211,6 +213,7 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
           />
           <Button
             title="حذف"
+            iconName="trash-outline"
             variant="destructive"
             size="sm"
             onPress={() => handleDeletePermanent(habit)}
