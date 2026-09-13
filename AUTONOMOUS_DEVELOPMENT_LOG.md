@@ -1550,6 +1550,76 @@ npm run typecheck -> tsc --noEmit -> 0 errors!
 npx expo export --platform android -> Android Bundled 1499 modules (0 errors)
 ```
 
+---
+
+## الدورة السابعة عشرة (Cycle 17) - صيانة وتحسين قاعدة البيانات، تصدير سجل العادة الفردية (CSV)، وإصلاح استعادة التذكير المسائي وصياغة السلاسل العربية
+- **التاريخ:** 13 سبتمبر 2026
+- **المطور:** Ziryab (زرياب) - Autonomous AI Developer
+- **الحالة:** مكتملة وناجحة بنسبة 100%
+
+---
+
+### 1. ملخص أهداف الدورة السابعة عشرة
+انطلقت هذه الدورة لتحقيق متانة قصوى على مستوى تخزين البيانات المحلي وضمان الخصوصية، وإصلاح ثغرات دقيقة في استعادة النسخ الاحتياطية والقواعد النحوية العربية، وتوسيع إمكانيات تصدير البيانات:
+1. **محرك صيانة وتحسين قاعدة البيانات المحلية (Local Database Health, Compacting & Cleanup Engine):**
+   - إضافة مقاييس تفصيلية لحجم ونشاط قاعدة البيانات (`fetchStorageMetrics`) تحسب العادات النشطة، والمؤرشفة، وإجمالي سجلات الإنجاز، وسجلات الخواطر المدونة، وتاريخ أقدم وأحدث سجل.
+   - تفعيل ضغط وإعادة تنظيم قاعدة البيانات (`compactDatabase`) عبر تنفيذ أوامر SQLite الصيانة `PRAGMA optimize;` و `VACUUM;` عبر الطابور المتسلسل `runSerialized` لحذف المساحات المتروكة وتسريع الاستعلامات على الأجهزة الفعلية.
+   - إضافة محرك تنظيف السجلات الفارغة المتخلفة (`cleanEmptyCheckins`) لحذف أي سجلات غير مكتملة وبلا ملاحظات ناتجة عن إلغاء التحديد السريع.
+2. **بطاقة إدارة التخزين والخصوصية في شاشة الإعدادات (`SettingsScreen.tsx`):**
+   - بطاقة بصرية أنيقة تبرز ضمانة الأمان المحلي 100% بدون خوادم خارجية.
+   - شبكة إحصائيات سريعة ومباشرة (العادات النشطة، سجلات الإنجاز، الخواطر المدونة).
+   - أزرار تفاعلية لإجراء ضغط وتحسين البيانات بلمسة واحدة، وتنظيف السجلات الفارغة مع إشعارات تأكيد دقيقة.
+3. **إصلاح إلغاء التذكير المسائي عند استعادة النسخة الاحتياطية (Bugfix: Evening Review Reminder on Backup Import):**
+   - عند استدعاء `importBackup` في `useHabitStore.ts`، كان استدعاء `rescheduleAllHabitReminders` يفتقر لتمرير حالتي التذكير المسائي (`eveningReminderEnabled` و `eveningReminderTime`)، مما كان يجعلهما يعودان تلقائياً إلى `false` ويلغي تنبيه مراجعة المساء للمستخدم بعد استعادة النسخة الاحتياطية. تم إصلاح الاستدعاء بتمرير الحالات الحالية من المتجر.
+4. **صقل القواعد النحوية العربية للسلاسل الفردية والمثنى في نصوص المشاركة (`habitUtils.ts`):**
+   - في `formatHabitStatsForShare` و `formatOverallStatsForShare`: كانت السلاسل تستخدم صياغة يدوية مثل `1 يوم متتالية` أو `2 أيام متتالية` بدلاً من `يوم واحد` و `يومان متتاليان`. تم دمج `formatArabicStreakDays` و `formatArabicDaysCount` لضمان صحة النحو العربي للمفرد والمثنى والجمع.
+5. **تصدير سجل وخريطة العادة الفردية إلى جدول إكسل (Single Habit CSV Export):**
+   - تطوير دالة `exportSingleHabitToCsv(habit, checkins)` لتوليد تقرير CSV متكامل لكل عادة على حدة يتضمن بطاقة ملخص العادة وتاريخ الإنشاء، متبوعة بكافة سجلات الإنجاز والملاحظات والخواطر اليومية مرتبة تنازلياً مع علامة UTF-8 BOM لدعم فتح الملف مباشرة في Microsoft Excel والتطبيقات الأخرى.
+   - إضافة زر "تصدير سجل العادة والملاحظات (CSV)" في شاشة تفاصيل العادة (`HabitDetailsScreen.tsx`).
+
+---
+
+### 2. التغييرات الفنية المنفذة بالتفصيل
+
+- **طبقة قاعدة البيانات (`src/services/database.ts`):**
+  - إضافة واجهة `StorageMetrics` لتوثيق مقاييس التخزين.
+  - تنفيذ `fetchStorageMetrics()`: استعلام متكامل لاستخراج أعداد العادات النشطة، المؤرشفة، السجلات المنجزة، الخواطر المدونة، وتواريخ أول وآخر تسجيل.
+  - تنفيذ `compactDatabase()`: تنفيذ مسار آمن لـ `VACUUM` و `PRAGMA optimize` تحت حماية `runSerialized`.
+  - تنفيذ `cleanEmptyCheckins()`: حذف السجلات الصفرية الفارغة التي لا تحمل تدوينات.
+
+- **متجر التطبيق (`src/store/useHabitStore.ts`):**
+  - إضافة أفعال المتجر: `compactDatabase`، `cleanEmptyCheckins`، و `getStorageMetrics`.
+  - إصلاح استدعاء `rescheduleAllHabitReminders` في `importBackup` لتمرير تذكير المراجعة المسائية.
+
+- **الأدوات المساعدة والخوارزميات (`src/utils/habitUtils.ts`):**
+  - دمج `formatArabicStreakDays` في `formatOverallStatsForShare` و `formatHabitStatsForShare`.
+  - دمج `formatArabicDaysCount` لأطول سلسلة.
+  - تنفيذ دالة `exportSingleHabitToCsv`.
+
+- **شاشات واجهة المستخدم (`SettingsScreen.tsx` & `HabitDetailsScreen.tsx`):**
+  - إضافة بطاقة التخزين وقاعدة البيانات المحلية في شاشة الإعدادات مع شبكة المقاييس وأزرار الصيانة.
+  - إضافة زر تصدير السجل الفردي للعادة (CSV) في شاشة تفاصيل العادة واستدعاء `exportCsvViaShare`.
+
+---
+
+### 3. الاختبارات والتحقق البرمجي الشامل
+
+- **ارتفاع عدد الاختبارات المؤتمتة إلى 86 اختباراً بنسبة نجاح 100%:**
+  - إضافة 3 اختبارات جديدة في `tests/database.test.ts` لفحص `fetchStorageMetrics`، `cleanEmptyCheckins`، و `compactDatabase`.
+  - إضافة اختبارين جديدين في `tests/habitUtils.test.ts` للتحقق من صياغة السلاسل العربية الفردية والمثنى، وتوليد ملف CSV المخصص للعادة الفردية.
+- **فحص الأنواع الصارم (TypeScript):**
+  - تشغيل `npm run typecheck` بنتيجة: 0 أخطاء (0 errors).
+- **بناء وتصدير حزمة الإنتاج لنظام أندرويد (Expo Hermes Export):**
+  - تشغيل `npx expo export --platform android` بنجاح كامل: تجميع 1499 موديول بنتيجة `0 errors` و `0 warnings`.
+
+```bash
+# نتائج الفحص والتشغيل الآلي للدورة السابعة عشرة:
+npm test -> 86 passed, 0 failed (86/86)
+npm run typecheck -> tsc --noEmit -> 0 errors!
+npx expo export --platform android -> Android Bundled 1499 modules (0 errors)
+```
+
+
 
 
 

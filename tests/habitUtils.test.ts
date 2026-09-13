@@ -36,6 +36,7 @@ import {
   exportCheckinsToCsv,
   exportHabitsSummaryToCsv,
   exportFullReportToCsv,
+  exportSingleHabitToCsv,
   CATEGORY_CONFIG,
   calculateCategoryAnalytics,
 } from '../src/utils/habitUtils.ts';
@@ -1447,3 +1448,74 @@ test('formatArabicCount: accurately applies Arabic grammatical rules for milesto
   assert.equal(formatOpps(7), '7 فرص');
   assert.equal(formatOpps(30), '30 فرصة');
 });
+
+test('formatHabitStatsForShare: correctly outputs Arabic singular and dual streak phrasing', () => {
+  const habit = createMockHabit({ name: 'التأمل' });
+  const milestone = calculateStreakMilestone(1);
+
+  // 1-day current streak, 2-day best streak
+  const stats1 = {
+    currentStreak: 1,
+    bestStreak: 2,
+    totalCompletions: 3,
+    completionRate: 50,
+    totalDueDays: 6,
+  };
+  const text1 = formatHabitStatsForShare(habit, stats1, milestone);
+  assert.ok(text1.includes('السلسلة الحالية: يوم واحد'));
+  assert.ok(text1.includes('أطول سلسلة: يومان'));
+
+  // 2-day current streak
+  const stats2 = {
+    currentStreak: 2,
+    bestStreak: 2,
+    totalCompletions: 2,
+    completionRate: 100,
+    totalDueDays: 2,
+  };
+  const text2 = formatHabitStatsForShare(habit, stats2, milestone);
+  assert.ok(text2.includes('السلسلة الحالية: يومان متتاليان'));
+});
+
+test('exportSingleHabitToCsv: creates formatted CSV with habit summary and chronological checkins', () => {
+  const habit = createMockHabit({
+    id: 'single_export_h1',
+    name: 'حفظ القرآن الكريم',
+    targetCount: 2,
+    unit: 'صفحة',
+    icon: 'book-outline',
+  });
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'sc1',
+      habitId: 'single_export_h1',
+      date: '2026-09-01',
+      count: 2,
+      completed: true,
+      note: 'تم مراجعة سورة يس وتثبيتها',
+      updatedAt: '2026-09-01T08:00:00.000Z',
+    },
+    {
+      id: 'sc2',
+      habitId: 'single_export_h1',
+      date: '2026-09-02',
+      count: 1,
+      completed: false,
+      note: '',
+      updatedAt: '2026-09-02T08:00:00.000Z',
+    },
+  ];
+
+  const csv = exportSingleHabitToCsv(habit, checkins);
+  assert.ok(csv.startsWith('\uFEFF')); // BOM present
+  assert.ok(csv.includes('# بطاقة ملخص العادة'));
+  assert.ok(csv.includes('حفظ القرآن الكريم'));
+  assert.ok(csv.includes('# سجل التاريخ والملاحظات اليومية'));
+  assert.ok(csv.includes('تم مراجعة سورة يس وتثبيتها'));
+  assert.ok(csv.includes('2026-09-01'));
+  assert.ok(csv.includes('2026-09-02'));
+  assert.ok(csv.includes('مكتمل'));
+  assert.ok(csv.includes('قيد الإنجاز'));
+});
+

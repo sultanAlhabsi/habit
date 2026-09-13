@@ -468,3 +468,129 @@ export const importDatabaseRecords = async (
     () => {}
   );
 };
+
+export interface StorageMetrics {
+  totalHabits: number;
+  activeHabits: number;
+  archivedHabits: number;
+  totalCheckins: number;
+  completedCheckins: number;
+  reflectionNotesCount: number;
+  oldestRecordDate?: string;
+  newestRecordDate?: string;
+}
+
+export const fetchStorageMetrics = async (): Promise<StorageMetrics> => {
+  return runSerialized(
+    async (db) => {
+      const habitsRes = await db.getFirstAsync<{
+        total_habits: number;
+        active_habits: number;
+        archived_habits: number;
+      }>(`
+        SELECT
+          COUNT(*) as total_habits,
+          COALESCE(SUM(CASE WHEN is_active = 1 AND archived_at IS NULL THEN 1 ELSE 0 END), 0) as active_habits,
+          COALESCE(SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END), 0) as archived_habits
+        FROM habits
+      `);
+
+      const checkinsRes = await db.getFirstAsync<{
+        total_checkins: number;
+        completed_checkins: number;
+        notes_count: number;
+        oldest_date: string | null;
+        newest_date: string | null;
+      }>(`
+        SELECT
+          COUNT(*) as total_checkins,
+          COALESCE(SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END), 0) as completed_checkins,
+          COALESCE(SUM(CASE WHEN note IS NOT NULL AND trim(note) != '' THEN 1 ELSE 0 END), 0) as notes_count,
+          MIN(date) as oldest_date,
+          MAX(date) as newest_date
+        FROM checkins
+      `);
+
+      return {
+        totalHabits: habitsRes?.total_habits ?? 0,
+        activeHabits: habitsRes?.active_habits ?? 0,
+        archivedHabits: habitsRes?.archived_habits ?? 0,
+        totalCheckins: checkinsRes?.total_checkins ?? 0,
+        completedCheckins: checkinsRes?.completed_checkins ?? 0,
+        reflectionNotesCount: checkinsRes?.notes_count ?? 0,
+        oldestRecordDate: checkinsRes?.oldest_date || undefined,
+        newestRecordDate: checkinsRes?.newest_date || undefined,
+      };
+    },
+    () => {
+      const habits = memoryHabits;
+      const checkins = memoryCheckins;
+      const activeHabits = habits.filter((h) => h.isActive && !h.archivedAt).length;
+      const archivedHabits = habits.filter((h) => Boolean(h.archivedAt)).length;
+      const totalCheckins = checkins.length;
+      const completedCheckins = checkins.filter((c) => c.completed).length;
+      const reflectionNotesCount = checkins.filter(
+        (c) => Boolean(c.note && c.note.trim().length > 0)
+      ).length;
+
+      let oldestRecordDate: string | undefined;
+      let newestRecordDate: string | undefined;
+      if (checkins.length > 0) {
+        const sorted = [...checkins].map((c) => c.date).sort();
+        oldestRecordDate = sorted[0];
+        newestRecordDate = sorted[sorted.length - 1];
+      }
+
+      return {
+        totalHabits: habits.length,
+        activeHabits,
+        archivedHabits,
+        totalCheckins,
+        completedCheckins,
+        reflectionNotesCount,
+        oldestRecordDate,
+        newestRecordDate,
+      };
+    }
+  );
+};
+
+export const compactDatabase = async (): Promise<{ success: boolean }> => {
+  return runSerialized(
+    async (db) => {
+      try {
+        await db.execAsync('PRAGMA optimize; VACUUM;');
+        return { success: true };
+      } catch (err) {
+        console.warn('[Database] VACUUM error:', err);
+        return { success: false };
+      }
+    },
+    () => ({ success: true })
+  );
+};
+
+export const cleanEmptyCheckins = async (): Promise<number> => {
+  const prevLen = memoryCheckins.length;
+  memoryCheckins = memoryCheckins.filter(
+    (c) => c.completed || c.count > 0 || Boolean(c.note && c.note.trim().length > 0)
+  );
+  const memoryCleaned = prevLen - memoryCheckins.length;
+
+  return runSerialized(
+    async (db) => {
+      const before = await db.getFirstAsync<{ count: number }>(
+        "SELECT COUNT(*) as count FROM checkins WHERE completed = 0 AND (count <= 0 OR count IS NULL) AND (note IS NULL OR trim(note) = '')"
+      );
+      const countToDelete = before?.count || 0;
+      if (countToDelete > 0) {
+        await db.runAsync(
+          "DELETE FROM checkins WHERE completed = 0 AND (count <= 0 OR count IS NULL) AND (note IS NULL OR trim(note) = '')"
+        );
+      }
+      return countToDelete;
+    },
+    () => memoryCleaned
+  );
+};
+

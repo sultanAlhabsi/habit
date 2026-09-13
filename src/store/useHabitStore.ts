@@ -17,6 +17,10 @@ import {
   archiveHabitRecord,
   getAllPreferences,
   importDatabaseRecords,
+  compactDatabase as dbCompactDatabase,
+  cleanEmptyCheckins as dbCleanEmptyCheckins,
+  fetchStorageMetrics,
+  StorageMetrics,
 } from '../services/database';
 import {
   scheduleHabitReminder,
@@ -73,6 +77,9 @@ interface HabitState {
   resetAllData: () => Promise<void>;
   exportBackup: () => Promise<BackupPayload>;
   importBackup: (backup: BackupPayload, mode: 'replace' | 'merge') => Promise<void>;
+  compactDatabase: () => Promise<boolean>;
+  cleanEmptyCheckins: () => Promise<number>;
+  getStorageMetrics: () => Promise<StorageMetrics>;
 }
 
 export const useHabitStore = create<HabitState>((set, get) => ({
@@ -613,6 +620,30 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       isLoading: false,
     });
 
-    await rescheduleAllHabitReminders(nextHabits, get().notificationsEnabled);
+    await rescheduleAllHabitReminders(
+      nextHabits,
+      get().notificationsEnabled,
+      get().eveningReminderEnabled,
+      get().eveningReminderTime
+    );
+  },
+
+  compactDatabase: async () => {
+    const res = await dbCompactDatabase();
+    return res.success;
+  },
+
+  cleanEmptyCheckins: async () => {
+    const removedCount = await dbCleanEmptyCheckins();
+    if (removedCount > 0) {
+      const updatedCheckins = await fetchAllCheckins();
+      set({ checkins: updatedCheckins });
+    }
+    return removedCount;
+  },
+
+  getStorageMetrics: async () => {
+    return await fetchStorageMetrics();
   },
 }));
+

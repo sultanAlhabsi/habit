@@ -31,7 +31,9 @@ import {
   formatHabitStatsForShare,
   getHabitCheckinNotes,
   formatArabicDate,
+  exportSingleHabitToCsv,
 } from '../utils/habitUtils';
+import { exportCsvViaShare } from '../services/backupService';
 
 interface HabitDetailsScreenProps {
   route: any;
@@ -109,6 +111,18 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
       await Share.share({ message: shareMessage });
     } catch {
       // Gracefully handle dismissed share dialog
+    }
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      const csv = exportSingleHabitToCsv(habit, checkins);
+      const success = await exportCsvViaShare(csv, `سجل عادة - ${habit.name}`);
+      if (!success) {
+        Alert.alert('تنبيه', 'تعذر فتح نافذة مشاركة الملف، يرجى المحاولة لاحقًا.');
+      }
+    } catch {
+      Alert.alert('خطأ', 'حدث خطأ أثناء إعداد ملف التصدير.');
     }
   };
 
@@ -628,6 +642,14 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
               />
             </>
           )}
+
+          <Button
+            title="تصدير سجل العادة والملاحظات (CSV)"
+            iconName="download-outline"
+            variant="outline"
+            onPress={handleExportCsv}
+            style={{ marginBottom: spacing.sm }}
+          />
 
           <Button
             title={isArchived ? 'حذف نهائي للعادة' : 'حذف العادة'}

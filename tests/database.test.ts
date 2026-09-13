@@ -15,6 +15,9 @@ import {
   importDatabaseRecords,
   resetDatabase,
   seedDatabase,
+  compactDatabase,
+  cleanEmptyCheckins,
+  fetchStorageMetrics,
 } from '../src/services/database.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -184,3 +187,118 @@ test('database: seedDatabase restores demo data', async () => {
   assert.ok(habits.length > 0);
   assert.ok(checkins.length > 0);
 });
+
+test('database: fetchStorageMetrics computes accurate metrics', async () => {
+  await resetDatabase();
+  const h1: Habit = {
+    id: 'h_metric_1',
+    name: 'قراءة',
+    icon: 'book-outline',
+    color: '#0D9488',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'صفحة',
+    isActive: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+  const h2: Habit = {
+    id: 'h_metric_2',
+    name: 'رياضة قديمة',
+    icon: 'barbell-outline',
+    color: '#E11D48',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 30,
+    unit: 'دقيقة',
+    isActive: false,
+    archivedAt: '2026-09-05T00:00:00.000Z',
+    createdAt: '2026-08-20T00:00:00.000Z',
+  };
+
+  await saveHabitRecord(h1);
+  await saveHabitRecord(h2);
+
+  const c1: HabitCheckin = {
+    id: 'c_m1',
+    habitId: 'h_metric_1',
+    date: '2026-09-02',
+    count: 1,
+    completed: true,
+    note: 'أنهيت الفصل الأول بنجاح',
+    updatedAt: '2026-09-02T08:00:00.000Z',
+  };
+  const c2: HabitCheckin = {
+    id: 'c_m2',
+    habitId: 'h_metric_1',
+    date: '2026-09-03',
+    count: 0,
+    completed: false,
+    updatedAt: '2026-09-03T08:00:00.000Z',
+  };
+
+  await saveCheckinRecord(c1);
+  await saveCheckinRecord(c2);
+
+  const metrics = await fetchStorageMetrics();
+  assert.equal(metrics.totalHabits, 2);
+  assert.equal(metrics.activeHabits, 1);
+  assert.equal(metrics.archivedHabits, 1);
+  assert.equal(metrics.totalCheckins, 2);
+  assert.equal(metrics.completedCheckins, 1);
+  assert.equal(metrics.reflectionNotesCount, 1);
+  assert.equal(metrics.oldestRecordDate, '2026-09-02');
+  assert.equal(metrics.newestRecordDate, '2026-09-03');
+});
+
+test('database: cleanEmptyCheckins cleans only orphan/empty checkins and preserves notes', async () => {
+  await resetDatabase();
+  const cEmpty: HabitCheckin = {
+    id: 'c_empty',
+    habitId: 'h_clean',
+    date: '2026-09-01',
+    count: 0,
+    completed: false,
+    note: '',
+    updatedAt: '2026-09-01T08:00:00.000Z',
+  };
+  const cWithNote: HabitCheckin = {
+    id: 'c_note',
+    habitId: 'h_clean',
+    date: '2026-09-02',
+    count: 0,
+    completed: false,
+    note: 'لم أنجز ولكن دونت خاطرة مهمة',
+    updatedAt: '2026-09-02T08:00:00.000Z',
+  };
+  const cDone: HabitCheckin = {
+    id: 'c_done',
+    habitId: 'h_clean',
+    date: '2026-09-03',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-03T08:00:00.000Z',
+  };
+
+  await saveCheckinRecord(cEmpty);
+  await saveCheckinRecord(cWithNote);
+  await saveCheckinRecord(cDone);
+
+  let all = await fetchAllCheckins();
+  assert.equal(all.length, 3);
+
+  const cleaned = await cleanEmptyCheckins();
+  assert.equal(cleaned, 1);
+
+  all = await fetchAllCheckins();
+  assert.equal(all.length, 2);
+  assert.ok(all.some((c) => c.id === 'c_note'));
+  assert.ok(all.some((c) => c.id === 'c_done'));
+  assert.ok(!all.some((c) => c.id === 'c_empty'));
+});
+
+test('database: compactDatabase executes successfully', async () => {
+  const result = await compactDatabase();
+  assert.equal(result.success, true);
+});
+

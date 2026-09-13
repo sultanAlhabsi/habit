@@ -49,14 +49,19 @@ export const SettingsScreen: React.FC = () => {
     importBackup,
     seedData,
     resetAllData,
+    compactDatabase,
+    cleanEmptyCheckins,
   } = useHabitStore();
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [isProcessingImport, setIsProcessingImport] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
 
   const archivedHabitsCount = habits.filter((h) => Boolean(h.archivedAt)).length;
+  const activeHabitsCount = habits.filter((h) => h.isActive && !h.archivedAt).length;
+  const totalNotesCount = checkins.filter((c) => Boolean(c.note && c.note.trim().length > 0)).length;
 
   const handleSeed = () => {
     Alert.alert(
@@ -125,6 +130,35 @@ export const SettingsScreen: React.FC = () => {
       await exportCsvViaShare(csvData, 'تقرير عادات وسجلات إنجاز');
     } catch (err) {
       Alert.alert('خطأ', 'حدث خطأ أثناء تصدير ملف CSV.');
+    }
+  };
+
+  const handleCompactDatabase = async () => {
+    setIsCompacting(true);
+    try {
+      const success = await compactDatabase();
+      setIsCompacting(false);
+      if (success) {
+        Alert.alert('تحسين قاعدة البيانات', 'تم ضغط قاعدة البيانات بنجاح وإعادة ترتيب المؤشرات لتسريع الاستعلامات.');
+      } else {
+        Alert.alert('تنبيه', 'تم فحص قاعدة البيانات ولم تتطلب أي ضغط إضافي.');
+      }
+    } catch {
+      setIsCompacting(false);
+      Alert.alert('خطأ', 'حدث خطأ غير متوقع أثناء ضغط قاعدة البيانات.');
+    }
+  };
+
+  const handleCleanEmptyCheckins = async () => {
+    try {
+      const count = await cleanEmptyCheckins();
+      if (count > 0) {
+        Alert.alert('تنظيف السجلات', `تم تنظيف ${count} سجلات فارغة بنجاح.`);
+      } else {
+        Alert.alert('تنظيف السجلات', 'قاعدة البيانات نظيفة تمامًا ولا تحتوي على أي سجلات فارغة.');
+      }
+    } catch {
+      Alert.alert('خطأ', 'حدث خطأ أثناء تنظيف السجلات.');
     }
   };
 
@@ -442,6 +476,74 @@ export const SettingsScreen: React.FC = () => {
           )}
         </Card>
 
+        {/* Storage & Database Optimization Group */}
+        <Card style={styles.groupCard}>
+          <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginBottom: 12 }]}>
+            التخزين وقاعدة البيانات المحلية
+          </Text>
+
+          {/* Privacy & Offline Security Banner */}
+          <View
+            style={[
+              styles.storageNotice,
+              {
+                backgroundColor: theme.cardSecondary,
+                borderColor: theme.border,
+                borderRadius: radius.md,
+                padding: 10,
+                marginBottom: 12,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+              <Ionicons name="shield-checkmark" size={16} color={theme.primary} style={{ marginLeft: 6 }} />
+              <Text style={[typography.caption, { color: theme.text, fontWeight: '700' }]}>
+                بياناتك محلية وآمنة 100%
+              </Text>
+            </View>
+            <Text style={[typography.caption, { color: theme.textSecondary, marginTop: 4, textAlign: 'right' }]}>
+              تُحفظ عاداتك وسجلاتك وتدويناتك مشفرة محليًا على هاتفك ولا تغادر جهازك أبدًا.
+            </Text>
+          </View>
+
+          {/* Quick Metrics Grid */}
+          <View style={styles.metricsRow}>
+            <View style={[styles.metricBox, { backgroundColor: theme.cardSecondary, borderRadius: radius.sm, borderColor: theme.border }]}>
+              <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>العادات النشطة</Text>
+              <Text style={[typography.h3, { color: theme.text, marginTop: 2 }]}>{activeHabitsCount}</Text>
+            </View>
+            <View style={[styles.metricBox, { backgroundColor: theme.cardSecondary, borderRadius: radius.sm, borderColor: theme.border }]}>
+              <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>سجلات الإنجاز</Text>
+              <Text style={[typography.h3, { color: theme.text, marginTop: 2 }]}>{checkins.length}</Text>
+            </View>
+            <View style={[styles.metricBox, { backgroundColor: theme.cardSecondary, borderRadius: radius.sm, borderColor: theme.border }]}>
+              <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>الخواطر المدونة</Text>
+              <Text style={[typography.h3, { color: theme.text, marginTop: 2 }]}>{totalNotesCount}</Text>
+            </View>
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: theme.borderSubtle, marginVertical: 12 }]} />
+
+          <View style={{ gap: 8 }}>
+            <Button
+              title={isCompacting ? 'جارٍ ضغط وتحسين البيانات...' : 'ضغط وتحسين قاعدة البيانات'}
+              iconName="speedometer-outline"
+              variant="outline"
+              size="sm"
+              disabled={isCompacting}
+              onPress={handleCompactDatabase}
+            />
+
+            <Button
+              title="تنظيف السجلات الفارغة"
+              iconName="brush-outline"
+              variant="secondary"
+              size="sm"
+              onPress={handleCleanEmptyCheckins}
+            />
+          </View>
+        </Card>
+
         {/* Data & Backup Group */}
         <Card style={styles.groupCard}>
           <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginBottom: 12 }]}>
@@ -751,6 +853,22 @@ const styles = StyleSheet.create({
   quickTimeChip: {
     paddingHorizontal: 10,
     paddingVertical: 5,
+    borderWidth: 1,
+  },
+  storageNotice: {
+    borderWidth: 1,
+  },
+  metricsRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 4,
+  },
+  metricBox: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
   },
 });

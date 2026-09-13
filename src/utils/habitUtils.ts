@@ -679,10 +679,12 @@ export const formatOverallStatsForShare = (
   todayStr: string
 ): string => {
   const overall = calculateOverallStats(habits, allCheckins, todayStr);
+  const streakText = formatArabicStreakDays(overall.bestOverallStreak);
+
   return [
     'إحصائياتي في تطبيق إنجاز:',
     `• نسبة إنجاز اليوم: ${overall.todayCompletionRate}%`,
-    `• أعلى سلسلة متتالية: ${overall.bestOverallStreak} يوم`,
+    `• أعلى سلسلة متتالية: ${streakText}`,
     `• إجمالي الإنجازات: ${overall.totalCheckinsEver} إنجاز`,
     `• العادات النشطة: ${overall.activeHabits} عادات`,
     '',
@@ -1092,13 +1094,13 @@ export const formatHabitStatsForShare = (
   milestone: StreakMilestoneInfo,
   latestNote?: string
 ): string => {
-  const streakUnit = stats.currentStreak === 1 ? 'يوم' : stats.currentStreak <= 10 ? 'أيام' : 'يوم';
-  const bestStreakUnit = stats.bestStreak === 1 ? 'يوم' : stats.bestStreak <= 10 ? 'أيام' : 'يوم';
+  const currentStreakText = formatArabicStreakDays(stats.currentStreak);
+  const bestStreakText = formatArabicDaysCount(stats.bestStreak);
 
   const lines = [
     `إنجازي في عادة: ${habit.name}`,
-    `• السلسلة الحالية: ${stats.currentStreak} ${streakUnit} متتالية`,
-    `• أطول سلسلة: ${stats.bestStreak} ${bestStreakUnit}`,
+    `• السلسلة الحالية: ${currentStreakText}`,
+    `• أطول سلسلة: ${bestStreakText}`,
     `• مرحلة الالتزام: ${milestone.currentTier.name} (${milestone.currentTier.days} يوم)`,
     `• إجمالي الإنجازات: ${stats.totalCompletions} ${habit.unit}`,
     `• نسبة الالتزام: ${stats.completionRate}%`,
@@ -1472,5 +1474,86 @@ export const exportFullReportToCsv = (
     checkinsCsv
   );
 };
+
+/**
+ * Exports a detailed CSV record for a single habit including its stats and all chronological checkins.
+ */
+export const exportSingleHabitToCsv = (
+  habit: Habit,
+  allCheckins: HabitCheckin[]
+): string => {
+  const stats = calculateHabitStats(habit, allCheckins);
+  const habitCheckins = allCheckins
+    .filter((c) => c.habitId === habit.id)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const summaryHeaders = [
+    'اسم العادة',
+    'القسم',
+    'الهدف اليومي',
+    'الوحدة',
+    'السلسلة الحالية',
+    'أعلى سلسلة',
+    'إجمالي الإنجازات',
+    'نسبة الالتزام %',
+    'الحالة',
+    'تاريخ الإنشاء',
+  ];
+
+  const category = getHabitCategory(habit.icon);
+  const statusLabel = habit.archivedAt ? 'مؤرشفة' : habit.isActive ? 'نشطة' : 'متوقفة';
+
+  const summaryRow = [
+    habit.name,
+    category,
+    habit.targetCount,
+    habit.unit,
+    stats.currentStreak,
+    stats.bestStreak,
+    stats.totalCompletions,
+    `${stats.completionRate}%`,
+    statusLabel,
+    habit.createdAt,
+  ];
+
+  const checkinHeaders = [
+    'التاريخ',
+    'حالة الإنجاز',
+    'الكمية المنجزة',
+    'الهدف اليومي',
+    'الوحدة',
+    'الملاحظة / الخاطرة',
+    'وقت التوثيق',
+  ];
+
+  const checkinRows = habitCheckins.map((c) =>
+    [
+      c.date,
+      c.completed ? 'مكتمل' : 'قيد الإنجاز',
+      c.count,
+      habit.targetCount,
+      habit.unit,
+      c.note || '',
+      c.updatedAt || '',
+    ]
+      .map(escapeCsvCell)
+      .join(',')
+  );
+
+  return (
+    '\uFEFF' +
+    '# بطاقة ملخص العادة' +
+    '\r\n' +
+    summaryHeaders.map(escapeCsvCell).join(',') +
+    '\r\n' +
+    summaryRow.map(escapeCsvCell).join(',') +
+    '\r\n\r\n' +
+    '# سجل التاريخ والملاحظات اليومية' +
+    '\r\n' +
+    checkinHeaders.map(escapeCsvCell).join(',') +
+    (checkinRows.length > 0 ? '\r\n' + checkinRows.join('\r\n') : '')
+  );
+};
+
 
 
