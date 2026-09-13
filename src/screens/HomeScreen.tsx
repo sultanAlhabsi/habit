@@ -10,6 +10,7 @@ import {
   Share,
   Modal,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
@@ -21,12 +22,14 @@ import { DateStrip } from '../components/home/DateStrip';
 import { DailyProgressCard } from '../components/home/DailyProgressCard';
 import { HabitCard } from '../components/home/HabitCard';
 import { QuickNoteModal } from '../components/home/QuickNoteModal';
+import { HabitQuickActionsModal } from '../components/home/HabitQuickActionsModal';
 import { EmptyState } from '../components/common/EmptyState';
 import {
   HABIT_CATEGORIES,
   HabitCategory,
   HABIT_SORT_OPTIONS,
   HabitSortOption,
+  Habit,
 } from '../types/habit';
 import {
   calculateOverallStats,
@@ -37,6 +40,9 @@ import {
   isHabitDueOnDate,
   getHabitCategory,
   sortHabits,
+  isStreakAtRisk,
+  formatHabitStatsForShare,
+  calculateStreakMilestone,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -57,6 +63,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     date: string;
     initialNote?: string;
   } | null>(null);
+  const [activeQuickActionHabit, setActiveQuickActionHabit] = useState<Habit | null>(null);
 
   const {
     habits,
@@ -71,6 +78,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     setFilter,
     setSortOption,
     toggleCheckin,
+    togglePinHabit,
+    toggleHabitActive,
+    completeAllDueHabits,
     incrementCheckin,
     decrementCheckin,
     updateCheckinNote,
@@ -116,12 +126,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
   ).length;
 
+  // Count habits whose streaks are at risk today
+  const atRiskCount = isToday
+    ? categoryFilteredHabits.filter((h) => isStreakAtRisk(h, checkins, selectedDate)).length
+    : 0;
+
   const filteredHabits = categoryFilteredHabits.filter((h) => {
     const isCompleted = checkins.some(
       (c) => c.habitId === h.id && c.date === selectedDate && c.completed
     );
     if (filter === 'completed') return isCompleted;
     if (filter === 'pending') return !isCompleted;
+    if (filter === 'at_risk') return isStreakAtRisk(h, checkins, selectedDate);
     return true; // 'all'
   });
 
@@ -309,6 +325,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           completionRate={overallStats.todayCompletionRate}
           isToday={isToday}
           onPressToday={() => setSelectedDate(todayStr)}
+          onCompleteAll={
+            !isFutureDate &&
+            overallStats.todayTotalCount > 0 &&
+            overallStats.todayCompletedCount < overallStats.todayTotalCount
+              ? () => {
+                  const pendingCount =
+                    overallStats.todayTotalCount - overallStats.todayCompletedCount;
+                  Alert.alert(
+                    'إكمال جميع العادات',
+                    `هل ترغب في تسجيل إنجاز جميع العادات المتبقية (${pendingCount}) لهذا اليوم؟`,
+                    [
+                      { text: 'إلغاء', style: 'cancel' },
+                      {
+                        text: 'إكمال الكل',
+                        style: 'default',
+                        onPress: async () => {
+                          await completeAllDueHabits(selectedDate);
+                        },
+                      },
+                    ]
+                  );
+                }
+              : undefined
+          }
         />
 
         {/* Celebratory Banner when all habits completed for today */}
@@ -380,13 +420,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Quiet Filter Tabs & Sort Button */}
         <View style={[styles.filterBarContainer, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
           <View style={styles.filterTabsRow}>
-            {(['all', 'pending', 'completed'] as const).map((tab) => {
+            {((isToday && atRiskCount > 0
+              ? ['all', 'pending', 'at_risk', 'completed']
+              : ['all', 'pending', 'completed']) as ('all' | 'pending' | 'at_risk' | 'completed')[]
+            ).map((tab) => {
               const isSelected = filter === tab;
-              const labels = {
+              const labels: Record<'all' | 'pending' | 'at_risk' | 'completed', string> = {
                 all: `الكل (${categoryFilteredHabits.length})`,
                 pending: `المتبقية (${Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)})`,
+                at_risk: `مهددة 🔥 (${atRiskCount})`,
                 completed: `المكتملة (${categoryCompletedCount})`,
               };
+
+              const tabTextColor =
+                tab === 'at_risk' && isSelected
+                  ? '#E67E22'
+                  : isSelected
+                  ? theme.text
+                  : theme.textMuted;
+              const tabBorderColor =
+                tab === 'at_risk' && isSelected
+                  ? '#E67E22'
+                  : isSelected
+                  ? theme.text
+                  : 'transparent';
 
               return (
                 <Pressable
@@ -397,7 +454,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                   style={({ pressed }) => [
                     styles.filterTab,
                     {
-                      borderBottomColor: isSelected ? theme.text : 'transparent',
+                      borderBottomColor: tabBorderColor,
                       borderBottomWidth: 1.5,
                       opacity: pressed ? 0.7 : 1,
                     },
@@ -407,8 +464,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     style={[
                       typography.caption,
                       {
-                        color: isSelected ? theme.text : theme.textMuted,
-                        fontWeight: isSelected ? '600' : '400',
+                        color: tabTextColor,
+                        fontWeight: isSelected ? '700' : '400',
                         paddingBottom: 6,
                       },
                     ]}
@@ -487,8 +544,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               </Pressable>
             )}
           </View>
-        ) : categoryFilteredHabits.length === 0 ? (
-          selectedCategory !== 'الكل' ? (
+        ) : sortedFilteredHabits.length === 0 ? (
+          selectedCategory !== 'الكل' && categoryFilteredHabits.length === 0 ? (
             <EmptyState
               icon="filter-outline"
               title="لا توجد عادات في هذا التصنيف"
@@ -504,11 +561,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               actionTitle="مسح البحث"
               onActionPress={() => setSearchQuery('')}
             />
+          ) : filter === 'at_risk' ? (
+            <EmptyState
+              icon="flame-outline"
+              title="سلاسلك في أمان"
+              description="رائع! لا توجد عادات مهددة بانقطاع السلسلة لليوم."
+            />
           ) : filter === 'pending' ? (
             <EmptyState
               icon="checkmark-outline"
               title="أتممت عادات اليوم"
-              description="جميع العادات المجدولة مكتملة"
+              description="جميع العادات المجدولة مكتملة بنجاح"
             />
           ) : (
             <EmptyState
@@ -526,6 +589,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             const currentCount = checkin ? checkin.count : 0;
             const stats = calculateHabitStats(habit, checkins);
             const isDue = isHabitDueOnDate(habit, selectedDate, true);
+            const isAtRisk = isStreakAtRisk(habit, checkins, selectedDate);
 
             return (
               <HabitCard
@@ -537,12 +601,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 isFuture={isFutureDate}
                 isOffSchedule={!isDue}
                 hasNote={Boolean(checkin?.note?.trim())}
+                isStreakAtRisk={isAtRisk}
                 onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                 onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                 onDecrement={() => decrementCheckin(habit.id, selectedDate)}
                 onPressDetails={() =>
                   navigation.navigate('HabitDetails', { habitId: habit.id, date: selectedDate })
                 }
+                onLongPress={() => setActiveQuickActionHabit(habit)}
                 onPressNote={() =>
                   setActiveNoteModal({
                     habit,
@@ -608,12 +674,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     isFuture={isFutureDate}
                     isOffSchedule={true}
                     hasNote={Boolean(checkin?.note?.trim())}
+                    isStreakAtRisk={false}
                     onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                     onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                     onDecrement={() => decrementCheckin(habit.id, selectedDate)}
                     onPressDetails={() =>
                       navigation.navigate('HabitDetails', { habitId: habit.id, date: selectedDate })
                     }
+                    onLongPress={() => setActiveQuickActionHabit(habit)}
                     onPressNote={() =>
                       setActiveNoteModal({
                         habit,
@@ -643,6 +711,103 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         onDelete={async () => {
           if (activeNoteModal) {
             await deleteCheckinNote(activeNoteModal.habit.id, activeNoteModal.date);
+          }
+        }}
+      />
+
+      {/* Habit Quick Actions Modal (on Long Press) */}
+      <HabitQuickActionsModal
+        visible={activeQuickActionHabit !== null}
+        habit={activeQuickActionHabit}
+        selectedDate={selectedDate}
+        isCompleted={
+          Boolean(
+            activeQuickActionHabit &&
+            checkins.some(
+              (c) =>
+                c.habitId === activeQuickActionHabit.id &&
+                c.date === selectedDate &&
+                c.completed
+            )
+          )
+        }
+        isStreakAtRisk={
+          activeQuickActionHabit
+            ? isStreakAtRisk(activeQuickActionHabit, checkins, selectedDate)
+            : false
+        }
+        streak={
+          activeQuickActionHabit
+            ? calculateHabitStats(activeQuickActionHabit, checkins).currentStreak
+            : 0
+        }
+        hasNote={
+          Boolean(
+            activeQuickActionHabit &&
+            checkins.find(
+              (c) =>
+                c.habitId === activeQuickActionHabit.id && c.date === selectedDate
+            )?.note?.trim()
+          )
+        }
+        isFutureDate={isFutureDate}
+        onClose={() => setActiveQuickActionHabit(null)}
+        onToggleCheckin={() => {
+          if (activeQuickActionHabit) {
+            toggleCheckin(activeQuickActionHabit.id, selectedDate);
+          }
+        }}
+        onTogglePin={() => {
+          if (activeQuickActionHabit) {
+            togglePinHabit(activeQuickActionHabit.id);
+          }
+        }}
+        onToggleActive={() => {
+          if (activeQuickActionHabit) {
+            toggleHabitActive(activeQuickActionHabit.id);
+          }
+        }}
+        onOpenNote={() => {
+          if (activeQuickActionHabit) {
+            const chk = checkins.find(
+              (c) =>
+                c.habitId === activeQuickActionHabit.id &&
+                c.date === selectedDate
+            );
+            setActiveNoteModal({
+              habit: activeQuickActionHabit,
+              date: selectedDate,
+              initialNote: chk?.note,
+            });
+          }
+        }}
+        onShare={async () => {
+          if (activeQuickActionHabit) {
+            try {
+              const stats = calculateHabitStats(activeQuickActionHabit, checkins);
+              const milestone = calculateStreakMilestone(stats.currentStreak);
+              const text = formatHabitStatsForShare(
+                activeQuickActionHabit,
+                stats,
+                milestone
+              );
+              await Share.share({ message: text });
+            } catch (_) {}
+          }
+        }}
+        onEditHabit={() => {
+          if (activeQuickActionHabit) {
+            navigation.navigate('AddEditHabit', {
+              habitId: activeQuickActionHabit.id,
+            });
+          }
+        }}
+        onViewDetails={() => {
+          if (activeQuickActionHabit) {
+            navigation.navigate('HabitDetails', {
+              habitId: activeQuickActionHabit.id,
+              date: selectedDate,
+            });
           }
         }}
       />

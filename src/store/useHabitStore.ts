@@ -36,6 +36,7 @@ import {
   mergeBackupData,
 } from '../services/backupService';
 import { ThemeMode } from '../theme/ThemeContext';
+import { isHabitDueOnDate } from '../utils/habitUtils';
 
 interface HabitState {
   habits: Habit[];
@@ -43,7 +44,7 @@ interface HabitState {
   selectedDate: string;
   isLoading: boolean;
   isRefreshing: boolean;
-  filter: 'all' | 'pending' | 'completed';
+  filter: 'all' | 'pending' | 'at_risk' | 'completed';
   sortOption: HabitSortOption;
   themeMode: ThemeMode;
   hapticsEnabled: boolean;
@@ -55,7 +56,7 @@ interface HabitState {
   init: () => Promise<void>;
   refreshHabits: () => Promise<void>;
   setSelectedDate: (date: string) => void;
-  setFilter: (filter: 'all' | 'pending' | 'completed') => void;
+  setFilter: (filter: 'all' | 'pending' | 'at_risk' | 'completed') => void;
   setSortOption: (option: HabitSortOption) => void;
   setThemeMode: (mode: ThemeMode) => void;
   toggleHaptics: () => void;
@@ -69,6 +70,7 @@ interface HabitState {
   restoreHabit: (habitId: string) => Promise<void>;
   togglePinHabit: (habitId: string) => Promise<void>;
   toggleCheckin: (habitId: string, date?: string) => Promise<boolean>;
+  completeAllDueHabits: (date?: string) => Promise<number>;
   incrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   decrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   updateCheckinNote: (habitId: string, date: string, note: string) => Promise<void>;
@@ -165,7 +167,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     set({ selectedDate: date });
   },
 
-  setFilter: (filter: 'all' | 'pending' | 'completed') => {
+  setFilter: (filter: 'all' | 'pending' | 'at_risk' | 'completed') => {
     set({ filter });
   },
 
@@ -388,6 +390,64 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       }
       return true; // Became checked
     }
+  },
+
+  completeAllDueHabits: async (targetDate?: string) => {
+    const date = targetDate || get().selectedDate;
+    const today = dayjs().startOf('day');
+    const targetDay = dayjs(date).startOf('day');
+    // Cannot complete future dates
+    if (targetDay.isAfter(today)) return 0;
+
+    const { habits, checkins } = get();
+    // Only active, non-archived habits scheduled on this date
+    const dueHabits = habits.filter(
+      (h) => h.isActive && !h.archivedAt && isHabitDueOnDate(h, date, true)
+    );
+
+    // Filter to those not completed yet
+    const pendingHabits = dueHabits.filter(
+      (h) => !checkins.some((c) => c.habitId === h.id && c.date === date && c.completed)
+    );
+
+    if (pendingHabits.length === 0) return 0;
+
+    const now = dayjs().toISOString();
+    const newOrUpdatedCheckins: HabitCheckin[] = [];
+
+    for (const habit of pendingHabits) {
+      const existing = checkins.find((c) => c.habitId === habit.id && c.date === date);
+      const targetCount = Math.max(1, habit.targetCount || 1);
+      const newCheckin: HabitCheckin = {
+        id: existing ? existing.id : `chk_${habit.id}_${date}`,
+        habitId: habit.id,
+        date,
+        count: targetCount,
+        completed: true,
+        updatedAt: now,
+        note: existing?.note,
+      };
+      newOrUpdatedCheckins.push(newCheckin);
+      await saveCheckinRecord(newCheckin);
+    }
+
+    set((state) => {
+      const pendingIds = new Set(pendingHabits.map((h) => h.id));
+      const retained = state.checkins.filter(
+        (c) => !(c.date === date && pendingIds.has(c.habitId))
+      );
+      return {
+        checkins: [...retained, ...newOrUpdatedCheckins],
+      };
+    });
+
+    if (get().hapticsEnabled) {
+      try {
+        Vibration.vibrate(25);
+      } catch (_) {}
+    }
+
+    return pendingHabits.length;
   },
 
   incrementCheckin: async (habitId: string, targetDate?: string, step = 1) => {

@@ -18,8 +18,10 @@ interface HabitCardProps {
   isFuture?: boolean;
   isOffSchedule?: boolean;
   hasNote?: boolean;
+  isStreakAtRisk?: boolean;
   onToggleCheckin: () => void;
   onPressDetails: () => void;
+  onLongPress?: () => void;
   onIncrement?: () => void;
   onDecrement?: () => void;
   onPressNote?: () => void;
@@ -33,8 +35,10 @@ export const HabitCard: React.FC<HabitCardProps> = ({
   isFuture = false,
   isOffSchedule = false,
   hasNote = false,
+  isStreakAtRisk = false,
   onToggleCheckin,
   onPressDetails,
+  onLongPress,
   onIncrement,
   onDecrement,
   onPressNote,
@@ -50,7 +54,10 @@ export const HabitCard: React.FC<HabitCardProps> = ({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`تفاصيل عادة ${habit.name}`}
+      accessibilityHint="اضغط مطولاً لعرض الإجراءات السريعة"
       onPress={onPressDetails}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={({ pressed }) => [
         styles.cardContainer,
         {
@@ -307,18 +314,51 @@ export const HabitCard: React.FC<HabitCardProps> = ({
           <View style={styles.metaRow}>
             {streak > 0 && (
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginLeft: 8 }}>
-                <Ionicons name="flame" size={12} color={habit.color || theme.primary} style={{ marginLeft: 3 }} />
+                <Ionicons
+                  name="flame"
+                  size={12}
+                  color={isStreakAtRisk ? '#E67E22' : habit.color || theme.primary}
+                  style={{ marginLeft: 3 }}
+                />
                 <Text
                   style={[
                     typography.caption,
                     {
-                      color: theme.textSecondary,
+                      color: isStreakAtRisk ? '#E67E22' : theme.textSecondary,
                       textAlign: 'right',
+                      fontWeight: isStreakAtRisk ? '700' : '400',
                     },
                   ]}
                 >
                   {formatArabicStreakDays(streak)}
                 </Text>
+                {isStreakAtRisk && (
+                  <View
+                    style={[
+                      styles.atRiskBadge,
+                      {
+                        backgroundColor: '#E67E2218',
+                        borderColor: '#E67E2240',
+                        borderRadius: radius.full,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        typography.caption,
+                        {
+                          color: '#E67E22',
+                          fontSize: 10,
+                          fontWeight: '700',
+                          paddingHorizontal: 6,
+                          paddingVertical: 1,
+                        },
+                      ]}
+                    >
+                      مهددة بالانقطاع 🔥
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
 
@@ -533,6 +573,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2,
     marginRight: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  atRiskBadge: {
+    marginRight: 6,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

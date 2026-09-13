@@ -12,6 +12,7 @@ interface DailyProgressCardProps {
   completionRate: number;
   isToday?: boolean;
   onPressToday?: () => void;
+  onCompleteAll?: () => void;
 }
 
 export const DailyProgressCard: React.FC<DailyProgressCardProps> = ({
@@ -21,6 +22,7 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = ({
   completionRate,
   isToday = true,
   onPressToday,
+  onCompleteAll,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
 
@@ -61,8 +63,35 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = ({
           )}
         </View>
 
-        {/* Left side in RTL: Count & Percentage */}
+        {/* Left side in RTL: Count & Percentage & Complete All */}
         <View style={styles.metricRow}>
+          {totalCount > 0 && completedCount < totalCount && onCompleteAll && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إكمال جميع العادات المتبقية لليوم"
+              onPress={onCompleteAll}
+              style={({ pressed }) => [
+                styles.completeAllBtn,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.full,
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  { color: theme.primary, fontSize: 10, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2 },
+                ]}
+              >
+                إكمال الكل
+              </Text>
+              <Ionicons name="checkmark-done" size={12} color={theme.primary} />
+            </Pressable>
+          )}
+
           <Text style={[typography.sub, { color: theme.textSecondary, marginLeft: 6 }]}>
             {totalCount > 0
               ? `${completedCount} من ${totalCount} مكتملة`
@@ -109,5 +138,13 @@ const styles = StyleSheet.create({
   metricRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
+  },
+  completeAllBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 8,
   },
 });

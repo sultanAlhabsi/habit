@@ -52,13 +52,46 @@ export const DateStrip: React.FC<DateStripProps> = ({
     }
   }, [selectedIndex, selectedDate]);
 
+  const todayStr = today.format('YYYY-MM-DD');
+  const isSelectedToday = selectedDate === todayStr;
+  const canGoNextWeek = dayjs(selectedDate).startOf('day').isBefore(today.startOf('day'));
+
   return (
     <View style={[styles.container, { marginBottom: spacing.sm }]}>
       {/* Week Navigation Header */}
       <View style={[styles.navRow, { paddingHorizontal: spacing.base, marginBottom: 6 }]}>
-        <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600' }]}>
-          {formatArabicDate(selectedDate)}
-        </Text>
+        <View style={styles.dateLabelGroup}>
+          <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600' }]}>
+            {formatArabicDate(selectedDate)}
+          </Text>
+
+          {!isSelectedToday && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="العودة لتاريخ اليوم"
+              onPress={() => onSelectDate(todayStr)}
+              style={({ pressed }) => [
+                styles.todayQuickBadge,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.full,
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  { color: theme.primary, fontSize: 11, fontWeight: '600', paddingHorizontal: 6, paddingVertical: 1 },
+                ]}
+              >
+                اليوم
+              </Text>
+              <Ionicons name="return-up-back" size={12} color={theme.primary} style={{ marginRight: 2 }} />
+            </Pressable>
+          )}
+        </View>
 
         <View style={styles.chevronsRow}>
           <Pressable
@@ -76,10 +109,18 @@ export const DateStrip: React.FC<DateStripProps> = ({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="الأسبوع التالي"
-            onPress={() => onSelectDate(dayjs(selectedDate).add(7, 'day').format('YYYY-MM-DD'))}
+            disabled={!canGoNextWeek}
+            onPress={() => {
+              if (canGoNextWeek) {
+                const nextWeekDate = dayjs(selectedDate).add(7, 'day');
+                // Don't overshoot today when navigating forward
+                const cappedDate = nextWeekDate.isAfter(today) ? today : nextWeekDate;
+                onSelectDate(cappedDate.format('YYYY-MM-DD'));
+              }
+            }}
             style={({ pressed }) => [
               styles.navBtn,
-              { opacity: pressed ? 0.5 : 1 },
+              { opacity: canGoNextWeek ? (pressed ? 0.5 : 1) : 0.25 },
             ]}
           >
             <Ionicons name="chevron-back" size={16} color={theme.textMuted} />
@@ -205,5 +246,17 @@ const styles = StyleSheet.create({
     padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  dateLabelGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+  },
+  todayQuickBadge: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    borderWidth: 1,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
   },
 });
