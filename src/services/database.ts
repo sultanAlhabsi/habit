@@ -43,6 +43,10 @@ const runSerialized = async <T>(
   operation: (db: SQLite.SQLiteDatabase) => Promise<T>,
   fallback: () => T
 ): Promise<T> => {
+  if (!isInitialized && !initPromise) {
+    initDatabase();
+  }
+
   const db = await getDB();
   if (!db) return fallback();
 
@@ -75,67 +79,78 @@ export const initDatabase = async (): Promise<void> => {
       return;
     }
 
-    await runSerialized(
-      async (database) => {
-        try {
-          await database.execAsync(`
-            PRAGMA journal_mode = WAL;
-            CREATE TABLE IF NOT EXISTS habits (
-              id TEXT PRIMARY KEY NOT NULL,
-              name TEXT NOT NULL,
-              description TEXT,
-              icon TEXT NOT NULL,
-              color TEXT NOT NULL,
-              frequency TEXT NOT NULL,
-              frequency_days TEXT NOT NULL,
-              target_count INTEGER NOT NULL DEFAULT 1,
-              unit TEXT NOT NULL DEFAULT 'مرة',
-              is_active INTEGER NOT NULL DEFAULT 1,
-              reminder_time TEXT,
-              is_pinned INTEGER NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL,
-              archived_at TEXT
-            );
-
-            CREATE TABLE IF NOT EXISTS checkins (
-              id TEXT PRIMARY KEY NOT NULL,
-              habit_id TEXT NOT NULL,
-              date TEXT NOT NULL,
-              count INTEGER NOT NULL DEFAULT 1,
-              completed INTEGER NOT NULL DEFAULT 1,
-              updated_at TEXT NOT NULL,
-              note TEXT,
-              UNIQUE(habit_id, date)
-            );
-
-            CREATE TABLE IF NOT EXISTS meta (
-              key TEXT PRIMARY KEY NOT NULL,
-              value TEXT NOT NULL
-            );
-          `);
-
+    return new Promise<void>((resolve) => {
+      dbQueue = dbQueue
+        .then(async () => {
           try {
-            await database.execAsync('ALTER TABLE checkins ADD COLUMN note TEXT;');
-          } catch {}
+            await db.execAsync('PRAGMA journal_mode = WAL;');
 
-          try {
-            await database.execAsync('ALTER TABLE habits ADD COLUMN is_pinned INTEGER DEFAULT 0;');
-          } catch {}
+            await db.execAsync(`
+              CREATE TABLE IF NOT EXISTS habits (
+                id TEXT PRIMARY KEY NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                icon TEXT NOT NULL,
+                color TEXT NOT NULL,
+                frequency TEXT NOT NULL,
+                frequency_days TEXT NOT NULL,
+                target_count INTEGER NOT NULL DEFAULT 1,
+                unit TEXT NOT NULL DEFAULT 'مرة',
+                is_active INTEGER NOT NULL DEFAULT 1,
+                reminder_time TEXT,
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                archived_at TEXT
+              );
+            `);
 
-          const countResult = await database.getFirstAsync<{ count: number }>(
-            'SELECT COUNT(*) as count FROM habits'
-          );
-          if (!countResult || countResult.count === 0) {
-            await seedDatabaseInternal(database);
+            await db.execAsync(`
+              CREATE TABLE IF NOT EXISTS checkins (
+                id TEXT PRIMARY KEY NOT NULL,
+                habit_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 1,
+                completed INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL,
+                note TEXT,
+                UNIQUE(habit_id, date)
+              );
+            `);
+
+            await db.execAsync(`
+              CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY NOT NULL,
+                value TEXT NOT NULL
+              );
+            `);
+
+            try {
+              await db.execAsync('ALTER TABLE checkins ADD COLUMN note TEXT;');
+            } catch {}
+
+            try {
+              await db.execAsync('ALTER TABLE habits ADD COLUMN is_pinned INTEGER DEFAULT 0;');
+            } catch {}
+
+            const countResult = await db.getFirstAsync<{ count: number }>(
+              'SELECT COUNT(*) as count FROM habits'
+            );
+            if (!countResult || countResult.count === 0) {
+              await seedDatabaseInternal(db);
+            }
+          } catch (error) {
+            console.warn('[Database] Error in schema initialization:', error);
+          } finally {
+            isInitialized = true;
+            resolve();
           }
-        } catch (error) {
-          console.warn('[Database] Error in schema initialization:', error);
-        }
-      },
-      () => {}
-    );
-
-    isInitialized = true;
+        })
+        .catch((err) => {
+          console.warn('[Database] Schema queue error:', err);
+          isInitialized = true;
+          resolve();
+        });
+    });
   })();
 
   return initPromise;
@@ -197,6 +212,23 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
   const demoCheckins = generateDemoCheckins();
   for (const checkin of demoCheckins) {
     await saveCheckinRecordInternal(db, checkin);
+  }
+
+  const defaultMetaEntries: [string, string][] = [
+    ['theme_mode', 'system'],
+    ['haptics_enabled', 'true'],
+    ['notifications_enabled', 'true'],
+    ['habit_sort_preference', 'default'],
+    ['evening_reminder_enabled', 'false'],
+    ['evening_reminder_time', '21:00'],
+  ];
+  for (const [key, val] of defaultMetaEntries) {
+    try {
+      await db.runAsync(
+        'INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)',
+        [key, val]
+      );
+    } catch {}
   }
 };
 
@@ -345,6 +377,14 @@ export const resetDatabase = async (): Promise<void> => {
 export const seedDatabase = async (): Promise<void> => {
   memoryHabits = [...INITIAL_HABITS];
   memoryCheckins = generateDemoCheckins();
+  memoryMeta = {
+    theme_mode: 'system',
+    haptics_enabled: 'true',
+    evening_reminder_enabled: 'false',
+    evening_reminder_time: '21:00',
+    habit_sort_preference: 'default',
+    notifications_enabled: 'true',
+  };
 
   await runSerialized(
     async (db) => {

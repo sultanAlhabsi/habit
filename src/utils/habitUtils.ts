@@ -591,43 +591,6 @@ export const getHabitStreakStatus = (
   };
 };
 
-/**
- * Checks if a habit's ongoing streak is at risk of being broken today.
- * A streak is considered at risk when:
- * 1. The habit is active and not archived.
- * 2. The target date is today (the streak breaking risk is immediate for the current day).
- * 3. The habit is scheduled/due today.
- * 4. The habit has not yet been completed today.
- * 5. The habit has an active consecutive streak (streak > 0) accumulated from previous days.
- */
-export const isStreakAtRisk = (
-  habit: Habit,
-  allCheckins: HabitCheckin[],
-  targetDate?: string | dayjs.Dayjs
-): boolean => {
-  if (!habit.isActive || habit.archivedAt) return false;
-
-  const today = dayjs().startOf('day');
-  const target = (targetDate ? dayjs(targetDate) : today).startOf('day');
-
-  // Streak at risk only applies to today
-  if (!target.isSame(today, 'day')) return false;
-
-  const dateStr = target.format('YYYY-MM-DD');
-
-  // Must be due today
-  if (!isHabitDueOnDate(habit, dateStr, true)) return false;
-
-  // If already completed today, streak is safe
-  const isCompleted = allCheckins.some(
-    (c) => c.habitId === habit.id && c.date === dateStr && c.completed
-  );
-  if (isCompleted) return false;
-
-  // Streak calculation checks prior continuous days up to yesterday
-  const stats = calculateHabitStats(habit, allCheckins, target);
-  return stats.currentStreak > 0;
-};
 
 /**
  * Calculate the next clamped count for incremental checkins
@@ -753,6 +716,17 @@ export const sortHabits = (
       .map((c) => c.habitId)
   );
 
+  let streakCache: Map<string, number> | null = null;
+  if (sortOption === 'streak') {
+    streakCache = new Map();
+    habits.forEach((h) => {
+      streakCache!.set(
+        h.id,
+        calculateHabitStats(h, allCheckins, selectedDate).currentStreak
+      );
+    });
+  }
+
   return [...habits].sort((a, b) => {
     // 1. Pinned habits always come first
     const aPinned = a.isPinned ? 1 : 0;
@@ -781,9 +755,9 @@ export const sortHabits = (
       return 0;
     }
 
-    if (sortOption === 'streak') {
-      const aStreak = calculateHabitStats(a, allCheckins, selectedDate).currentStreak;
-      const bStreak = calculateHabitStats(b, allCheckins, selectedDate).currentStreak;
+    if (sortOption === 'streak' && streakCache) {
+      const aStreak = streakCache.get(a.id) ?? 0;
+      const bStreak = streakCache.get(b.id) ?? 0;
       if (bStreak !== aStreak) {
         return bStreak - aStreak;
       }

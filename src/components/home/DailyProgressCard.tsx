@@ -32,7 +32,7 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = ({
         {/* Right side in RTL: Date and Back to Today option */}
         <View style={styles.dateSide}>
           <Text style={[typography.subMedium, { color: theme.text, textAlign: 'right' }]}>
-            {formatArabicDate(date)}
+            {isToday ? 'إنجاز اليوم' : formatArabicDate(date)}
           </Text>
 
           {!isToday && onPressToday && (

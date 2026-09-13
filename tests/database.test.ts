@@ -302,3 +302,25 @@ test('database: compactDatabase executes successfully', async () => {
   assert.equal(result.success, true);
 });
 
+test('database: seedDatabase seeds default habits, demo checkins, and default preferences', async () => {
+  await seedDatabase();
+  const habits = await fetchAllHabits();
+  assert.ok(habits.length > 0);
+
+  const checkins = await fetchAllCheckins();
+  assert.ok(checkins.length > 0);
+
+  const themeMode = await getPreference('theme_mode');
+  assert.equal(themeMode, 'system');
+
+  const haptics = await getPreference('haptics_enabled');
+  assert.equal(haptics, 'true');
+
+  const notifs = await getPreference('notifications_enabled');
+  assert.equal(notifs, 'true');
+
+  const sortPref = await getPreference('habit_sort_preference');
+  assert.equal(sortPref, 'default');
+});
+
+

@@ -39,7 +39,6 @@ import {
   exportSingleHabitToCsv,
   CATEGORY_CONFIG,
   calculateCategoryAnalytics,
-  isStreakAtRisk,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -1518,103 +1517,6 @@ test('exportSingleHabitToCsv: creates formatted CSV with habit summary and chron
   assert.ok(csv.includes('2026-09-02'));
   assert.ok(csv.includes('مكتمل'));
   assert.ok(csv.includes('قيد الإنجاز'));
-});
-
-test('isStreakAtRisk: identifies streaks at risk for today correctly', () => {
-  const today = dayjs().format('YYYY-MM-DD');
-  const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
-  const pastDate = dayjs().subtract(2, 'day').format('YYYY-MM-DD');
-  const futureDate = dayjs().add(1, 'day').format('YYYY-MM-DD');
-
-  const habit = createMockHabit({
-    id: 'risk_h1',
-    name: 'المشي اليومي',
-    frequency: 'daily',
-    targetCount: 1,
-    isActive: true,
-  });
-
-  // 1. Not at risk if targetDate is future or past
-  assert.equal(isStreakAtRisk(habit, [], futureDate), false);
-  assert.equal(isStreakAtRisk(habit, [], pastDate), false);
-
-  // 2. Not at risk if habit is inactive or archived
-  const inactiveHabit = { ...habit, isActive: false };
-  assert.equal(isStreakAtRisk(inactiveHabit, [], today), false);
-
-  const archivedHabit = { ...habit, archivedAt: '2026-09-01T00:00:00Z' };
-  assert.equal(isStreakAtRisk(archivedHabit, [], today), false);
-
-  // 3. No streak at risk if there are no past checkins (streak is 0)
-  assert.equal(isStreakAtRisk(habit, [], today), false);
-
-  // 4. Streak at risk when habit has past consecutive checkin ending yesterday, due today, and not yet completed today
-  const checkinsWithStreak: HabitCheckin[] = [
-    {
-      id: 'chk_y',
-      habitId: 'risk_h1',
-      date: yesterday,
-      count: 1,
-      completed: true,
-      updatedAt: dayjs().toISOString(),
-    },
-  ];
-  assert.equal(isStreakAtRisk(habit, checkinsWithStreak, today), true);
-
-  // 5. Not at risk once completed today
-  const checkinsCompletedToday: HabitCheckin[] = [
-    ...checkinsWithStreak,
-    {
-      id: 'chk_t',
-      habitId: 'risk_h1',
-      date: today,
-      count: 1,
-      completed: true,
-      updatedAt: dayjs().toISOString(),
-    },
-  ];
-  assert.equal(isStreakAtRisk(habit, checkinsCompletedToday, today), false);
-
-  // 6. Incomplete checkin today (e.g. count < targetCount) should still be at risk
-  const multiCountHabit = createMockHabit({
-    id: 'risk_multi',
-    name: 'شرب الماء',
-    frequency: 'daily',
-    targetCount: 5,
-    isActive: true,
-  });
-  const checkinsMultiIncomplete: HabitCheckin[] = [
-    {
-      id: 'chk_my',
-      habitId: 'risk_multi',
-      date: yesterday,
-      count: 5,
-      completed: true,
-      updatedAt: dayjs().toISOString(),
-    },
-    {
-      id: 'chk_mt',
-      habitId: 'risk_multi',
-      date: today,
-      count: 2,
-      completed: false,
-      updatedAt: dayjs().toISOString(),
-    },
-  ];
-  assert.equal(isStreakAtRisk(multiCountHabit, checkinsMultiIncomplete, today), true);
-
-  // 7. Not at risk on a rest day (habit not due today)
-  const currentDayOfWeek = dayjs().day();
-  // Target a day other than today
-  const otherDayOfWeek = (currentDayOfWeek + 3) % 7;
-  const specificDaysHabit = createMockHabit({
-    id: 'risk_specific',
-    name: 'تمرين الجري',
-    frequency: 'specific_days',
-    targetDays: [otherDayOfWeek],
-    isActive: true,
-  });
-  assert.equal(isStreakAtRisk(specificDaysHabit, checkinsWithStreak, today), false);
 });
 
 

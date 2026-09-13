@@ -18,7 +18,6 @@ export interface HabitQuickActionsModalProps {
   habit: Habit | null;
   selectedDate: string;
   isCompleted: boolean;
-  isStreakAtRisk: boolean;
   streak: number;
   hasNote: boolean;
   isFutureDate?: boolean;
@@ -36,7 +35,6 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
   visible,
   habit,
   isCompleted,
-  isStreakAtRisk,
   streak,
   hasNote,
   isFutureDate = false,
@@ -215,25 +213,20 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
                       <Ionicons
                         name="flame"
                         size={11}
-                        color={isStreakAtRisk ? '#E67E22' : habit.color || theme.primary}
+                        color={habit.color || theme.primary}
                         style={{ marginLeft: 2 }}
                       />
                       <Text
                         style={[
                           typography.caption,
                           {
-                            color: isStreakAtRisk ? '#E67E22' : theme.textSecondary,
-                            fontWeight: isStreakAtRisk ? '700' : '500',
+                            color: theme.textSecondary,
+                            fontWeight: '500',
                           },
                         ]}
                       >
                         {formatArabicStreakDays(streak)}
                       </Text>
-                      {isStreakAtRisk && (
-                        <Text style={[typography.caption, { color: '#E67E22', fontWeight: '700', marginRight: 4 }]}>
-                          (مهددة 🔥)
-                        </Text>
-                      )}
                     </View>
                   )}
                 </View>

@@ -40,7 +40,6 @@ import {
   isHabitDueOnDate,
   getHabitCategory,
   sortHabits,
-  isStreakAtRisk,
   formatHabitStatsForShare,
   calculateStreakMilestone,
 } from '../utils/habitUtils';
@@ -126,18 +125,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
   ).length;
 
-  // Count habits whose streaks are at risk today
-  const atRiskCount = isToday
-    ? categoryFilteredHabits.filter((h) => isStreakAtRisk(h, checkins, selectedDate)).length
-    : 0;
-
   const filteredHabits = categoryFilteredHabits.filter((h) => {
     const isCompleted = checkins.some(
       (c) => c.habitId === h.id && c.date === selectedDate && c.completed
     );
     if (filter === 'completed') return isCompleted;
     if (filter === 'pending') return !isCompleted;
-    if (filter === 'at_risk') return isStreakAtRisk(h, checkins, selectedDate);
     return true; // 'all'
   });
 
@@ -420,30 +413,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Quiet Filter Tabs & Sort Button */}
         <View style={[styles.filterBarContainer, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
           <View style={styles.filterTabsRow}>
-            {((isToday && atRiskCount > 0
-              ? ['all', 'pending', 'at_risk', 'completed']
-              : ['all', 'pending', 'completed']) as ('all' | 'pending' | 'at_risk' | 'completed')[]
-            ).map((tab) => {
+            {(['all', 'pending', 'completed'] as const).map((tab) => {
               const isSelected = filter === tab;
-              const labels: Record<'all' | 'pending' | 'at_risk' | 'completed', string> = {
+              const labels = {
                 all: `الكل (${categoryFilteredHabits.length})`,
                 pending: `المتبقية (${Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)})`,
-                at_risk: `مهددة 🔥 (${atRiskCount})`,
                 completed: `المكتملة (${categoryCompletedCount})`,
               };
-
-              const tabTextColor =
-                tab === 'at_risk' && isSelected
-                  ? '#E67E22'
-                  : isSelected
-                  ? theme.text
-                  : theme.textMuted;
-              const tabBorderColor =
-                tab === 'at_risk' && isSelected
-                  ? '#E67E22'
-                  : isSelected
-                  ? theme.text
-                  : 'transparent';
 
               return (
                 <Pressable
@@ -454,7 +430,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                   style={({ pressed }) => [
                     styles.filterTab,
                     {
-                      borderBottomColor: tabBorderColor,
+                      borderBottomColor: isSelected ? theme.text : 'transparent',
                       borderBottomWidth: 1.5,
                       opacity: pressed ? 0.7 : 1,
                     },
@@ -464,8 +440,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     style={[
                       typography.caption,
                       {
-                        color: tabTextColor,
-                        fontWeight: isSelected ? '700' : '400',
+                        color: isSelected ? theme.text : theme.textMuted,
+                        fontWeight: isSelected ? '600' : '400',
                         paddingBottom: 6,
                       },
                     ]}
@@ -561,12 +537,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               actionTitle="مسح البحث"
               onActionPress={() => setSearchQuery('')}
             />
-          ) : filter === 'at_risk' ? (
-            <EmptyState
-              icon="flame-outline"
-              title="سلاسلك في أمان"
-              description="رائع! لا توجد عادات مهددة بانقطاع السلسلة لليوم."
-            />
           ) : filter === 'pending' ? (
             <EmptyState
               icon="checkmark-outline"
@@ -589,7 +559,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             const currentCount = checkin ? checkin.count : 0;
             const stats = calculateHabitStats(habit, checkins);
             const isDue = isHabitDueOnDate(habit, selectedDate, true);
-            const isAtRisk = isStreakAtRisk(habit, checkins, selectedDate);
 
             return (
               <HabitCard
@@ -601,7 +570,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 isFuture={isFutureDate}
                 isOffSchedule={!isDue}
                 hasNote={Boolean(checkin?.note?.trim())}
-                isStreakAtRisk={isAtRisk}
                 onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                 onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                 onDecrement={() => decrementCheckin(habit.id, selectedDate)}
@@ -674,7 +642,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     isFuture={isFutureDate}
                     isOffSchedule={true}
                     hasNote={Boolean(checkin?.note?.trim())}
-                    isStreakAtRisk={false}
                     onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
                     onIncrement={() => incrementCheckin(habit.id, selectedDate)}
                     onDecrement={() => decrementCheckin(habit.id, selectedDate)}
@@ -730,11 +697,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 c.completed
             )
           )
-        }
-        isStreakAtRisk={
-          activeQuickActionHabit
-            ? isStreakAtRisk(activeQuickActionHabit, checkins, selectedDate)
-            : false
         }
         streak={
           activeQuickActionHabit

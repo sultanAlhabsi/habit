@@ -34,7 +34,6 @@ export const initNotifications = async (): Promise<void> => {
           importance: Notifications.AndroidImportance.HIGH,
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#2A4B3A',
-          sound: 'default',
         });
       } catch (channelError) {
         // Channel provider is null in Expo Go Android SDK 57

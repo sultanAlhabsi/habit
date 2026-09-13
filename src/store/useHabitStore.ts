@@ -44,7 +44,7 @@ interface HabitState {
   selectedDate: string;
   isLoading: boolean;
   isRefreshing: boolean;
-  filter: 'all' | 'pending' | 'at_risk' | 'completed';
+  filter: 'all' | 'pending' | 'completed';
   sortOption: HabitSortOption;
   themeMode: ThemeMode;
   hapticsEnabled: boolean;
@@ -56,7 +56,7 @@ interface HabitState {
   init: () => Promise<void>;
   refreshHabits: () => Promise<void>;
   setSelectedDate: (date: string) => void;
-  setFilter: (filter: 'all' | 'pending' | 'at_risk' | 'completed') => void;
+  setFilter: (filter: 'all' | 'pending' | 'completed') => void;
   setSortOption: (option: HabitSortOption) => void;
   setThemeMode: (mode: ThemeMode) => void;
   toggleHaptics: () => void;
@@ -167,7 +167,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     set({ selectedDate: date });
   },
 
-  setFilter: (filter: 'all' | 'pending' | 'at_risk' | 'completed') => {
+  setFilter: (filter: 'all' | 'pending' | 'completed') => {
     set({ filter });
   },
 
