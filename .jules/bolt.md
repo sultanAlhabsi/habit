@@ -1,0 +1,3 @@
+## 2024-09-14 - Expensive Calculations in Render
+**Learning:** Calling complex analytical functions (`calculateHabitStats`, `calculateOverallStats`, `sortHabits`) inside functional components' render methods (and inside `.map()`) without memoization causes massive performance bottlenecks, as these functions loop over potentially years of habit checkins and execute computationally heavy tasks (like parsing dates with dayjs) synchronously on every state update.
+**Action:** Always wrap derived lists (like sorted/filtered habits) and computationally expensive calculations in `useMemo` hooks, keeping render passes fast and avoiding main thread blocking, especially in lists.
