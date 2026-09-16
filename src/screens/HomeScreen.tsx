@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -102,7 +102,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   }
 
   // Calculate overall stats for selected date
-  const overallStats = calculateOverallStats(habits, checkins, selectedDate);
+  // ⚡ Bolt Optimization: Memoize heavy stat calculations to prevent O(N * 3650) re-computation on every keypress during search
+  const overallStats = useMemo(() => {
+    return calculateOverallStats(habits, checkins, selectedDate);
+  }, [habits, checkins, selectedDate]);
 
   // Unarchived active habits
   const activeUnarchivedHabits = habits.filter((h) => !h.archivedAt);
