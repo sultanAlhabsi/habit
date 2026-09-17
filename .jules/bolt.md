@@ -1,0 +1,3 @@
+## 2026-09-17 - React Native Render Cascade
+**Learning:** In a typical React Native screen like `HomeScreen` with lots of lists and modal interactions, filtering and sorting derived states (like active habits, off-schedule habits, due dates) directly inside the component body can cause significant cascading render overhead, particularly since state updates trigger full re-evaluations.
+**Action:** Always wrap heavy list filtering and sorting functions (like `sortHabits`, `filterHabitsByQuery`) in `useMemo` hooks, and ensure components iterating over these items use `React.memo` to optimize the render pipeline.
