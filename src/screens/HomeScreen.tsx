@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -102,59 +102,83 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   }
 
   // Calculate overall stats for selected date
-  const overallStats = calculateOverallStats(habits, checkins, selectedDate);
+  const overallStats = useMemo(() =>
+    calculateOverallStats(habits, checkins, selectedDate),
+  [habits, checkins, selectedDate]);
 
   // Unarchived active habits
-  const activeUnarchivedHabits = habits.filter((h) => !h.archivedAt);
+  const activeUnarchivedHabits = useMemo(() =>
+    habits.filter((h) => !h.archivedAt),
+  [habits]);
 
   // Relevant habits for selected date (active due habits + paused habits completed on this date)
-  const dueHabits = getHabitsForDate(habits, checkins, selectedDate);
+  const dueHabits = useMemo(() =>
+    getHabitsForDate(habits, checkins, selectedDate),
+  [habits, checkins, selectedDate]);
+
   const isSearchActive = Boolean(searchQuery.trim());
 
   // Search searches across ALL active habits so user can find and log off-schedule habits too
-  const baseHabits = isSearchActive
-    ? filterHabitsByQuery(activeUnarchivedHabits, searchQuery)
-    : dueHabits;
+  const baseHabits = useMemo(() =>
+    isSearchActive
+      ? filterHabitsByQuery(activeUnarchivedHabits, searchQuery)
+      : dueHabits,
+  [isSearchActive, activeUnarchivedHabits, searchQuery, dueHabits]);
 
   // Filter by category
-  const categoryFilteredHabits = selectedCategory === 'الكل'
-    ? baseHabits
-    : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  const categoryFilteredHabits = useMemo(() =>
+    selectedCategory === 'الكل'
+      ? baseHabits
+      : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory),
+  [selectedCategory, baseHabits]);
 
-  const categoryCompletedCount = categoryFilteredHabits.filter((h) =>
-    checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
-  ).length;
+  const categoryCompletedCount = useMemo(() =>
+    categoryFilteredHabits.filter((h) =>
+      checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
+    ).length,
+  [categoryFilteredHabits, checkins, selectedDate]);
 
-  const filteredHabits = categoryFilteredHabits.filter((h) => {
-    const isCompleted = checkins.some(
-      (c) => c.habitId === h.id && c.date === selectedDate && c.completed
-    );
-    if (filter === 'completed') return isCompleted;
-    if (filter === 'pending') return !isCompleted;
-    return true; // 'all'
-  });
+  const filteredHabits = useMemo(() =>
+    categoryFilteredHabits.filter((h) => {
+      const isCompleted = checkins.some(
+        (c) => c.habitId === h.id && c.date === selectedDate && c.completed
+      );
+      if (filter === 'completed') return isCompleted;
+      if (filter === 'pending') return !isCompleted;
+      return true; // 'all'
+    }),
+  [categoryFilteredHabits, checkins, selectedDate, filter]);
 
-  const sortedFilteredHabits = sortHabits(
-    filteredHabits,
-    sortOption,
-    checkins,
-    selectedDate
-  );
+  const sortedFilteredHabits = useMemo(() =>
+    sortHabits(
+      filteredHabits,
+      sortOption,
+      checkins,
+      selectedDate
+    ),
+  [filteredHabits, sortOption, checkins, selectedDate]);
 
   // Off-schedule habits for selected date (when not searching)
-  const offScheduleHabits = activeUnarchivedHabits.filter(
-    (h) => !dueHabits.some((dh) => dh.id === h.id)
-  );
-  const filteredOffScheduleHabits = selectedCategory === 'الكل'
-    ? offScheduleHabits
-    : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  const offScheduleHabits = useMemo(() =>
+    activeUnarchivedHabits.filter(
+      (h) => !dueHabits.some((dh) => dh.id === h.id)
+    ),
+  [activeUnarchivedHabits, dueHabits]);
 
-  const sortedOffScheduleHabits = sortHabits(
-    filteredOffScheduleHabits,
-    sortOption,
-    checkins,
-    selectedDate
-  );
+  const filteredOffScheduleHabits = useMemo(() =>
+    selectedCategory === 'الكل'
+      ? offScheduleHabits
+      : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory),
+  [selectedCategory, offScheduleHabits]);
+
+  const sortedOffScheduleHabits = useMemo(() =>
+    sortHabits(
+      filteredOffScheduleHabits,
+      sortOption,
+      checkins,
+      selectedDate
+    ),
+  [filteredOffScheduleHabits, sortOption, checkins, selectedDate]);
 
   const handleShareDaily = async () => {
     try {

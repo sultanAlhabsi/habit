@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ interface HabitCardProps {
   onPressNote?: () => void;
 }
 
-export const HabitCard: React.FC<HabitCardProps> = ({
+export const HabitCard: React.FC<HabitCardProps> = memo(({
   habit,
   isCompleted,
   streak,
@@ -453,7 +453,7 @@ export const HabitCard: React.FC<HabitCardProps> = ({
       </View>
     </Pressable>
   );
-};
+});
 
 const styles = StyleSheet.create({
   cardContainer: {
