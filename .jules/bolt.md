@@ -1,0 +1,3 @@
+## 2025-02-17 - [Memoizing Heavy Stats Calculations in React Native UI]
+**Learning:** In React Native, operations like text input (`onChangeText`) update state and trigger frequent component re-renders. When heavy iterative array calculations (like calculating stats using historical checkin data) run inside the render method inline, they severely block the main UI thread causing typing lag.
+**Action:** Use `useMemo` to pre-calculate heavy aggregations when underlying data changes, rather than computing them inline inside JSX map loops. Specially, map all derived list item stats to a dictionary (`habitStatsMap`) once per data-change cycle.
