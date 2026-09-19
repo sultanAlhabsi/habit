@@ -1,18 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import {View, StyleSheet} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
-import type { StreakMilestoneInfo } from '../../types/habit';
+import type { StreakMilestoneInfo, HabitFrequency } from '../../types/habit';
+import { formatHabitStreakArabic } from '../../utils/habitUtils';
 
 interface StreakMilestoneCardProps {
   milestoneInfo: StreakMilestoneInfo;
   habitColor?: string;
+  frequency?: HabitFrequency;
 }
 
-export const StreakMilestoneCard: React.FC<StreakMilestoneCardProps> = ({
+export const StreakMilestoneCard: React.FC<StreakMilestoneCardProps> = React.memo(({
   milestoneInfo,
   habitColor,
+  frequency = 'daily',
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
   const accentColor = habitColor || theme.primary;
@@ -62,7 +66,7 @@ export const StreakMilestoneCard: React.FC<StreakMilestoneCardProps> = ({
         >
           <Ionicons name="flame" size={13} color={accentColor} style={{ marginLeft: 3 }} />
           <Text style={[typography.caption, { color: accentColor, fontWeight: '700' }]}>
-            {currentStreak} {currentStreak === 1 ? 'يوم' : currentStreak <= 10 ? 'أيام' : 'يوم'}
+            {formatHabitStreakArabic(currentStreak, frequency)}
           </Text>
         </View>
       </View>
@@ -166,7 +170,7 @@ export const StreakMilestoneCard: React.FC<StreakMilestoneCardProps> = ({
       )}
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -1,4 +1,4 @@
-export type HabitFrequency = 'daily' | 'specific_days' | 'weekly_target';
+export type HabitFrequency = 'daily' | 'specific_days' | 'weekly_target' | 'monthly_day' | 'monthly_target';
 
 export interface Habit {
   id: string;
@@ -9,10 +9,14 @@ export interface Habit {
   frequency: HabitFrequency;
   frequencyDays: number[]; // 0: Sun, 1: Mon, ..., 6: Sat
   targetCount: number;
+  weeklyTargetCount?: number; // Target completions per week (e.g. 3 times/week)
+  monthlyTargetCount?: number; // Target completions per month (e.g. 4 times/month)
+  monthlyDay?: number; // 1 - 31 for specific day of month
   unit: string;
   isActive: boolean;
   reminderTime?: string | null;
   isPinned?: boolean;
+  order?: number;
   createdAt: string;
   archivedAt?: string | null;
 }
@@ -81,6 +85,8 @@ export const AVAILABLE_ICONS: HabitIconOption[] = [
   { name: 'headset-outline', label: 'كتب صوتية واستماع', category: 'تطوير' },
   { name: 'people-outline', label: 'صلة رحم وتواصل', category: 'تطوير' },
   { name: 'chatbubbles-outline', label: 'حوار ونقاش هادف', category: 'تطوير' },
+  { name: 'game-controller-outline', label: 'ألعاب ذكاء وتحدي', category: 'تطوير' },
+  { name: 'repeat-outline', label: 'نشر وتكرار ومشاركة', category: 'تطوير' },
 
   // صحة (Health, Fitness & Wellness)
   { name: 'water-outline', label: 'شرب ماء', category: 'صحة' },
@@ -113,22 +119,30 @@ export const AVAILABLE_ICONS: HabitIconOption[] = [
   { name: 'document-text-outline', label: 'تقارير وتوثيق', category: 'إنتاجية' },
   { name: 'clipboard-outline', label: 'قائمة مهام', category: 'إنتاجية' },
   { name: 'folder-outline', label: 'تنظيم ملفات', category: 'إنتاجية' },
+  { name: 'images-outline', label: 'حذف الصور وتنظيم الألبوم', category: 'إنتاجية' },
+  { name: 'trash-outline', label: 'تنظيف وترتيب الملفات', category: 'إنتاجية' },
+  { name: 'phone-portrait-outline', label: 'تقليل استخدام الهاتف', category: 'إنتاجية' },
 
   // روتين (Daily Routine & Organization)
   { name: 'sunny-outline', label: 'استيقاظ باكر', category: 'روتين' },
   { name: 'alarm-outline', label: 'التزام بالمواعيد', category: 'روتين' },
   { name: 'cafe-outline', label: 'قهوة وتركيز', category: 'روتين' },
   { name: 'home-outline', label: 'ترتيب المنزل', category: 'روتين' },
-  { name: 'brush-outline', label: 'نظافة شخصية', category: 'روتين' },
+  { name: 'brush-outline', label: 'نظافة شخصية وسواك', category: 'روتين' },
   { name: 'shirt-outline', label: 'عناية بالملابس', category: 'روتين' },
   { name: 'calendar-outline', label: 'تخطيط أسبوعي', category: 'روتين' },
   { name: 'cart-outline', label: 'تسوق ومشتريات', category: 'روتين' },
   { name: 'time-outline', label: 'إدارة الوقت', category: 'روتين' },
   { name: 'hourglass-outline', label: 'جلسة هدوء وتنظيم', category: 'روتين' },
   { name: 'car-outline', label: 'تنقل ومشاوير', category: 'روتين' },
+  { name: 'cut-outline', label: 'قص الأظافر وعناية', category: 'روتين' },
 
   // روحانية (Spirituality & Mindfulness)
   { name: 'sparkles-outline', label: 'عبادة وذكر', category: 'روحانية' },
+  { name: 'cloud-outline', label: 'استغفار وسحاب', category: 'روحانية' },
+  { name: 'star-outline', label: 'تميز وتلاوة وسور', category: 'روحانية' },
+  { name: 'gift-outline', label: 'صدقة وإحسان', category: 'روحانية' },
+  { name: 'paw-outline', label: 'رأفة بالحيوان والطيور', category: 'روحانية' },
   { name: 'leaf-outline', label: 'تأمل وطبيعة', category: 'روحانية' },
   { name: 'flower-outline', label: 'امتنان وسكينة', category: 'روحانية' },
   { name: 'bonfire-outline', label: 'جلسة صفاء', category: 'روحانية' },

@@ -7,6 +7,7 @@ import { StyleSheet } from 'react-native';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { useHabitStore } from './src/store/useHabitStore';
+import { CustomAlertModal } from './src/components/common';
 
 const AppContent: React.FC = () => {
   const { isDark } = useTheme();
@@ -20,6 +21,7 @@ const AppContent: React.FC = () => {
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppNavigator />
+      <CustomAlertModal />
     </>
   );
 };

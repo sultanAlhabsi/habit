@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Share } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import {View, StyleSheet, ScrollView, Pressable, Share} from 'react-native';
+import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Card } from '../components/common/Card';
 import { WeeklyChart } from '../components/stats/WeeklyChart';
 import { MonthlyAdherenceCard } from '../components/stats/MonthlyAdherenceCard';
@@ -14,22 +16,27 @@ import { BadgeList } from '../components/stats/BadgeList';
 import {
   calculateHabitStats,
   calculateOverallStats,
-  calculateWeekAdherence,
-  formatWeekRangeArabic,
   formatOverallStatsForShare,
   formatArabicStreakDays,
+  toArabicNumerals,
 } from '../utils/habitUtils';
+import type { Habit, HabitCheckin } from '../types/habit';
 
 export const StatisticsScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const { theme, spacing, radius, typography, touchTarget } = useTheme();
-  const { habits, checkins } = useHabitStore();
+  const { habits, checkins } = useHabitStore(
+    useShallow((state) => ({
+      habits: state.habits,
+      checkins: state.checkins,
+    }))
+  );
 
-  const [weekOffset, setWeekOffset] = useState(0);
+  const LEADERBOARD_INITIAL_COUNT = 5;
+  const [isLeaderboardExpanded, setIsLeaderboardExpanded] = useState(false);
 
   const todayStr = dayjs().format('YYYY-MM-DD');
-  const overall = calculateOverallStats(habits, checkins, todayStr);
 
   const handleShareStats = async () => {
     try {
@@ -38,22 +45,58 @@ export const StatisticsScreen: React.FC = () => {
     } catch (_) {}
   };
 
-  const chartReferenceDate = dayjs().add(weekOffset, 'week');
-  const weeklyAdherence = calculateWeekAdherence(habits, checkins, chartReferenceDate);
-  const weekLabel = weekOffset === 0 ? 'الأسبوع الحالي' : formatWeekRangeArabic(chartReferenceDate);
+  // Single-pass computation: calculate stats for each habit once, find max streak, and rank active habits
+  const { rankedHabits, overall } = useMemo(() => {
+    const checkinsByHabit = new Map<string, HabitCheckin[]>();
+    for (const c of checkins) {
+      let list = checkinsByHabit.get(c.habitId);
+      if (!list) {
+        list = [];
+        checkinsByHabit.set(c.habitId, list);
+      }
+      list.push(c);
+    }
 
-  // Exclude archived habits from active leaderboard
-  const activeHabits = habits.filter((h) => !h.archivedAt && h.isActive);
-  const rankedHabits = [...activeHabits]
-    .map((h) => ({
-      habit: h,
-      stats: calculateHabitStats(h, checkins),
-    }))
-    .sort(
+    let bestOverallStreak = 0;
+    const ranked: { habit: Habit; stats: ReturnType<typeof calculateHabitStats> }[] = [];
+
+    for (const h of habits) {
+      const hCheckins = checkinsByHabit.get(h.id) || [];
+      const stats = calculateHabitStats(h, hCheckins);
+
+      if (stats.bestStreak > bestOverallStreak) {
+        bestOverallStreak = stats.bestStreak;
+      }
+
+      if (!h.archivedAt && h.isActive) {
+        ranked.push({ habit: h, stats });
+      }
+    }
+
+    ranked.sort(
       (a, b) =>
         b.stats.currentStreak - a.stats.currentStreak ||
         b.stats.completionRate - a.stats.completionRate
     );
+
+    const overallStats = calculateOverallStats(
+      habits,
+      checkins,
+      todayStr,
+      bestOverallStreak,
+      checkinsByHabit
+    );
+
+    return {
+      rankedHabits: ranked,
+      overall: overallStats,
+    };
+  }, [habits, checkins, todayStr]);
+
+  const displayedHabits = isLeaderboardExpanded
+    ? rankedHabits
+    : rankedHabits.slice(0, LEADERBOARD_INITIAL_COUNT);
+  const remainingHabitsCount = Math.max(0, rankedHabits.length - LEADERBOARD_INITIAL_COUNT);
 
   const kpis = [
     { title: 'إنجاز اليوم', value: `${overall.todayCompletionRate}%` },
@@ -135,14 +178,8 @@ export const StatisticsScreen: React.FC = () => {
         {/* Monthly Adherence & Performance Analytics */}
         <MonthlyAdherenceCard habits={habits} checkins={checkins} />
 
-        {/* Weekly Adherence Chart with Week Navigation */}
-        <WeeklyChart
-          data={weeklyAdherence}
-          weekLabel={weekLabel}
-          onPrevWeek={() => setWeekOffset((prev) => prev - 1)}
-          onNextWeek={() => setWeekOffset((prev) => Math.min(0, prev + 1))}
-          hasNextWeek={weekOffset < 0}
-        />
+        {/* Weekly Adherence Chart with Isolated Week Navigation */}
+        <WeeklyChart habits={habits} checkins={checkins} />
 
         {/* Life Domains & Category Balance */}
         <CategoryPerformanceCard habits={habits} checkins={checkins} />
@@ -160,67 +197,104 @@ export const StatisticsScreen: React.FC = () => {
               لا توجد عادات نشطة مسجلة
             </Text>
           ) : (
-            rankedHabits.map((item, index) => (
-              <Pressable
-                key={item.habit.id}
-                accessibilityRole="button"
-                accessibilityLabel={`عرض تفاصيل عادة ${item.habit.name}`}
-                onPress={() =>
-                  navigation.navigate('HabitDetails', { habitId: item.habit.id })
-                }
-                style={({ pressed }) => [
-                  styles.rankRow,
-                  {
-                    borderBottomColor: theme.border,
-                    borderBottomWidth: index === rankedHabits.length - 1 ? 0 : 1,
-                    opacity: pressed ? 0.65 : 1,
-                  },
-                ]}
-              >
-                <View style={styles.rankLeft}>
-                  <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-                    <Ionicons
-                      name="flame"
-                      size={14}
-                      color={item.stats.currentStreak > 0 ? (item.habit.color || theme.primary) : theme.textMuted}
-                      style={{ marginLeft: 4 }}
-                    />
-                    <Text style={[typography.subMedium, { color: theme.text }]}>
-                      {formatArabicStreakDays(item.stats.currentStreak)}
-                    </Text>
-                  </View>
-                </View>
+            <>
+              {displayedHabits.map((item, index) => (
+                <Pressable
+                  key={item.habit.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`عرض تفاصيل عادة ${item.habit.name}`}
+                  onPress={() =>
+                    navigation.navigate('HabitDetails', { habitId: item.habit.id })
+                  }
+                  style={({ pressed }) => [
+                    styles.rankRow,
+                    {
+                      borderBottomColor: theme.border,
+                      borderBottomWidth:
+                        index === displayedHabits.length - 1 && remainingHabitsCount === 0
+                          ? 0
+                          : 1,
+                      opacity: pressed ? 0.65 : 1,
+                    },
+                  ]}
+                >
+                  <View style={styles.rankRight}>
+                    <View
+                      style={[
+                        styles.rankIconBox,
+                        {
+                          backgroundColor: item.habit.color
+                            ? `${item.habit.color}15`
+                            : theme.cardSecondary,
+                          borderRadius: radius.sm,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={(item.habit.icon as any) || 'ellipse-outline'}
+                        size={16}
+                        color={item.habit.color || theme.textSecondary}
+                      />
+                    </View>
 
-                <View style={styles.rankRight}>
-                  <View
-                    style={[
-                      styles.rankIconBox,
-                      {
-                        backgroundColor: item.habit.color
-                          ? `${item.habit.color}15`
-                          : theme.cardSecondary,
-                        borderRadius: radius.sm,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={(item.habit.icon as any) || 'ellipse-outline'}
-                      size={16}
-                      color={item.habit.color || theme.textSecondary}
-                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+                        {item.habit.name}
+                      </Text>
+                      <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
+                        نسبة الالتزام: {item.stats.completionRate}%
+                      </Text>
+                    </View>
                   </View>
 
-                  <View style={{ flex: 1 }}>
-                    <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
-                      {item.habit.name}
-                    </Text>
-                    <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
-                      نسبة الالتزام: {item.stats.completionRate}%
-                    </Text>
+                  <View style={styles.rankLeft}>
+                    <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                      <Ionicons
+                        name="flame"
+                        size={14}
+                        color={item.stats.currentStreak > 0 ? (item.habit.color || theme.primary) : theme.textMuted}
+                        style={{ marginLeft: 4 }}
+                      />
+                      <Text style={[typography.subMedium, { color: theme.text }]}>
+                        {formatArabicStreakDays(item.stats.currentStreak)}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              </Pressable>
-            ))
+                </Pressable>
+              ))}
+
+              {rankedHabits.length > LEADERBOARD_INITIAL_COUNT && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isLeaderboardExpanded
+                      ? 'طي قائمة العادات'
+                      : `عرض بقية العادات، ${toArabicNumerals(remainingHabitsCount)} عادة إضافية`
+                  }
+                  onPress={() => setIsLeaderboardExpanded((prev) => !prev)}
+                  style={({ pressed }) => [
+                    styles.expandBtn,
+                    {
+                      borderTopColor: theme.border,
+                      borderTopWidth: 1,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={isLeaderboardExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={theme.primary}
+                    style={{ marginLeft: 6 }}
+                  />
+                  <Text style={[typography.subMedium, { color: theme.primary }]}>
+                    {isLeaderboardExpanded
+                      ? 'طي القائمة'
+                      : `عرض بقية العادات (${toArabicNumerals(remainingHabitsCount)})`}
+                  </Text>
+                </Pressable>
+              )}
+            </>
           )}
         </Card>
 
@@ -280,5 +354,12 @@ const styles = StyleSheet.create({
   rankLeft: {
     alignItems: 'flex-start',
     paddingRight: 10,
+  },
+  expandBtn: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 12,
+    marginTop: 4,
   },
 });

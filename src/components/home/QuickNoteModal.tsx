@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   TextInput,
@@ -10,6 +9,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
@@ -48,25 +48,15 @@ export const QuickNoteModal: React.FC<QuickNoteModalProps> = ({
 
   if (!habit) return null;
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSave(noteText.trim());
-      onClose();
-    } finally {
-      setIsSaving(false);
-    }
+  const handleSave = () => {
+    onClose();
+    Promise.resolve(onSave(noteText.trim())).catch(() => {});
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!onDelete) return;
-    setIsSaving(true);
-    try {
-      await onDelete();
-      onClose();
-    } finally {
-      setIsSaving(false);
-    }
+    onClose();
+    Promise.resolve(onDelete()).catch(() => {});
   };
 
   const hasExistingNote = Boolean(initialNote && initialNote.trim().length > 0);

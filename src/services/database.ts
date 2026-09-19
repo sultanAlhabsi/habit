@@ -11,9 +11,11 @@ let initPromise: Promise<void> | null = null;
 // Fallback in-memory store in case native SQLite is unavailable or encounters errors
 let memoryHabits: Habit[] = [...INITIAL_HABITS];
 let memoryCheckins: HabitCheckin[] = generateDemoCheckins();
+let memoryDeletedHabitIds: string[] = ['habit-5'];
 let memoryMeta: Record<string, string> = {
   theme_mode: 'system',
   haptics_enabled: 'true',
+  sound_enabled: 'true',
   evening_reminder_enabled: 'false',
   evening_reminder_time: '21:00',
   habit_sort_preference: 'default',
@@ -23,15 +25,36 @@ let memoryMeta: Record<string, string> = {
 // Sequential query queue to eliminate concurrent execution race conditions on Android
 let dbQueue: Promise<any> = Promise.resolve();
 
+const handleDatabaseError = (err: any) => {
+  const errMsg = err?.message || String(err);
+  if (
+    errMsg.includes('NullPointerException') ||
+    errMsg.includes('closed') ||
+    errMsg.includes('rejected')
+  ) {
+    dbInstance = null;
+    isInitialized = false;
+    initPromise = null;
+  }
+};
+
 const getDB = async (): Promise<SQLite.SQLiteDatabase | null> => {
   if (dbInstance) return dbInstance;
   try {
     if (!SQLiteModule) {
-      SQLiteModule = await import('expo-sqlite');
+      try {
+        SQLiteModule = require('expo-sqlite');
+      } catch {
+        SQLiteModule = await import('expo-sqlite');
+      }
     }
-    dbInstance = await SQLiteModule.openDatabaseAsync('enjaz_habits.db');
+    if (!SQLiteModule) return null;
+    dbInstance = await SQLiteModule.openDatabaseAsync('enjaz_habits.db', {
+      useNewConnection: true,
+    });
     return dbInstance;
   } catch (error) {
+    dbInstance = null;
     return null;
   }
 };
@@ -57,11 +80,13 @@ const runSerialized = async <T>(
           const res = await operation(db);
           resolve(res);
         } catch (err) {
+          handleDatabaseError(err);
           console.warn('[Database] Query execution error, using memory fallback:', err);
           resolve(fallback());
         }
       })
       .catch((err) => {
+        handleDatabaseError(err);
         console.warn('[Database] Queue error, using memory fallback:', err);
         resolve(fallback());
       });
@@ -84,6 +109,9 @@ export const initDatabase = async (): Promise<void> => {
         .then(async () => {
           try {
             await db.execAsync('PRAGMA journal_mode = WAL;');
+            await db.execAsync('PRAGMA synchronous = NORMAL;');
+            await db.execAsync('PRAGMA cache_size = -8000;'); // 8MB cache
+            await db.execAsync('PRAGMA temp_store = MEMORY;');
 
             await db.execAsync(`
               CREATE TABLE IF NOT EXISTS habits (
@@ -95,10 +123,14 @@ export const initDatabase = async (): Promise<void> => {
                 frequency TEXT NOT NULL,
                 frequency_days TEXT NOT NULL,
                 target_count INTEGER NOT NULL DEFAULT 1,
+                weekly_target_count INTEGER,
+                monthly_target_count INTEGER,
+                monthly_day INTEGER,
                 unit TEXT NOT NULL DEFAULT 'مرة',
                 is_active INTEGER NOT NULL DEFAULT 1,
                 reminder_time TEXT,
                 is_pinned INTEGER NOT NULL DEFAULT 0,
+                order_index INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
                 archived_at TEXT
               );
@@ -109,8 +141,8 @@ export const initDatabase = async (): Promise<void> => {
                 id TEXT PRIMARY KEY NOT NULL,
                 habit_id TEXT NOT NULL,
                 date TEXT NOT NULL,
-                count INTEGER NOT NULL DEFAULT 1,
-                completed INTEGER NOT NULL DEFAULT 1,
+                count INTEGER NOT NULL DEFAULT 0,
+                completed INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL,
                 note TEXT,
                 UNIQUE(habit_id, date)
@@ -124,12 +156,52 @@ export const initDatabase = async (): Promise<void> => {
               );
             `);
 
+            await db.execAsync(`
+              CREATE TABLE IF NOT EXISTS deleted_habits (
+                id TEXT PRIMARY KEY NOT NULL,
+                deleted_at TEXT NOT NULL
+              );
+            `);
+
             try {
               await db.execAsync('ALTER TABLE checkins ADD COLUMN note TEXT;');
             } catch {}
 
             try {
               await db.execAsync('ALTER TABLE habits ADD COLUMN is_pinned INTEGER DEFAULT 0;');
+            } catch {}
+
+            try {
+              await db.execAsync('ALTER TABLE habits ADD COLUMN order_index INTEGER DEFAULT 0;');
+            } catch {}
+
+            try {
+              await db.execAsync('ALTER TABLE habits ADD COLUMN weekly_target_count INTEGER;');
+            } catch {}
+
+            try {
+              await db.execAsync('ALTER TABLE habits ADD COLUMN monthly_target_count INTEGER;');
+            } catch {}
+
+            try {
+              await db.execAsync('ALTER TABLE habits ADD COLUMN monthly_day INTEGER;');
+            } catch {}
+
+            // Add indexes for frequently queried columns
+            // These significantly speed up habit_id and date lookups
+            try {
+              await db.execAsync(
+                'CREATE INDEX IF NOT EXISTS idx_checkins_habit_id ON checkins (habit_id);'
+              );
+              await db.execAsync(
+                'CREATE INDEX IF NOT EXISTS idx_checkins_date ON checkins (date);'
+              );
+              await db.execAsync(
+                'CREATE INDEX IF NOT EXISTS idx_checkins_habit_date ON checkins (habit_id, date);'
+              );
+              await db.execAsync(
+                'CREATE INDEX IF NOT EXISTS idx_habits_archived_at ON habits (archived_at);'
+              );
             } catch {}
 
             const countResult = await db.getFirstAsync<{ count: number }>(
@@ -139,15 +211,21 @@ export const initDatabase = async (): Promise<void> => {
               await seedDatabaseInternal(db);
             }
           } catch (error) {
+            handleDatabaseError(error);
             console.warn('[Database] Error in schema initialization:', error);
           } finally {
-            isInitialized = true;
+            if (dbInstance) {
+              isInitialized = true;
+            }
             resolve();
           }
         })
         .catch((err) => {
+          handleDatabaseError(err);
           console.warn('[Database] Schema queue error:', err);
-          isInitialized = true;
+          if (dbInstance) {
+            isInitialized = true;
+          }
           resolve();
         });
     });
@@ -163,8 +241,9 @@ const saveHabitRecordInternal = async (
   await db.runAsync(
     `INSERT OR REPLACE INTO habits (
       id, name, description, icon, color, frequency, frequency_days,
-      target_count, unit, is_active, reminder_time, is_pinned, created_at, archived_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      target_count, weekly_target_count, monthly_target_count, monthly_day,
+      unit, is_active, reminder_time, is_pinned, order_index, created_at, archived_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       habit.id,
       habit.name,
@@ -174,10 +253,14 @@ const saveHabitRecordInternal = async (
       habit.frequency,
       JSON.stringify(habit.frequencyDays),
       habit.targetCount,
+      habit.weeklyTargetCount ?? null,
+      habit.monthlyTargetCount ?? null,
+      habit.monthlyDay ?? null,
       habit.unit,
       habit.isActive ? 1 : 0,
       habit.reminderTime || null,
       habit.isPinned ? 1 : 0,
+      habit.order ?? 0,
       habit.createdAt,
       habit.archivedAt || null,
     ]
@@ -204,6 +287,34 @@ const saveCheckinRecordInternal = async (
   );
 };
 
+const saveCheckinRecordsChunkedInternal = async (
+  db: SQLite.SQLiteDatabase,
+  checkins: HabitCheckin[]
+): Promise<void> => {
+  const CHUNK_SIZE = 150;
+  for (let i = 0; i < checkins.length; i += CHUNK_SIZE) {
+    const chunk = checkins.slice(i, i + CHUNK_SIZE);
+    if (chunk.length === 0) continue;
+    const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const params: any[] = [];
+    for (const c of chunk) {
+      params.push(
+        c.id,
+        c.habitId,
+        c.date,
+        c.count,
+        c.completed ? 1 : 0,
+        c.updatedAt,
+        c.note || null
+      );
+    }
+    await db.runAsync(
+      `INSERT OR REPLACE INTO checkins (id, habit_id, date, count, completed, updated_at, note) VALUES ${placeholders}`,
+      params
+    );
+  }
+};
+
 const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
   for (const habit of INITIAL_HABITS) {
     await saveHabitRecordInternal(db, habit);
@@ -217,6 +328,7 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
   const defaultMetaEntries: [string, string][] = [
     ['theme_mode', 'system'],
     ['haptics_enabled', 'true'],
+    ['sound_enabled', 'true'],
     ['notifications_enabled', 'true'],
     ['habit_sort_preference', 'default'],
     ['evening_reminder_enabled', 'false'],
@@ -244,13 +356,17 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
         frequency: Habit['frequency'];
         frequency_days: string;
         target_count: number;
+        weekly_target_count?: number | null;
+        monthly_target_count?: number | null;
+        monthly_day?: number | null;
         unit: string;
         is_active: number;
         reminder_time: string | null;
         is_pinned?: number;
+        order_index?: number | null;
         created_at: string;
         archived_at: string | null;
-      }>('SELECT * FROM habits ORDER BY created_at ASC');
+      }>('SELECT * FROM habits ORDER BY order_index ASC, created_at ASC');
 
       return rows.map((r) => ({
         id: r.id,
@@ -261,15 +377,40 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
         frequency: r.frequency,
         frequencyDays: JSON.parse(r.frequency_days || '[0,1,2,3,4,5,6]'),
         targetCount: r.target_count,
+        weeklyTargetCount: r.weekly_target_count ?? undefined,
+        monthlyTargetCount: r.monthly_target_count ?? undefined,
+        monthlyDay: r.monthly_day ?? undefined,
         unit: r.unit,
         isActive: r.is_active === 1,
         reminderTime: r.reminder_time,
         isPinned: r.is_pinned === 1,
+        order: r.order_index ?? 0,
         createdAt: r.created_at,
         archivedAt: r.archived_at,
       }));
     },
     () => [...memoryHabits]
+  );
+};
+
+export const updateHabitsOrder = async (orderedHabitIds: string[]): Promise<void> => {
+  orderedHabitIds.forEach((id, index) => {
+    const h = memoryHabits.find((item) => item.id === id);
+    if (h) h.order = index;
+  });
+
+  await runSerialized(
+    async (db) => {
+      await db.withTransactionAsync(async () => {
+        for (let i = 0; i < orderedHabitIds.length; i++) {
+          await db.runAsync('UPDATE habits SET order_index = ? WHERE id = ?;', [
+            i,
+            orderedHabitIds[i],
+          ]);
+        }
+      });
+    },
+    () => {}
   );
 };
 
@@ -280,9 +421,13 @@ export const saveHabitRecord = async (habit: Habit): Promise<void> => {
   } else {
     memoryHabits.push(habit);
   }
+  memoryDeletedHabitIds = memoryDeletedHabitIds.filter((id) => id !== habit.id);
 
   await runSerialized(
-    (db) => saveHabitRecordInternal(db, habit),
+    async (db) => {
+      await saveHabitRecordInternal(db, habit);
+      await db.runAsync('DELETE FROM deleted_habits WHERE id = ?;', [habit.id]);
+    },
     () => {}
   );
 };
@@ -290,13 +435,129 @@ export const saveHabitRecord = async (habit: Habit): Promise<void> => {
 export const deleteHabitRecord = async (habitId: string): Promise<void> => {
   memoryHabits = memoryHabits.filter((h) => h.id !== habitId);
   memoryCheckins = memoryCheckins.filter((c) => c.habitId !== habitId);
+  if (!memoryDeletedHabitIds.includes(habitId)) {
+    memoryDeletedHabitIds.push(habitId);
+  }
 
   await runSerialized(
     async (db) => {
-      await db.runAsync('DELETE FROM habits WHERE id = ?', [habitId]);
-      await db.runAsync('DELETE FROM checkins WHERE habit_id = ?', [habitId]);
+      await db.runAsync('DELETE FROM habits WHERE id = ?;', [habitId]);
+      await db.runAsync('DELETE FROM checkins WHERE habit_id = ?;', [habitId]);
+      await db.runAsync(
+        'INSERT OR REPLACE INTO deleted_habits (id, deleted_at) VALUES (?, ?);',
+        [habitId, new Date().toISOString()]
+      );
     },
     () => {}
+  );
+};
+
+export const deleteImportedLoopHabitsRecord = async (): Promise<{
+  deletedHabitsCount: number;
+  deletedCheckinsCount: number;
+}> => {
+  const deletedHabitIds = memoryHabits.filter((h) => h.id.startsWith('loop_')).map((h) => h.id);
+  const deletedCheckinCount = memoryCheckins.filter((c) => c.habitId.startsWith('loop_')).length;
+
+  for (const id of deletedHabitIds) {
+    if (!memoryDeletedHabitIds.includes(id)) {
+      memoryDeletedHabitIds.push(id);
+    }
+  }
+
+  memoryHabits = memoryHabits.filter((h) => !h.id.startsWith('loop_'));
+  memoryCheckins = memoryCheckins.filter((c) => !c.habitId.startsWith('loop_'));
+
+  return runSerialized(
+    async (db) => {
+      const habitRows = await db.getAllAsync<{ id: string }>(
+        "SELECT id FROM habits WHERE id LIKE 'loop_%';"
+      );
+      const habitIds = habitRows.map((r) => r.id);
+
+      const checkinCountResult = await db.getFirstAsync<{ count: number }>(
+        "SELECT count(*) as count FROM checkins WHERE habit_id LIKE 'loop_%';"
+      );
+      const checkinCount = checkinCountResult?.count || 0;
+
+      await db.runAsync("DELETE FROM checkins WHERE habit_id LIKE 'loop_%';");
+      await db.runAsync("DELETE FROM habits WHERE id LIKE 'loop_%';");
+
+      const now = new Date().toISOString();
+      for (const id of habitIds) {
+        await db.runAsync(
+          'INSERT OR REPLACE INTO deleted_habits (id, deleted_at) VALUES (?, ?);',
+          [id, now]
+        );
+      }
+
+      return { deletedHabitsCount: habitIds.length, deletedCheckinsCount: checkinCount };
+    },
+    () => ({ deletedHabitsCount: deletedHabitIds.length, deletedCheckinsCount: deletedCheckinCount })
+  );
+};
+
+export const fetchDeletedHabitIds = async (): Promise<string[]> => {
+  return runSerialized(
+    async (db) => {
+      const rows = await db.getAllAsync<{ id: string }>('SELECT id FROM deleted_habits;');
+      return rows.map((r) => r.id);
+    },
+    () => [...memoryDeletedHabitIds]
+  );
+};
+
+export const markHabitDeletedLocally = async (habitId: string): Promise<void> => {
+  if (!memoryDeletedHabitIds.includes(habitId)) {
+    memoryDeletedHabitIds.push(habitId);
+  }
+  memoryHabits = memoryHabits.filter((h) => h.id !== habitId);
+  memoryCheckins = memoryCheckins.filter((c) => c.habitId !== habitId);
+
+  await runSerialized(
+    async (db) => {
+      await db.runAsync('DELETE FROM habits WHERE id = ?;', [habitId]);
+      await db.runAsync('DELETE FROM checkins WHERE habit_id = ?;', [habitId]);
+      await db.runAsync(
+        'INSERT OR REPLACE INTO deleted_habits (id, deleted_at) VALUES (?, ?);',
+        [habitId, new Date().toISOString()]
+      );
+    },
+    () => {}
+  );
+};
+/**
+ * Fetch checkins for the last N days (default: 180 days) using the indexed date column.
+ * Significantly improves cold-start execution and memory footprint.
+ */
+export const fetchRecentCheckins = async (days = 180): Promise<HabitCheckin[]> => {
+  const cutoffDate = dayjs().subtract(days, 'day').format('YYYY-MM-DD');
+  return runSerialized(
+    async (db) => {
+      const rows = await db.getAllAsync<{
+        id: string;
+        habit_id: string;
+        date: string;
+        count: number;
+        completed: number;
+        updated_at: string;
+        note?: string | null;
+      }>(
+        'SELECT * FROM checkins WHERE date >= ? ORDER BY date DESC',
+        [cutoffDate]
+      );
+
+      return rows.map((r) => ({
+        id: r.id,
+        habitId: r.habit_id,
+        date: r.date,
+        count: r.count,
+        completed: r.completed === 1,
+        updatedAt: r.updated_at,
+        note: r.note || undefined,
+      }));
+    },
+    () => memoryCheckins.filter((c) => c.date >= cutoffDate)
   );
 };
 
@@ -362,12 +623,14 @@ export const removeCheckinRecord = async (habitId: string, date: string): Promis
 export const resetDatabase = async (): Promise<void> => {
   memoryHabits = [];
   memoryCheckins = [];
+  memoryDeletedHabitIds = [];
 
   await runSerialized(
     async (db) => {
       await db.execAsync(`
         DELETE FROM checkins;
         DELETE FROM habits;
+        DELETE FROM deleted_habits;
       `);
     },
     () => {}
@@ -380,6 +643,7 @@ export const seedDatabase = async (): Promise<void> => {
   memoryMeta = {
     theme_mode: 'system',
     haptics_enabled: 'true',
+    sound_enabled: 'true',
     evening_reminder_enabled: 'false',
     evening_reminder_time: '21:00',
     habit_sort_preference: 'default',
@@ -470,6 +734,9 @@ export const importDatabaseRecords = async (
   checkins: HabitCheckin[],
   mode: 'replace' | 'merge'
 ): Promise<void> => {
+  const prevHabits = [...memoryHabits];
+  const prevCheckins = [...memoryCheckins];
+
   if (mode === 'replace') {
     memoryHabits = [...habits];
     memoryCheckins = [...checkins];
@@ -490,19 +757,117 @@ export const importDatabaseRecords = async (
 
   await runSerialized(
     async (db) => {
-      if (mode === 'replace') {
-        await db.execAsync(`
-          DELETE FROM checkins;
-          DELETE FROM habits;
-        `);
-      }
+      try {
+        await db.withTransactionAsync(async () => {
+          if (mode === 'replace') {
+            await db.execAsync(`
+              DELETE FROM checkins;
+              DELETE FROM habits;
+            `);
+          }
 
-      for (const habit of habits) {
-        await saveHabitRecordInternal(db, habit);
-      }
+          for (const habit of habits) {
+            await saveHabitRecordInternal(db, habit);
+          }
 
-      for (const checkin of checkins) {
-        await saveCheckinRecordInternal(db, checkin);
+          await saveCheckinRecordsChunkedInternal(db, checkins);
+        });
+      } catch (err) {
+        // Rollback memory cache if native SQLite transaction fails
+        memoryHabits = prevHabits;
+        memoryCheckins = prevCheckins;
+        throw err;
+      }
+    },
+    () => {}
+  );
+};
+
+/**
+ * High-performance batch insertion for large datasets (e.g. Loop Habits backup with 8500+ records).
+ * Uses SQLite transaction with batched multi-row INSERTs to complete in milliseconds.
+ */
+export const batchInsertLoopData = async (
+  habits: Habit[],
+  checkins: HabitCheckin[]
+): Promise<void> => {
+  // Update memory fallbacks
+  habits.forEach((h) => {
+    const idx = memoryHabits.findIndex((x) => x.id === h.id);
+    if (idx >= 0) memoryHabits[idx] = h;
+    else memoryHabits.push(h);
+  });
+
+  checkins.forEach((c) => {
+    const idx = memoryCheckins.findIndex(
+      (x) => x.habitId === c.habitId && x.date === c.date
+    );
+    if (idx >= 0) memoryCheckins[idx] = c;
+    else memoryCheckins.push(c);
+  });
+
+  await runSerialized(
+    async (db) => {
+      await db.withTransactionAsync(async () => {
+        // Save habits
+        for (const habit of habits) {
+          await saveHabitRecordInternal(db, habit);
+        }
+
+        // Save checkins in chunks of 150
+        await saveCheckinRecordsChunkedInternal(db, checkins);
+      });
+    },
+    () => {}
+  );
+};
+
+export const batchSaveHabits = async (habits: Habit[]): Promise<void> => {
+  habits.forEach((h) => {
+    const idx = memoryHabits.findIndex((x) => x.id === h.id);
+    if (idx >= 0) memoryHabits[idx] = h;
+    else memoryHabits.push(h);
+  });
+
+  await runSerialized(
+    async (db) => {
+      await db.withTransactionAsync(async () => {
+        for (const habit of habits) {
+          await saveHabitRecordInternal(db, habit);
+        }
+      });
+    },
+    () => {}
+  );
+};
+
+/**
+ * Saves multiple checkin records atomically within a single SQLite transaction.
+ * Significantly faster than sequential individual writes.
+ */
+export const batchSaveCheckinRecords = async (checkins: HabitCheckin[]): Promise<void> => {
+  if (checkins.length === 0) return;
+
+  const prevCheckins = [...memoryCheckins];
+
+  // Update memory fallbacks
+  checkins.forEach((c) => {
+    const idx = memoryCheckins.findIndex(
+      (x) => x.habitId === c.habitId && x.date === c.date
+    );
+    if (idx >= 0) memoryCheckins[idx] = c;
+    else memoryCheckins.push(c);
+  });
+
+  await runSerialized(
+    async (db) => {
+      try {
+        await db.withTransactionAsync(async () => {
+          await saveCheckinRecordsChunkedInternal(db, checkins);
+        });
+      } catch (err) {
+        memoryCheckins = prevCheckins;
+        throw err;
       }
     },
     () => {}

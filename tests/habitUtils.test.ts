@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import {
   isHabitDueOnDate,
   calculateHabitStats,
+  calculateCurrentStreakFromDates,
   calculateOverallStats,
   calculateWeekAdherence,
   hasEverHadPerfectDay,
@@ -39,6 +40,7 @@ import {
   exportSingleHabitToCsv,
   CATEGORY_CONFIG,
   calculateCategoryAnalytics,
+  getPeriodicBadgeText,
 } from '../src/utils/habitUtils.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -369,16 +371,43 @@ test('calculateOverallStats: computes accurate rates, permanent perfect day, and
   assert.equal(overall.weeklyAdherence.length, 7);
 });
 
+test('calculateOverallStats: supports precalculatedBestStreak and precalculatedCheckinsByHabit for optimized single-pass compute', () => {
+  const habit1 = createMockHabit({ id: 'h1' });
+  const habit2 = createMockHabit({ id: 'h2' });
+  const today = dayjs().format('YYYY-MM-DD');
+
+  const checkins: HabitCheckin[] = [
+    {
+      id: 'c1',
+      habitId: 'h1',
+      date: today,
+      count: 1,
+      completed: true,
+      updatedAt: dayjs().toISOString(),
+    },
+  ];
+
+  const checkinsMap = new Map<string, HabitCheckin[]>();
+  checkinsMap.set('h1', checkins);
+
+  const overall = calculateOverallStats([habit1, habit2], checkins, today, 15, checkinsMap);
+  assert.equal(overall.totalHabits, 2);
+  assert.equal(overall.activeHabits, 2);
+  assert.equal(overall.bestOverallStreak, 15);
+  assert.equal(overall.todayCompletedCount, 1);
+  assert.equal(overall.todayCompletionRate, 50);
+});
+
 test('formatArabicDate: formats correctly in Arabic', () => {
   const formatted = formatArabicDate('2026-09-10');
-  assert.ok(formatted.includes('10'));
+  assert.ok(formatted.includes('١٠'));
   assert.ok(formatted.includes('سبتمبر'));
 });
 
 test('formatWeekRangeArabic: formats range with Arabic month and year', () => {
   const range = formatWeekRangeArabic('2026-09-10');
   assert.ok(range.includes('سبتمبر'));
-  assert.ok(range.includes('2026'));
+  assert.ok(range.includes('٢٠٢٦'));
   assert.ok(range.includes('-'));
 });
 
@@ -528,10 +557,10 @@ test('formatDailySummaryForShare: generates formatted Arabic summary for native 
   assert.ok(summary.includes('تقرير إنجاز'));
   assert.ok(summary.includes('العادات المنجزة:'));
   assert.ok(summary.includes('شرب الماء'));
-  assert.ok(summary.includes('4/4 أكواب'));
+  assert.ok(summary.includes('٤/٤ أكواب'));
   assert.ok(summary.includes('العادات المتبقية:'));
   assert.ok(summary.includes('قراءة القرآن'));
-  assert.ok(summary.includes('50%'));
+  assert.ok(summary.includes('٥٠٪'));
   assert.ok(summary.includes('تطبيق إنجاز'));
 });
 
@@ -569,7 +598,7 @@ test('formatOverallStatsForShare: generates clean Arabic overall milestones repo
 
   assert.ok(overallText.includes('إحصائياتي في تطبيق إنجاز'));
   assert.ok(overallText.includes('أعلى سلسلة'));
-  assert.ok(overallText.includes('إجمالي الإنجازات: 2'));
+  assert.ok(overallText.includes('إجمالي الإنجازات: ٢'));
   assert.ok(overallText.includes('تطبيق إنجاز'));
 });
 
@@ -706,11 +735,11 @@ test('sortHabits: sorts habits according to pending_first, reminder_time, streak
     },
   ];
 
-  // 1. Default order: preserves original array
+  // 1. Default order: uncompleted habits first, completed habits at the bottom
   const defaultSorted = sortHabits(habits, 'default', checkins, dateStr);
   assert.deepEqual(
     defaultSorted.map((h) => h.id),
-    ['h1', 'h2', 'h3']
+    ['h2', 'h3', 'h1']
   );
 
   // 2. Pending first: h2 and h3 come before completed h1
@@ -803,9 +832,9 @@ test('formatMonthlySummaryForShare: formats month summary correctly for native s
 
   const message = formatMonthlySummaryForShare(stats);
   assert.ok(message.includes('يونيو 2026'));
-  assert.ok(message.includes('80%'));
-  assert.ok(message.includes('48'));
-  assert.ok(message.includes('18'));
+  assert.ok(message.includes('٨٠٪'));
+  assert.ok(message.includes('٤٨'));
+  assert.ok(message.includes('١٨'));
   assert.ok(message.includes('تطبيق إنجاز'));
 });
 
@@ -920,11 +949,11 @@ test('formatHabitStatsForShare: creates detailed Arabic share text for a specifi
 
   const text = formatHabitStatsForShare(habit, stats, milestone);
   assert.ok(text.includes('المشي الصباحي'));
-  assert.ok(text.includes('12 يوم متتالية'));
-  assert.ok(text.includes('25 يوم'));
+  assert.ok(text.includes('١٢ يوم متتالية'));
+  assert.ok(text.includes('٢٥ يوم'));
   assert.ok(text.includes('أسبوع متواصل'));
-  assert.ok(text.includes('40 خطوة'));
-  assert.ok(text.includes('85%'));
+  assert.ok(text.includes('٤٠ خطوة'));
+  assert.ok(text.includes('٨٥٪'));
   assert.ok(text.includes('تطبيق إنجاز'));
 
   // Test optional latest note
@@ -958,7 +987,7 @@ test('formatHabitNotesForShare: formats Arabic reflection diary summary correctl
 
   const shareText = formatHabitNotesForShare(habit, checkins);
   assert.ok(shareText.includes('مذكرات إنجازي في عادة: القراءة اليومية'));
-  assert.ok(shareText.includes('إجمالي الخواطر والتدوينات: 2'));
+  assert.ok(shareText.includes('إجمالي الخواطر والتدوينات: ٢'));
   assert.ok(shareText.includes('أنهيت الفصل الخامس'));
   assert.ok(shareText.includes('فكرة ملهمة حول الانضباط الذاتي'));
   assert.ok(shareText.includes('تطبيق إنجاز'));
@@ -1046,11 +1075,11 @@ test('sortHabits: prioritizes pinned habits at the top across all sort modes', (
     { id: 'c1', habitId: 'h4', date: '2026-06-15', completed: true, count: 1, updatedAt: '' },
     { id: 'c2', habitId: 'h3', date: '2026-06-15', completed: true, count: 1, updatedAt: '' },
   ];
-  // Pinned pending (h2) -> Pinned completed (h4) -> Unpinned pending (h1) -> Unpinned completed (h3)
+  // Pending Pinned (h2) -> Pending Unpinned (h1) -> Completed Pinned (h4) -> Completed Unpinned (h3)
   const pendingSorted = sortHabits(all, 'pending_first', checkins, '2026-06-15');
   assert.equal(pendingSorted[0].id, 'h2'); // pinned & pending
-  assert.equal(pendingSorted[1].id, 'h4'); // pinned & completed
-  assert.equal(pendingSorted[2].id, 'h1'); // unpinned & pending
+  assert.equal(pendingSorted[1].id, 'h1'); // unpinned & pending
+  assert.equal(pendingSorted[2].id, 'h4'); // pinned & completed
   assert.equal(pendingSorted[3].id, 'h3'); // unpinned & completed
 });
 
@@ -1097,28 +1126,28 @@ test('calculateHabitStats: computes streaks beyond 365 days without artificial t
 });
 
 test('formatArabicDaysCount: adheres strictly to Arabic grammar rules', () => {
-  assert.equal(formatArabicDaysCount(0), '0 يوم');
+  assert.equal(formatArabicDaysCount(0), '٠ يوم');
   assert.equal(formatArabicDaysCount(1), 'يوم واحد');
   assert.equal(formatArabicDaysCount(2), 'يومان');
-  assert.equal(formatArabicDaysCount(3), '3 أيام');
-  assert.equal(formatArabicDaysCount(5), '5 أيام');
-  assert.equal(formatArabicDaysCount(10), '10 أيام');
-  assert.equal(formatArabicDaysCount(11), '11 يوم');
-  assert.equal(formatArabicDaysCount(21), '21 يوم');
-  assert.equal(formatArabicDaysCount(66), '66 يوم');
-  assert.equal(formatArabicDaysCount(100), '100 يوم');
-  assert.equal(formatArabicDaysCount(365), '365 يوم');
+  assert.equal(formatArabicDaysCount(3), '٣ أيام');
+  assert.equal(formatArabicDaysCount(5), '٥ أيام');
+  assert.equal(formatArabicDaysCount(10), '١٠ أيام');
+  assert.equal(formatArabicDaysCount(11), '١١ يوم');
+  assert.equal(formatArabicDaysCount(21), '٢١ يوم');
+  assert.equal(formatArabicDaysCount(66), '٦٦ يوم');
+  assert.equal(formatArabicDaysCount(100), '١٠٠ يوم');
+  assert.equal(formatArabicDaysCount(365), '٣٦٥ يوم');
 });
 
 test('formatArabicCount: formats generic count forms accurately', () => {
   const result = formatArabicCount(5, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
-  assert.equal(result, '5 عادات');
+  assert.equal(result, '٥ عادات');
   const single = formatArabicCount(1, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
   assert.equal(single, 'عادة واحدة');
   const dual = formatArabicCount(2, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
   assert.equal(dual, 'عادتان');
   const overTen = formatArabicCount(15, 'عادة واحدة', 'عادتان', 'عادات', 'عادة');
-  assert.equal(overTen, '15 عادة');
+  assert.equal(overTen, '١٥ عادة');
 });
 
 test('toArabicNumerals: converts numbers to Eastern Arabic numerals correctly', () => {
@@ -1126,6 +1155,9 @@ test('toArabicNumerals: converts numbers to Eastern Arabic numerals correctly', 
   assert.equal(toArabicNumerals(1), '١');
   assert.equal(toArabicNumerals(123), '١٢٣');
   assert.equal(toArabicNumerals('50/100'), '٥٠/١٠٠');
+  assert.equal(toArabicNumerals('85%'), '٨٥٪');
+  assert.equal(toArabicNumerals('2.5'), '٢٫٥');
+  assert.equal(toArabicNumerals('١٠٠'), '١٠٠');
   assert.equal(toArabicNumerals(null), '');
   assert.equal(toArabicNumerals(undefined), '');
 });
@@ -1205,17 +1237,17 @@ test('exportFullReportToCsv: generates combined spreadsheet report with sections
 });
 
 test('formatArabicStreakDays: adheres strictly to Arabic consecutive day grammar rules', () => {
-  assert.equal(formatArabicStreakDays(0), '0 يوم');
+  assert.equal(formatArabicStreakDays(0), '٠ يوم');
   assert.equal(formatArabicStreakDays(1), 'يوم واحد');
   assert.equal(formatArabicStreakDays(2), 'يومان متتاليان');
-  assert.equal(formatArabicStreakDays(3), '3 أيام متتالية');
-  assert.equal(formatArabicStreakDays(5), '5 أيام متتالية');
-  assert.equal(formatArabicStreakDays(10), '10 أيام متتالية');
-  assert.equal(formatArabicStreakDays(11), '11 يوم متتالية');
-  assert.equal(formatArabicStreakDays(21), '21 يوم متتالية');
-  assert.equal(formatArabicStreakDays(66), '66 يوم متتالية');
-  assert.equal(formatArabicStreakDays(100), '100 يوم متتالية');
-  assert.equal(formatArabicStreakDays(365), '365 يوم متتالية');
+  assert.equal(formatArabicStreakDays(3), '٣ أيام متتالية');
+  assert.equal(formatArabicStreakDays(5), '٥ أيام متتالية');
+  assert.equal(formatArabicStreakDays(10), '١٠ أيام متتالية');
+  assert.equal(formatArabicStreakDays(11), '١١ يوم متتالية');
+  assert.equal(formatArabicStreakDays(21), '٢١ يوم متتالية');
+  assert.equal(formatArabicStreakDays(66), '٦٦ يوم متتالية');
+  assert.equal(formatArabicStreakDays(100), '١٠٠ يوم متتالية');
+  assert.equal(formatArabicStreakDays(365), '٣٦٥ يوم متتالية');
 });
 
 test('calculateCategoryAnalytics: handles empty habits list safely', () => {
@@ -1321,14 +1353,14 @@ test('formatArabicCount: handles active habits singular, dual, and plural rules'
       'عادة نشطة'
     );
 
-  assert.equal(formatHabits(0), '0 عادة نشطة');
+  assert.equal(formatHabits(0), '٠ عادة نشطة');
   assert.equal(formatHabits(1), 'عادة نشطة واحدة');
   assert.equal(formatHabits(2), 'عادتان نشطتان');
-  assert.equal(formatHabits(3), '3 عادات نشطة');
-  assert.equal(formatHabits(4), '4 عادات نشطة');
-  assert.equal(formatHabits(10), '10 عادات نشطة');
-  assert.equal(formatHabits(11), '11 عادة نشطة');
-  assert.equal(formatHabits(25), '25 عادة نشطة');
+  assert.equal(formatHabits(3), '٣ عادات نشطة');
+  assert.equal(formatHabits(4), '٤ عادات نشطة');
+  assert.equal(formatHabits(10), '١٠ عادات نشطة');
+  assert.equal(formatHabits(11), '١١ عادة نشطة');
+  assert.equal(formatHabits(25), '٢٥ عادة نشطة');
 });
 
 test('formatArabicCount: handles archived habits singular, dual, and plural rules', () => {
@@ -1341,12 +1373,12 @@ test('formatArabicCount: handles archived habits singular, dual, and plural rule
       'عادة مؤرشفة'
     );
 
-  assert.equal(formatArchived(0), '0 عادة مؤرشفة');
+  assert.equal(formatArchived(0), '٠ عادة مؤرشفة');
   assert.equal(formatArchived(1), 'عادة مؤرشفة واحدة');
   assert.equal(formatArchived(2), 'عادتان مؤرشفتان');
-  assert.equal(formatArchived(3), '3 عادات مؤرشفة');
-  assert.equal(formatArchived(10), '10 عادات مؤرشفة');
-  assert.equal(formatArchived(12), '12 عادة مؤرشفة');
+  assert.equal(formatArchived(3), '٣ عادات مؤرشفة');
+  assert.equal(formatArchived(10), '١٠ عادات مؤرشفة');
+  assert.equal(formatArchived(12), '١٢ عادة مؤرشفة');
 });
 
 test('filterHabitsByQuery: successfully filters archived habits by name and description', () => {
@@ -1434,19 +1466,19 @@ test('formatArabicCount: accurately applies Arabic grammatical rules for milesto
 
   assert.equal(formatMilestones(1), 'محطة');
   assert.equal(formatMilestones(2), 'محطتان');
-  assert.equal(formatMilestones(5), '5 محطات');
-  assert.equal(formatMilestones(10), '10 محطات');
-  assert.equal(formatMilestones(11), '11 محطة');
-  assert.equal(formatMilestones(15), '15 محطة');
-  assert.equal(formatMilestones(24), '24 محطة');
+  assert.equal(formatMilestones(5), '٥ محطات');
+  assert.equal(formatMilestones(10), '١٠ محطات');
+  assert.equal(formatMilestones(11), '١١ محطة');
+  assert.equal(formatMilestones(15), '١٥ محطة');
+  assert.equal(formatMilestones(24), '٢٤ محطة');
 
   const formatOpps = (count: number) =>
     formatArabicCount(count, 'فرصة', 'فرصتان', 'فرص', 'فرصة');
 
   assert.equal(formatOpps(1), 'فرصة');
   assert.equal(formatOpps(2), 'فرصتان');
-  assert.equal(formatOpps(7), '7 فرص');
-  assert.equal(formatOpps(30), '30 فرصة');
+  assert.equal(formatOpps(7), '٧ فرص');
+  assert.equal(formatOpps(30), '٣٠ فرصة');
 });
 
 test('formatHabitStatsForShare: correctly outputs Arabic singular and dual streak phrasing', () => {
@@ -1518,5 +1550,95 @@ test('exportSingleHabitToCsv: creates formatted CSV with habit summary and chron
   assert.ok(csv.includes('مكتمل'));
   assert.ok(csv.includes('قيد الإنجاز'));
 });
+
+test('calculateCurrentStreakFromDates: computes streak matching calculateHabitStats accurately and ultra-fast', () => {
+  const habit = createMockHabit({ createdAt: '2026-01-01T00:00:00.000Z' });
+  const today = '2026-09-18';
+  const yesterday = '2026-09-17';
+  const twoDaysAgo = '2026-09-16';
+
+  // Case 1: Today and yesterday completed
+  const set1 = new Set([today, yesterday, twoDaysAgo]);
+  const streak1 = calculateCurrentStreakFromDates(habit, set1, today);
+  assert.equal(streak1, 3);
+
+  // Case 2: Today not completed, but yesterday and two days ago completed (streak preserved)
+  const set2 = new Set([yesterday, twoDaysAgo]);
+  const streak2 = calculateCurrentStreakFromDates(habit, set2, today);
+  assert.equal(streak2, 2);
+
+  // Case 3: Broken streak (yesterday missed)
+  const set3 = new Set([twoDaysAgo]);
+  const streak3 = calculateCurrentStreakFromDates(habit, set3, today);
+  assert.equal(streak3, 0);
+
+  // Case 4: Cross-check against full calculateHabitStats
+  const checkins: HabitCheckin[] = [
+    { id: 'c1', habitId: habit.id, date: today, count: 1, completed: true, updatedAt: '' },
+    { id: 'c2', habitId: habit.id, date: yesterday, count: 1, completed: true, updatedAt: '' },
+    { id: 'c3', habitId: habit.id, date: twoDaysAgo, count: 1, completed: true, updatedAt: '' },
+  ];
+  const fullStats = calculateHabitStats(habit, checkins, today);
+  assert.equal(streak1, fullStats.currentStreak);
+});
+
+test('checkin with note only does not count as completed and does not increment streak', () => {
+  const habit = createMockHabit({ createdAt: '2026-09-01T00:00:00.000Z' });
+  const today = '2026-09-19';
+  const yesterday = '2026-09-18';
+
+  const checkins: HabitCheckin[] = [
+    { id: 'c_prev', habitId: habit.id, date: yesterday, count: 1, completed: true, updatedAt: '' },
+    { id: 'c_note', habitId: habit.id, date: today, count: 0, completed: false, note: 'تأمل وملاحظة فقط دون إنجاز', updatedAt: '' },
+  ];
+
+  const stats = calculateHabitStats(habit, checkins, today);
+  assert.equal(stats.currentStreak, 1);
+  assert.equal(stats.totalCompletions, 1);
+  assert.equal(checkins.find((c) => c.date === today)?.completed, false);
+});
+
+test('getPeriodicBadgeText: formats weekly and monthly target progress badges accurately', () => {
+  const weeklyHabit = createMockHabit({
+    id: 'h_weekly',
+    frequency: 'weekly_target',
+    weeklyTargetCount: 3,
+  });
+
+  const monthlyHabit = createMockHabit({
+    id: 'h_monthly',
+    frequency: 'monthly_target',
+    monthlyTargetCount: 4,
+  });
+
+  const dailyHabit = createMockHabit({
+    id: 'h_daily',
+    frequency: 'daily',
+  });
+
+  const refDate = '2026-09-18'; // Friday
+
+  // 1. Weekly habit: 1 of 3
+  const weeklyDates1 = new Set(['2026-09-15']);
+  assert.equal(getPeriodicBadgeText(weeklyHabit, weeklyDates1, refDate), '١/٣ هذا الأسبوع');
+
+  // 2. Weekly habit: 3 of 3 (completed)
+  const weeklyDates3 = new Set(['2026-09-13', '2026-09-14', '2026-09-15']);
+  assert.equal(getPeriodicBadgeText(weeklyHabit, weeklyDates3, refDate), 'مكتمل للأسبوع (٣/٣) 🎯');
+
+  // 3. Monthly habit: 2 of 4
+  const monthlyDates2 = new Set(['2026-09-02', '2026-09-10']);
+  assert.equal(getPeriodicBadgeText(monthlyHabit, monthlyDates2, refDate), '٢/٤ هذا الشهر');
+
+  // 4. Monthly habit: 4 of 4 (completed)
+  const monthlyDates4 = new Set(['2026-09-01', '2026-09-05', '2026-09-10', '2026-09-15']);
+  assert.equal(getPeriodicBadgeText(monthlyHabit, monthlyDates4, refDate), 'مكتمل للشهر (٤/٤) 🎯');
+
+  // 5. Daily habit returns undefined (no periodic badge clutter)
+  assert.equal(getPeriodicBadgeText(dailyHabit, weeklyDates1, refDate), undefined);
+});
+
+
+
 
 

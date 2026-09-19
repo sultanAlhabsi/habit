@@ -21,10 +21,11 @@ export const normalizeArabicNumerals = (input: string | number | null | undefine
 
 export interface ReminderTriggerDescriptor {
   identifier: string;
-  type: 'daily' | 'weekly';
+  type: 'daily' | 'weekly' | 'monthly';
   hour: number;
   minute: number;
   weekday?: number; // 1 = Sunday, 7 = Saturday
+  day?: number;     // 1 - 31 for monthly reminders
 }
 
 /**
@@ -67,7 +68,7 @@ export const formatReminderTime = (hour: number, minute: number): string => {
 };
 
 /**
- * Formats a 24-hour time string into a friendly Arabic string (e.g. "08:30 ص" or "08:15 م").
+ * Formats a 24-hour time string into a friendly Arabic string with Eastern Arabic numerals (e.g. "٠٨:٣٠ ص" or "٠٨:١٥ م").
  */
 export const formatReminderTimeArabic = (timeStr?: string | null): string => {
   if (!timeStr) return '';
@@ -81,7 +82,10 @@ export const formatReminderTimeArabic = (timeStr?: string | null): string => {
   const m = minute.toString().padStart(2, '0');
   const h = displayHour.toString().padStart(2, '0');
 
-  return `${h}:${m} ${period}`;
+  const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+  const toAr = (s: string) => s.replace(/[0-9]/g, (w) => arabicDigits[Number(w)]);
+
+  return `${toAr(h)}:${toAr(m)} ${period}`;
 };
 
 /**
@@ -120,10 +124,27 @@ export const generateHabitReminderTriggers = (
     ];
   }
 
+  if (habit.frequency === 'monthly_day') {
+    const day =
+      habit.monthlyDay && habit.monthlyDay >= 1 && habit.monthlyDay <= 31
+        ? Math.floor(habit.monthlyDay)
+        : 1;
+    return [
+      {
+        identifier: `habit_${habit.id}_monthly_${day}`,
+        type: 'monthly',
+        day,
+        hour,
+        minute,
+      },
+    ];
+  }
+
   if (
-    habit.frequency === 'specific_days' &&
+    (habit.frequency === 'specific_days' || habit.frequency === 'weekly_target') &&
     Array.isArray(habit.frequencyDays) &&
-    habit.frequencyDays.length > 0
+    habit.frequencyDays.length > 0 &&
+    habit.frequencyDays.length < 7
   ) {
     return habit.frequencyDays.map((dayIdx) => ({
       identifier: `habit_${habit.id}_d${dayIdx}`,
@@ -134,7 +155,7 @@ export const generateHabitReminderTriggers = (
     }));
   }
 
-  // Fallback for weekly_target or general schedule
+  // Fallback for weekly_target, monthly_target, or general schedule
   return [
     {
       identifier: `habit_${habit.id}_daily`,

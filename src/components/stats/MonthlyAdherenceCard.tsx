@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, Share } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import {View, StyleSheet, Pressable, Share} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { Habit, HabitCheckin } from '../../types/habit';
@@ -17,15 +18,18 @@ interface MonthlyAdherenceCardProps {
   checkins: HabitCheckin[];
 }
 
-export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = ({
+export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = React.memo(({
   habits,
   checkins,
 }) => {
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
   const [monthOffset, setMonthOffset] = useState(0);
 
-  const referenceDate = dayjs().add(monthOffset, 'month');
-  const stats = calculateMonthAdherence(habits, checkins, referenceDate);
+  const referenceDate = useMemo(() => dayjs().add(monthOffset, 'month'), [monthOffset]);
+  const stats = useMemo(
+    () => calculateMonthAdherence(habits, checkins, referenceDate),
+    [habits, checkins, referenceDate]
+  );
 
   const canGoNext = monthOffset < 0;
   const prevMonth = () => setMonthOffset((prev) => prev - 1);
@@ -164,7 +168,7 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = ({
       </View>
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   headerRow: {

@@ -1,17 +1,17 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   Pressable,
   ScrollView,
   Platform,
 } from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
-import { formatArabicStreakDays, getHabitCategory } from '../../utils/habitUtils';
+import { formatHabitStreakArabic, getHabitCategory } from '../../utils/habitUtils';
 
 export interface HabitQuickActionsModalProps {
   visible: boolean;
@@ -29,11 +29,14 @@ export interface HabitQuickActionsModalProps {
   onShare: () => void;
   onEditHabit: () => void;
   onViewDetails: () => void;
+  onDeleteHabit: () => void;
+  onReorderHabit?: () => void;
 }
 
 export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
   visible,
   habit,
+  selectedDate,
   isCompleted,
   streak,
   hasNote,
@@ -46,6 +49,8 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
   onShare,
   onEditHabit,
   onViewDetails,
+  onDeleteHabit,
+  onReorderHabit,
 }) => {
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
 
@@ -66,6 +71,19 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
       onPress: () => {
         onToggleCheckin();
         onClose();
+      },
+    },
+    {
+      id: 'reorder',
+      icon: 'swap-vertical-outline',
+      title: 'إعادة ترتيب ونقل العادة',
+      subtitle: 'تغيير موضع العادة في القائمة بحرية',
+      color: theme.text,
+      onPress: () => {
+        onClose();
+        if (onReorderHabit) {
+          setTimeout(onReorderHabit, 150);
+        }
       },
     },
     {
@@ -136,6 +154,17 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
       onPress: () => {
         onClose();
         setTimeout(onViewDetails, 150);
+      },
+    },
+    {
+      id: 'delete',
+      icon: 'trash-outline',
+      title: 'حذف العادة نهائيًا',
+      subtitle: 'حذف العادة وكافة سجلاتها وإحصائياتها',
+      color: theme.destructive,
+      onPress: () => {
+        onClose();
+        setTimeout(onDeleteHabit, 150);
       },
     },
   ];
@@ -225,7 +254,7 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
                           },
                         ]}
                       >
-                        {formatArabicStreakDays(streak)}
+                        {formatHabitStreakArabic(streak, habit.frequency)}
                       </Text>
                     </View>
                   )}
@@ -416,7 +445,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   actionsScroll: {
-    maxHeight: 400,
+    maxHeight: 460,
   },
   actionItem: {
     flexDirection: 'row-reverse',

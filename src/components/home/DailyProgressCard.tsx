@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '../common/ProgressBar';
 import { useTheme } from '../../theme/ThemeContext';
@@ -12,17 +13,15 @@ interface DailyProgressCardProps {
   completionRate: number;
   isToday?: boolean;
   onPressToday?: () => void;
-  onCompleteAll?: () => void;
 }
 
-export const DailyProgressCard: React.FC<DailyProgressCardProps> = ({
+export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
   date,
   completedCount,
   totalCount,
   completionRate,
   isToday = true,
   onPressToday,
-  onCompleteAll,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
 
@@ -63,56 +62,51 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = ({
           )}
         </View>
 
-        {/* Left side in RTL: Count & Percentage & Complete All */}
+        {/* Left side in RTL: Count & Percentage */}
         <View style={styles.metricRow}>
-          {totalCount > 0 && completedCount < totalCount && onCompleteAll && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إكمال جميع العادات المتبقية لليوم"
-              onPress={onCompleteAll}
-              style={({ pressed }) => [
-                styles.completeAllBtn,
-                {
-                  backgroundColor: theme.cardSecondary,
-                  borderColor: theme.border,
-                  borderRadius: radius.full,
-                  opacity: pressed ? 0.6 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  typography.caption,
-                  { color: theme.primary, fontSize: 10, fontWeight: '700', paddingHorizontal: 6, paddingVertical: 2 },
-                ]}
-              >
-                إكمال الكل
-              </Text>
-              <Ionicons name="checkmark-done" size={12} color={theme.primary} />
-            </Pressable>
-          )}
-
           <Text style={[typography.sub, { color: theme.textSecondary, marginLeft: 6 }]}>
             {totalCount > 0
               ? `${completedCount} من ${totalCount} مكتملة`
               : 'لا توجد عادات'}
           </Text>
           {totalCount > 0 && (
-            <Text style={[typography.subMedium, { color: theme.text, fontWeight: '600' }]}>
-              {completionRate}%
-            </Text>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+              <Text
+                style={[
+                  typography.subMedium,
+                  {
+                    color: completionRate === 100 ? '#10B981' : theme.text,
+                    fontWeight: completionRate === 100 ? '700' : '600',
+                  },
+                ]}
+              >
+                {completionRate}%
+              </Text>
+              {completionRate === 100 && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={14}
+                  color="#10B981"
+                  style={{ marginRight: 4 }}
+                />
+              )}
+            </View>
           )}
         </View>
       </View>
 
       {totalCount > 0 && (
         <View style={{ marginTop: 8 }}>
-          <ProgressBar progress={completionRate} height={3} color={theme.text} />
+          <ProgressBar
+            progress={completionRate}
+            height={completionRate === 100 ? 4 : 3}
+            color={theme.primary}
+          />
         </View>
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -138,13 +132,5 @@ const styles = StyleSheet.create({
   metricRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-  },
-  completeAllBtn: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 8,
   },
 });

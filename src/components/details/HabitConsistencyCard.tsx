@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import {View, StyleSheet} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
@@ -10,7 +11,7 @@ interface HabitConsistencyCardProps {
   habitColor?: string;
 }
 
-export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = ({
+export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.memo(({
   consistencyPattern,
   habitColor,
 }) => {
@@ -154,7 +155,7 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = ({
       ) : null}
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

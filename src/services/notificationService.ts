@@ -18,7 +18,6 @@ export const initNotifications = async (): Promise<void> => {
   try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
         shouldShowBanner: true,
@@ -99,12 +98,17 @@ export const cancelHabitReminders = async (habitId: string): Promise<void> => {
 /**
  * Schedule reminders for a single habit based on its configuration.
  */
-export const scheduleHabitReminder = async (habit: Habit): Promise<void> => {
+export const scheduleHabitReminder = async (
+  habit: Habit,
+  options?: { skipCancel?: boolean }
+): Promise<void> => {
   try {
     await initNotifications();
 
-    // Cancel existing scheduled notifications for this habit first
-    await cancelHabitReminders(habit.id);
+    // Cancel existing scheduled notifications for this habit first unless already wiped globally
+    if (!options?.skipCancel) {
+      await cancelHabitReminders(habit.id);
+    }
 
     // If habit is inactive, archived, or lacks reminderTime, do not schedule
     if (!habit.isActive || habit.archivedAt || !habit.reminderTime) {
@@ -142,6 +146,23 @@ export const scheduleHabitReminder = async (habit: Habit): Promise<void> => {
             type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
             channelId: 'habit-reminders',
             weekday: triggerDesc.weekday,
+            hour: triggerDesc.hour,
+            minute: triggerDesc.minute,
+          },
+        });
+      } else if (triggerDesc.type === 'monthly' && triggerDesc.day) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: triggerDesc.identifier,
+          content: {
+            title: `تذكير: ${habit.name}`,
+            body: habit.description || `موعد عادتك الشهرية اليوم (${habit.name})`,
+            sound: true,
+            data: { habitId: habit.id },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.MONTHLY,
+            channelId: 'habit-reminders',
+            day: triggerDesc.day,
             hour: triggerDesc.hour,
             minute: triggerDesc.minute,
           },
@@ -222,7 +243,7 @@ export const rescheduleAllHabitReminders = async (
 
     for (const habit of habits) {
       if (habit.isActive && !habit.archivedAt && habit.reminderTime) {
-        await scheduleHabitReminder(habit);
+        await scheduleHabitReminder(habit, { skipCancel: true });
       }
     }
 

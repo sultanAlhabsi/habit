@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import {View, StyleSheet} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
@@ -21,7 +22,7 @@ interface BadgeListProps {
   hasEverHadPerfectDay?: boolean;
 }
 
-export const BadgeList: React.FC<BadgeListProps> = ({
+export const BadgeList: React.FC<BadgeListProps> = React.memo(({
   totalHabits,
   bestStreak,
   totalCheckins,
@@ -194,7 +195,7 @@ export const BadgeList: React.FC<BadgeListProps> = ({
       </View>
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   headerRow: {

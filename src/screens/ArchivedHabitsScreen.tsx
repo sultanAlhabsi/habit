@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
-  Alert,
   Pressable,
   TextInput,
   ScrollView,
 } from 'react-native';
+import { appAlert } from '../services/alertService';
+import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -42,20 +42,24 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<HabitCategory | 'الكل'>('الكل');
 
-  const archivedHabits = habits.filter((h) => Boolean(h.archivedAt));
+
   const isSearchActive = Boolean(searchQuery.trim());
 
-  const searchedHabits = isSearchActive
-    ? filterHabitsByQuery(archivedHabits, searchQuery)
-    : archivedHabits;
+  const archivedHabits = useMemo(
+    () => habits.filter((h) => Boolean(h.archivedAt)),
+    [habits]
+  );
 
-  const filteredArchivedHabits =
-    selectedCategory === 'الكل'
-      ? searchedHabits
-      : searchedHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  const filteredArchivedHabits = useMemo(() => {
+    const searched = isSearchActive
+      ? filterHabitsByQuery(archivedHabits, searchQuery)
+      : archivedHabits;
+    if (selectedCategory === 'الكل') return searched;
+    return searched.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  }, [archivedHabits, isSearchActive, searchQuery, selectedCategory]);
 
   const handleRestore = (habit: Habit) => {
-    Alert.alert(
+    appAlert(
       'استعادة العادة',
       `هل تريد استعادة عادة "${habit.name}" إلى قائمة العادات اليومية؟`,
       [
@@ -71,7 +75,7 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
   };
 
   const handleDeletePermanent = (habit: Habit) => {
-    Alert.alert(
+    appAlert(
       'حذف نهائي للعادة',
       `هل أنت متأكد من حذف عادة "${habit.name}" نهائيًا؟ سيتم حذف جميع سجلات الإنجازات السابقة ولا يمكن التراجع.`,
       [
@@ -87,8 +91,17 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
     );
   };
 
+  // Pre-compute stats for all archived habits to avoid per-item calculation in FlatList
+  const archivedHabitStatsMap = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof calculateHabitStats>>();
+    for (const habit of filteredArchivedHabits) {
+      map.set(habit.id, calculateHabitStats(habit, checkins));
+    }
+    return map;
+  }, [filteredArchivedHabits, checkins]);
+
   const renderHabitItem = ({ item: habit }: { item: Habit }) => {
-    const stats = calculateHabitStats(habit, checkins);
+    const stats = archivedHabitStatsMap.get(habit.id) ?? calculateHabitStats(habit, checkins);
     const category = getHabitCategory(habit.icon);
     const archivedDateFormatted = habit.archivedAt
       ? formatArabicDate(habit.archivedAt)

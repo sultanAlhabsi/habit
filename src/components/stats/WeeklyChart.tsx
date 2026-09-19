@@ -1,26 +1,65 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import {View, StyleSheet, Pressable} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
-import { DayAdherence } from '../../types/habit';
+import dayjs from 'dayjs';
+import { DayAdherence, Habit, HabitCheckin } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
+import { calculateWeekAdherence, formatWeekRangeArabic } from '../../utils/habitUtils';
 
 interface WeeklyChartProps {
-  data: DayAdherence[];
+  habits?: Habit[];
+  checkins?: HabitCheckin[];
+  data?: DayAdherence[];
   weekLabel?: string;
   onPrevWeek?: () => void;
   onNextWeek?: () => void;
   hasNextWeek?: boolean;
 }
 
-export const WeeklyChart: React.FC<WeeklyChartProps> = ({
+export const WeeklyChart: React.FC<WeeklyChartProps> = React.memo(({
+  habits,
+  checkins,
   data,
   weekLabel,
   onPrevWeek,
   onNextWeek,
-  hasNextWeek = false,
+  hasNextWeek,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
+  const [internalWeekOffset, setInternalWeekOffset] = useState(0);
+
+  const chartReferenceDate = useMemo(
+    () => dayjs().add(internalWeekOffset, 'week'),
+    [internalWeekOffset]
+  );
+
+  const chartData = useMemo(() => {
+    if (data) return data;
+    if (habits && checkins) {
+      return calculateWeekAdherence(habits, checkins, chartReferenceDate);
+    }
+    return [];
+  }, [data, habits, checkins, chartReferenceDate]);
+
+  const chartLabel = useMemo(() => {
+    if (weekLabel) return weekLabel;
+    if (internalWeekOffset === 0) return 'الأسبوع الحالي';
+    return formatWeekRangeArabic(chartReferenceDate);
+  }, [weekLabel, internalWeekOffset, chartReferenceDate]);
+
+  const canGoNext = hasNextWeek !== undefined ? hasNextWeek : internalWeekOffset < 0;
+  const handlePrev = onPrevWeek || (() => setInternalWeekOffset((prev) => prev - 1));
+  const handleNext =
+    onNextWeek ||
+    (() => {
+      if (canGoNext) {
+        setInternalWeekOffset((prev) => Math.min(0, prev + 1));
+      }
+    });
+
+  const showNav = Boolean(onPrevWeek || (habits && checkins));
 
   return (
     <Card style={{ padding: spacing.base, marginBottom: spacing.base }}>
@@ -30,17 +69,17 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({
             الالتزام الأسبوعي
           </Text>
           <Text style={[typography.caption, { color: theme.textMuted, marginTop: 2, textAlign: 'right' }]}>
-            {weekLabel || 'نسبة إنجاز العادات لكل يوم'}
+            {chartLabel || 'نسبة إنجاز العادات لكل يوم'}
           </Text>
         </View>
 
         {/* Week navigation controls */}
-        {onPrevWeek && (
+        {showNav && (
           <View style={styles.navRow}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الأسبوع السابق"
-              onPress={onPrevWeek}
+              onPress={handlePrev}
               style={({ pressed }) => [styles.navBtn, { opacity: pressed ? 0.5 : 1 }]}
             >
               <Ionicons name="chevron-forward" size={18} color={theme.text} />
@@ -49,11 +88,11 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="الأسبوع التالي"
-              disabled={!hasNextWeek}
-              onPress={onNextWeek}
+              disabled={!canGoNext}
+              onPress={handleNext}
               style={({ pressed }) => [
                 styles.navBtn,
-                { opacity: hasNextWeek ? (pressed ? 0.5 : 1) : 0.2 },
+                { opacity: canGoNext ? (pressed ? 0.5 : 1) : 0.2 },
               ]}
             >
               <Ionicons name="chevron-back" size={18} color={theme.text} />
@@ -63,7 +102,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({
       </View>
 
       <View style={styles.chartArea}>
-        {data.map((item, index) => {
+        {chartData.map((item, index) => {
           const isItemFuture = Boolean(item.isFuture);
           const barHeight = isItemFuture || item.rate === 0 ? 0 : Math.max(4, (item.rate / 100) * 80);
 
@@ -144,7 +183,7 @@ export const WeeklyChart: React.FC<WeeklyChartProps> = ({
       </View>
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   headerRow: {

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import {View, StyleSheet, Pressable} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useTheme } from '../../theme/ThemeContext';
@@ -15,7 +16,7 @@ interface HabitHeatmapProps {
   createdAt?: string;
 }
 
-export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
+export const HabitHeatmap: React.FC<HabitHeatmapProps> = React.memo(({
   completedDates,
   habitColor,
   selectedDate,
@@ -62,13 +63,16 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
     }
   };
 
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < startDayOfWeek; i++) {
-    cells.push(null);
-  }
-  for (let d = 1; d <= daysInMonth; d++) {
-    cells.push(d);
-  }
+  const cells = useMemo(() => {
+    const arr: (number | null)[] = [];
+    for (let i = 0; i < startDayOfWeek; i++) {
+      arr.push(null);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      arr.push(d);
+    }
+    return arr;
+  }, [startDayOfWeek, daysInMonth]);
 
   const todayStr = dayjs().format('YYYY-MM-DD');
 
@@ -231,7 +235,7 @@ export const HabitHeatmap: React.FC<HabitHeatmapProps> = ({
       </Text>
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   headerRow: {

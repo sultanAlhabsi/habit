@@ -1,13 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TextInput,
   Pressable,
-  Alert,
 } from 'react-native';
+import { appAlert } from '../services/alertService';
+import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -23,7 +23,7 @@ import {
 } from '../types/habit';
 import { HABIT_PALETTES } from '../theme/colors';
 import { isValidReminderTime } from '../utils/notificationUtils';
-import { normalizeArabicNumerals } from '../utils/habitUtils';
+import { normalizeArabicNumerals, toArabicNumerals } from '../utils/habitUtils';
 import { HabitTemplateModal } from '../components/habits/HabitTemplateModal';
 import {
   HabitTemplate,
@@ -42,7 +42,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { theme, spacing, radius, typography, touchTarget } = useTheme();
-  const { habits, addHabit, updateHabit } = useHabitStore();
+  const { habits, addHabit, updateHabit, deleteHabit } = useHabitStore();
 
   const habitId = route.params?.habitId;
   const duplicateFromId = route.params?.duplicateFromId;
@@ -71,9 +71,32 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [selectedColor, setSelectedColor] = useState(
     templateHabit?.color || initialTemplate?.color || HABIT_PALETTES[0].hex
   );
-  const [frequency, setFrequency] = useState<HabitFrequency>(
-    templateHabit?.frequency || initialTemplate?.frequency || 'daily'
+  const initialFreq = templateHabit?.frequency || initialTemplate?.frequency || 'daily';
+  const getInitialTab = (): 'daily' | 'weekly' | 'monthly' => {
+    if (initialFreq === 'weekly_target') return 'weekly';
+    if (initialFreq === 'monthly_day' || initialFreq === 'monthly_target') return 'monthly';
+    return 'daily';
+  };
+
+  const [freqTab, setFreqTab] = useState<'daily' | 'weekly' | 'monthly'>(getInitialTab());
+  const [weeklyMode, setWeeklyMode] = useState<'target' | 'specific_day'>(
+    initialFreq === 'specific_days' && (templateHabit?.frequencyDays?.length === 1)
+      ? 'specific_day'
+      : 'target'
   );
+  const [monthlyMode, setMonthlyMode] = useState<'day' | 'target'>(
+    initialFreq === 'monthly_target' ? 'target' : 'day'
+  );
+  const [weeklyTargetCount, setWeeklyTargetCount] = useState(
+    String(templateHabit?.weeklyTargetCount || 3)
+  );
+  const [monthlyTargetCount, setMonthlyTargetCount] = useState(
+    String(templateHabit?.monthlyTargetCount || 4)
+  );
+  const [monthlyDay, setMonthlyDay] = useState(
+    String(templateHabit?.monthlyDay || 1)
+  );
+  const [frequency, setFrequency] = useState<HabitFrequency>(initialFreq);
   const [frequencyDays, setFrequencyDays] = useState<number[]>(
     templateHabit?.frequencyDays || initialTemplate?.frequencyDays || [0, 1, 2, 3, 4, 5, 6]
   );
@@ -93,6 +116,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(
     Boolean(route.params?.openTemplates)
   );
+  const [isSaving, setIsSaving] = useState(false);
 
   const applyTemplate = (template: HabitTemplate) => {
     setName(template.name);
@@ -115,27 +139,25 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
     return [
       getHabitTemplateById('template_water'),
       getHabitTemplateById('template_quran'),
-      getHabitTemplateById('template_steps'),
       getHabitTemplateById('template_reading'),
-      getHabitTemplateById('template_pomodoro'),
-      getHabitTemplateById('template_adhkar'),
+      getHabitTemplateById('template_exercise'),
     ].filter(Boolean) as HabitTemplate[];
   }, []);
 
   const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
 
   const quickReminderTimes = [
-    { time: '06:30', label: '06:30 ص' },
-    { time: '08:00', label: '08:00 ص' },
-    { time: '13:30', label: '01:30 م' },
-    { time: '18:00', label: '06:00 م' },
-    { time: '21:30', label: '09:30 م' },
+    { time: '06:30', label: '٠٦:٣٠ ص' },
+    { time: '08:00', label: '٠٨:٠٠ ص' },
+    { time: '13:30', label: '٠١:٣٠ م' },
+    { time: '18:00', label: '٠٦:٠٠ م' },
+    { time: '21:30', label: '٠٩:٣٠ م' },
   ];
 
   const toggleDay = (dayIndex: number) => {
     if (frequencyDays.includes(dayIndex)) {
       if (frequencyDays.length === 1) {
-        Alert.alert('تنبيه', 'يجب اختيار يوم واحد على الأقل للعادة');
+        appAlert('تنبيه', 'يجب اختيار يوم واحد على الأقل للعادة');
         return;
       }
       setFrequencyDays(frequencyDays.filter((d) => d !== dayIndex));
@@ -145,16 +167,18 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   };
 
   const handleSave = async () => {
+    if (isSaving) return;
+
     const trimmedName = name.trim();
     if (!trimmedName) {
-      Alert.alert('تنبيه', 'يرجى إدخال اسم العادة');
+      appAlert('تنبيه', 'يرجى إدخال اسم العادة');
       return;
     }
 
     const normalizedReminderTime = normalizeArabicNumerals(reminderTime);
     if (hasReminder) {
       if (!isValidReminderTime(normalizedReminderTime)) {
-        Alert.alert(
+        appAlert(
           'تنبيه',
           'يرجى إدخال وقت صحيح للتنبيه بصيغة 24 ساعة (مثال: 08:30 أو 20:00)'
         );
@@ -166,39 +190,69 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
     const parsedTarget = parseInt(normalizedTargetStr, 10);
     const validTarget = isNaN(parsedTarget) || parsedTarget < 1 ? 1 : parsedTarget;
 
+    const parsedWeeklyTarget = parseInt(normalizeArabicNumerals(weeklyTargetCount), 10);
+    const validWeeklyTarget = isNaN(parsedWeeklyTarget) || parsedWeeklyTarget < 1 ? 3 : Math.min(7, parsedWeeklyTarget);
+
+    const parsedMonthlyTarget = parseInt(normalizeArabicNumerals(monthlyTargetCount), 10);
+    const validMonthlyTarget = isNaN(parsedMonthlyTarget) || parsedMonthlyTarget < 1 ? 4 : Math.min(31, parsedMonthlyTarget);
+
+    const parsedMonthlyDay = parseInt(normalizeArabicNumerals(monthlyDay), 10);
+    const validMonthlyDay = isNaN(parsedMonthlyDay) || parsedMonthlyDay < 1 ? 1 : Math.min(31, parsedMonthlyDay);
+
     const finalReminder = hasReminder ? normalizedReminderTime : null;
 
-    if (isEditing && existingHabit) {
-      await updateHabit({
-        ...existingHabit,
-        name: trimmedName,
-        description: description.trim() || undefined,
-        icon: selectedIcon,
-        color: selectedColor,
-        frequency,
-        frequencyDays: frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : frequencyDays,
-        targetCount: validTarget,
-        unit: unit.trim() || 'مرة',
-        reminderTime: finalReminder,
-        isPinned,
-      });
-    } else {
-      await addHabit({
-        name: trimmedName,
-        description: description.trim() || undefined,
-        icon: selectedIcon,
-        color: selectedColor,
-        frequency,
-        frequencyDays: frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : frequencyDays,
-        targetCount: validTarget,
-        unit: unit.trim() || 'مرة',
-        isActive: true,
-        reminderTime: finalReminder,
-        isPinned,
-      });
+    const habitPayload = {
+      name: trimmedName,
+      description: description.trim() || undefined,
+      icon: selectedIcon,
+      color: selectedColor,
+      frequency,
+      frequencyDays: frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : frequencyDays,
+      targetCount: validTarget,
+      weeklyTargetCount: frequency === 'weekly_target' ? validWeeklyTarget : undefined,
+      monthlyTargetCount: frequency === 'monthly_target' ? validMonthlyTarget : undefined,
+      monthlyDay: frequency === 'monthly_day' ? validMonthlyDay : undefined,
+      unit: unit.trim() || 'مرة',
+      reminderTime: finalReminder,
+      isPinned,
+    };
+    try {
+      setIsSaving(true);
+      if (isEditing && existingHabit) {
+        await updateHabit({
+          ...existingHabit,
+          ...habitPayload,
+        });
+      } else {
+        await addHabit({
+          ...habitPayload,
+          isActive: true,
+        });
+      }
+      navigation.goBack();
+    } catch (err) {
+      setIsSaving(false);
+      appAlert('خطأ', 'حدث خطأ أثناء حفظ العادة، يرجى المحاولة مرة أخرى.');
     }
+  };
 
-    navigation.goBack();
+  const handleDelete = () => {
+    if (!existingHabit) return;
+    appAlert(
+      'حذف العادة',
+      `هل أنت متأكد من حذف عادة "${existingHabit.name}" نهائيًا؟ سيتم حذف كافة السجلات التابعة لها ولا يمكن التراجع.`,
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'حذف نهائي',
+          style: 'destructive',
+          onPress: async () => {
+            navigation.goBack();
+            await deleteHabit(existingHabit.id);
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -217,14 +271,15 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="حفظ"
+            disabled={isSaving}
             onPress={handleSave}
             style={({ pressed }) => [
               styles.headerSaveBtn,
-              { opacity: pressed ? 0.6 : 1 },
+              { opacity: isSaving ? 0.4 : pressed ? 0.6 : 1 },
             ]}
           >
             <Text style={[typography.subMedium, { color: theme.text, fontWeight: '600' }]}>
-              حفظ
+              {isSaving ? 'جارٍ الحفظ...' : 'حفظ'}
             </Text>
           </Pressable>
         }
@@ -516,21 +571,27 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           </View>
         </Card>
 
-        {/* Frequency & Days */}
+        {/* Frequency & Schedule */}
         <Card style={styles.sectionCard}>
           <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
-            التكرار
+            نظام تكرار العادة
           </Text>
 
-          <View style={styles.frequencyTypeRow}>
+          {/* 3 Main Tabs: Daily / Weekly / Monthly */}
+          <View style={styles.mainTabRow}>
             <Pressable
-              onPress={() => setFrequency('daily')}
+              accessibilityRole="button"
+              accessibilityLabel="عادة يومية"
+              onPress={() => {
+                setFreqTab('daily');
+                setFrequency('daily');
+              }}
               style={[
-                styles.freqBtn,
+                styles.mainTabBtn,
                 {
-                  backgroundColor: frequency === 'daily' ? theme.text : theme.background,
-                  borderRadius: radius.sm,
+                  backgroundColor: freqTab === 'daily' ? theme.text : theme.background,
                   borderColor: theme.border,
+                  borderRadius: radius.sm,
                 },
               ]}
             >
@@ -538,23 +599,28 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                 style={[
                   typography.caption,
                   {
-                    color: frequency === 'daily' ? theme.background : theme.text,
-                    fontWeight: '500',
+                    color: freqTab === 'daily' ? theme.background : theme.text,
+                    fontWeight: freqTab === 'daily' ? '700' : '500',
                   },
                 ]}
               >
-                يوميًا
+                يومية
               </Text>
             </Pressable>
 
             <Pressable
-              onPress={() => setFrequency('specific_days')}
+              accessibilityRole="button"
+              accessibilityLabel="عادة أسبوعية"
+              onPress={() => {
+                setFreqTab('weekly');
+                setFrequency(weeklyMode === 'target' ? 'weekly_target' : 'specific_days');
+              }}
               style={[
-                styles.freqBtn,
+                styles.mainTabBtn,
                 {
-                  backgroundColor: frequency === 'specific_days' ? theme.text : theme.background,
-                  borderRadius: radius.sm,
+                  backgroundColor: freqTab === 'weekly' ? theme.text : theme.background,
                   borderColor: theme.border,
+                  borderRadius: radius.sm,
                 },
               ]}
             >
@@ -562,56 +628,516 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                 style={[
                   typography.caption,
                   {
-                    color: frequency === 'specific_days' ? theme.background : theme.text,
-                    fontWeight: '500',
+                    color: freqTab === 'weekly' ? theme.background : theme.text,
+                    fontWeight: freqTab === 'weekly' ? '700' : '500',
                   },
                 ]}
               >
-                أيام محددة
+                أسبوعية
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="عادة شهرية"
+              onPress={() => {
+                setFreqTab('monthly');
+                setFrequency(monthlyMode === 'day' ? 'monthly_day' : 'monthly_target');
+              }}
+              style={[
+                styles.mainTabBtn,
+                {
+                  backgroundColor: freqTab === 'monthly' ? theme.text : theme.background,
+                  borderColor: theme.border,
+                  borderRadius: radius.sm,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color: freqTab === 'monthly' ? theme.background : theme.text,
+                    fontWeight: freqTab === 'monthly' ? '700' : '500',
+                  },
+                ]}
+              >
+                شهرية
               </Text>
             </Pressable>
           </View>
 
-          {frequency === 'specific_days' && (
-            <View style={styles.daysSelectorRow}>
-              {DAYS_OF_WEEK_AR.map((day) => {
-                const isDaySelected = frequencyDays.includes(day.index);
-                return (
-                  <Pressable
-                    key={day.index}
-                    onPress={() => toggleDay(day.index)}
+          {/* Sub-options for DAILY */}
+          {freqTab === 'daily' && (
+            <View style={{ marginTop: 8 }}>
+              <View style={styles.frequencyTypeRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setFrequency('daily')}
+                  style={[
+                    styles.freqBtn,
+                    {
+                      backgroundColor: frequency === 'daily' ? theme.cardSecondary : theme.background,
+                      borderColor: frequency === 'daily' ? theme.primary : theme.border,
+                      borderRadius: radius.sm,
+                    },
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.daySelectPill,
+                      typography.caption,
                       {
-                        borderRadius: radius.sm,
-                        backgroundColor: isDaySelected ? theme.text : theme.background,
-                        borderColor: theme.border,
+                        color: frequency === 'daily' ? theme.primary : theme.textSecondary,
+                        fontWeight: frequency === 'daily' ? '600' : '400',
                       },
                     ]}
                   >
-                    <Text
+                    كل يوم
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setFrequency('specific_days')}
+                  style={[
+                    styles.freqBtn,
+                    {
+                      backgroundColor: frequency === 'specific_days' ? theme.cardSecondary : theme.background,
+                      borderColor: frequency === 'specific_days' ? theme.primary : theme.border,
+                      borderRadius: radius.sm,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: frequency === 'specific_days' ? theme.primary : theme.textSecondary,
+                        fontWeight: frequency === 'specific_days' ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    أيام محددة
+                  </Text>
+                </Pressable>
+              </View>
+
+              {frequency === 'specific_days' && (
+                <View style={styles.daysSelectorRow}>
+                  {DAYS_OF_WEEK_AR.map((day) => {
+                    const isDaySelected = frequencyDays.includes(day.index);
+                    return (
+                      <Pressable
+                        key={day.index}
+                        accessibilityRole="button"
+                        accessibilityLabel={day.name}
+                        onPress={() => toggleDay(day.index)}
+                        style={[
+                          styles.daySelectPill,
+                          {
+                            borderRadius: radius.sm,
+                            backgroundColor: isDaySelected ? theme.text : theme.background,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            typography.caption,
+                            {
+                              color: isDaySelected ? theme.background : theme.textSecondary,
+                              fontWeight: isDaySelected ? '600' : '400',
+                              fontSize: 11,
+                            },
+                          ]}
+                        >
+                          {day.short}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Sub-options for WEEKLY */}
+          {freqTab === 'weekly' && (
+            <View style={{ marginTop: 8 }}>
+              <View style={styles.frequencyTypeRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setWeeklyMode('target');
+                    setFrequency('weekly_target');
+                  }}
+                  style={[
+                    styles.freqBtn,
+                    {
+                      backgroundColor: weeklyMode === 'target' ? theme.cardSecondary : theme.background,
+                      borderColor: weeklyMode === 'target' ? theme.primary : theme.border,
+                      borderRadius: radius.sm,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: weeklyMode === 'target' ? theme.primary : theme.textSecondary,
+                        fontWeight: weeklyMode === 'target' ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    هدف مرن (مرات في الأسبوع)
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setWeeklyMode('specific_day');
+                    setFrequency('specific_days');
+                    if (frequencyDays.length !== 1) {
+                      setFrequencyDays([5]); // الجمعة كافتراضي
+                    }
+                  }}
+                  style={[
+                    styles.freqBtn,
+                    {
+                      backgroundColor: weeklyMode === 'specific_day' ? theme.cardSecondary : theme.background,
+                      borderColor: weeklyMode === 'specific_day' ? theme.primary : theme.border,
+                      borderRadius: radius.sm,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: weeklyMode === 'specific_day' ? theme.primary : theme.textSecondary,
+                        fontWeight: weeklyMode === 'specific_day' ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    يوم محدد في الأسبوع
+                  </Text>
+                </Pressable>
+              </View>
+
+              {weeklyMode === 'target' && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
+                    عدد المرات المطلوبة أسبوعيًا
+                  </Text>
+                  <View style={styles.numberRow}>
+                    {[1, 2, 3, 4, 5, 6].map((num) => {
+                      const isSel = weeklyTargetCount === String(num);
+                      return (
+                        <Pressable
+                          key={num}
+                          accessibilityRole="button"
+                          onPress={() => setWeeklyTargetCount(String(num))}
+                          style={[
+                            styles.numPill,
+                            {
+                              backgroundColor: isSel ? theme.text : theme.background,
+                              borderColor: theme.border,
+                              borderRadius: radius.sm,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isSel ? theme.background : theme.text,
+                                fontWeight: isSel ? '700' : '500',
+                              },
+                            ]}
+                          >
+                            {num}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginTop: 10, marginBottom: 6 }]}>
+                    أيام التنبيه المقترحة (اختياري)
+                  </Text>
+                  <View style={styles.daysSelectorRow}>
+                    {DAYS_OF_WEEK_AR.map((day) => {
+                      const isDaySelected = frequencyDays.includes(day.index);
+                      return (
+                        <Pressable
+                          key={day.index}
+                          accessibilityRole="button"
+                          accessibilityLabel={day.name}
+                          onPress={() => toggleDay(day.index)}
+                          style={[
+                            styles.daySelectPill,
+                            {
+                              borderRadius: radius.sm,
+                              backgroundColor: isDaySelected ? theme.text : theme.background,
+                              borderColor: theme.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isDaySelected ? theme.background : theme.textSecondary,
+                                fontWeight: isDaySelected ? '600' : '400',
+                                fontSize: 11,
+                              },
+                            ]}
+                          >
+                            {day.short}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {weeklyMode === 'specific_day' && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
+                    اختر يوم الأسبوع للعادة
+                  </Text>
+                  <View style={styles.daysSelectorRow}>
+                    {DAYS_OF_WEEK_AR.map((day) => {
+                      const isDaySelected = frequencyDays.length === 1 && frequencyDays[0] === day.index;
+                      return (
+                        <Pressable
+                          key={day.index}
+                          accessibilityRole="button"
+                          accessibilityLabel={day.name}
+                          onPress={() => setFrequencyDays([day.index])}
+                          style={[
+                            styles.daySelectPill,
+                            {
+                              borderRadius: radius.sm,
+                              backgroundColor: isDaySelected ? theme.text : theme.background,
+                              borderColor: theme.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isDaySelected ? theme.background : theme.textSecondary,
+                                fontWeight: isDaySelected ? '600' : '400',
+                                fontSize: 11,
+                              },
+                            ]}
+                          >
+                            {day.short}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Sub-options for MONTHLY */}
+          {freqTab === 'monthly' && (
+            <View style={{ marginTop: 8 }}>
+              <View style={styles.frequencyTypeRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setMonthlyMode('day');
+                    setFrequency('monthly_day');
+                  }}
+                  style={[
+                    styles.freqBtn,
+                    {
+                      backgroundColor: monthlyMode === 'day' ? theme.cardSecondary : theme.background,
+                      borderColor: monthlyMode === 'day' ? theme.primary : theme.border,
+                      borderRadius: radius.sm,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: monthlyMode === 'day' ? theme.primary : theme.textSecondary,
+                        fontWeight: monthlyMode === 'day' ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    يوم محدد في الشهر
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setMonthlyMode('target');
+                    setFrequency('monthly_target');
+                  }}
+                  style={[
+                    styles.freqBtn,
+                    {
+                      backgroundColor: monthlyMode === 'target' ? theme.cardSecondary : theme.background,
+                      borderColor: monthlyMode === 'target' ? theme.primary : theme.border,
+                      borderRadius: radius.sm,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: monthlyMode === 'target' ? theme.primary : theme.textSecondary,
+                        fontWeight: monthlyMode === 'target' ? '600' : '400',
+                      },
+                    ]}
+                  >
+                    هدف مرن في الشهر
+                  </Text>
+                </Pressable>
+              </View>
+
+              {monthlyMode === 'day' && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
+                    اختر يوم الشهر (مثلاً: 1 أو 25)
+                  </Text>
+                  <View style={styles.numberRow}>
+                    {[1, 5, 10, 15, 20, 25, 28].map((num) => {
+                      const isSel = monthlyDay === String(num);
+                      return (
+                        <Pressable
+                          key={num}
+                          accessibilityRole="button"
+                          onPress={() => setMonthlyDay(String(num))}
+                          style={[
+                            styles.numPill,
+                            {
+                              backgroundColor: isSel ? theme.text : theme.background,
+                              borderColor: theme.border,
+                              borderRadius: radius.sm,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isSel ? theme.background : theme.text,
+                                fontWeight: isSel ? '700' : '500',
+                              },
+                            ]}
+                          >
+                            {num}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={[styles.customInputRow, { marginTop: 8 }]}>
+                    <Text style={[typography.caption, { color: theme.textMuted }]}>
+                      يوم محدد آخر (1 - 31):
+                    </Text>
+                    <TextInput
+                      value={monthlyDay}
+                      onChangeText={(v) => setMonthlyDay(toArabicNumerals(v))}
+                      keyboardType="number-pad"
+                      maxLength={2}
                       style={[
-                        typography.caption,
+                        styles.inlineInput,
                         {
-                          color: isDaySelected ? theme.background : theme.textSecondary,
-                          fontWeight: isDaySelected ? '600' : '400',
-                          fontSize: 11,
+                          borderColor: theme.border,
+                          backgroundColor: theme.background,
+                          color: theme.text,
+                          borderRadius: radius.sm,
                         },
                       ]}
-                    >
-                      {day.short}
+                    />
+                  </View>
+                </View>
+              )}
+
+              {monthlyMode === 'target' && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
+                    عدد المرات المطلوبة خلال الشهر
+                  </Text>
+                  <View style={styles.numberRow}>
+                    {[2, 4, 8, 12, 15, 20].map((num) => {
+                      const isSel = monthlyTargetCount === String(num);
+                      return (
+                        <Pressable
+                          key={num}
+                          accessibilityRole="button"
+                          onPress={() => setMonthlyTargetCount(String(num))}
+                          style={[
+                            styles.numPill,
+                            {
+                              backgroundColor: isSel ? theme.text : theme.background,
+                              borderColor: theme.border,
+                              borderRadius: radius.sm,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isSel ? theme.background : theme.text,
+                                fontWeight: isSel ? '700' : '500',
+                              },
+                            ]}
+                          >
+                            {num}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={[styles.customInputRow, { marginTop: 8 }]}>
+                    <Text style={[typography.caption, { color: theme.textMuted }]}>
+                      عدد مرات مخصص:
                     </Text>
-                  </Pressable>
-                );
-              })}
+                    <TextInput
+                      value={monthlyTargetCount}
+                      onChangeText={(v) => setMonthlyTargetCount(toArabicNumerals(v))}
+                      keyboardType="number-pad"
+                      maxLength={2}
+                      style={[
+                        styles.inlineInput,
+                        {
+                          borderColor: theme.border,
+                          backgroundColor: theme.background,
+                          color: theme.text,
+                          borderRadius: radius.sm,
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              )}
             </View>
           )}
         </Card>
 
         {/* Target and Unit */}
         <Card style={styles.sectionCard}>
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
-            الهدف اليومي
+          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
+            الحد الأدنى اليومي للإنجاز
+          </Text>
+          <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginBottom: 10, fontSize: 11 }]}>
+            إذا حددت كمية (مثل: 10 صفحات)، يمكنك تسجيل أي عدد يومياً ولن تُعتبر العادة مكتملة إلا عند بلوغ الحد الأدنى.
           </Text>
 
           <View style={styles.targetRow}>
@@ -619,7 +1145,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
             <View style={{ width: 80 }}>
               <TextInput
                 value={targetCount}
-                onChangeText={setTargetCount}
+                onChangeText={(v) => setTargetCount(toArabicNumerals(v))}
                 keyboardType="numeric"
                 style={[
                   styles.input,
@@ -721,7 +1247,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
             <View style={{ marginTop: 10 }}>
               <TextInput
                 value={reminderTime}
-                onChangeText={setReminderTime}
+                onChangeText={(v) => setReminderTime(toArabicNumerals(v))}
                 placeholder="08:00"
                 placeholderTextColor={theme.textMuted}
                 style={[
@@ -831,10 +1357,25 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           <Button
             title={isEditing ? 'تحديث العادة' : 'إنشاء العادة'}
             onPress={handleSave}
+            loading={isSaving}
+            disabled={isSaving}
             variant="primary"
             size="md"
           />
         </View>
+
+        {/* Delete Habit Button (When Editing) */}
+        {isEditing && (
+          <View style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
+            <Button
+              title="حذف العادة نهائيًا"
+              onPress={handleDelete}
+              variant="destructive"
+              iconName="trash-outline"
+              size="md"
+            />
+          </View>
+        )}
       </ScrollView>
 
       {/* Curated Habit Templates Modal */}
@@ -898,6 +1439,46 @@ const styles = StyleSheet.create({
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  mainTabRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+    marginBottom: 10,
+  },
+  mainTabBtn: {
+    flex: 1,
+    minHeight: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  numberRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 6,
+  },
+  numPill: {
+    minWidth: 40,
+    height: 34,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  customInputRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 8,
+  },
+  inlineInput: {
+    width: 64,
+    height: 34,
+    borderWidth: 1,
+    textAlign: 'center',
+    paddingHorizontal: 6,
+    fontSize: 14,
   },
   frequencyTypeRow: {
     flexDirection: 'row-reverse',

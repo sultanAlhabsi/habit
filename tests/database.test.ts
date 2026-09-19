@@ -18,6 +18,9 @@ import {
   compactDatabase,
   cleanEmptyCheckins,
   fetchStorageMetrics,
+  deleteImportedLoopHabitsRecord,
+  batchSaveHabits,
+  batchSaveCheckinRecords,
 } from '../src/services/database.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -322,5 +325,280 @@ test('database: seedDatabase seeds default habits, demo checkins, and default pr
   const sortPref = await getPreference('habit_sort_preference');
   assert.equal(sortPref, 'default');
 });
+
+test('database: deleteImportedLoopHabitsRecord purges only loop habits and checkins', async () => {
+  await resetDatabase();
+  const normalHabit: Habit = {
+    id: 'h_normal_1',
+    name: 'عادة أصلية',
+    icon: 'water-outline',
+    color: '#0369A1',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+  const loopHabit: Habit = {
+    id: 'loop_42_123456789',
+    name: 'عادة مستوردة',
+    icon: 'book-outline',
+    color: '#E11D48',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  await saveHabitRecord(normalHabit);
+  await saveHabitRecord(loopHabit);
+
+  const normalCheckin: HabitCheckin = {
+    id: 'c_norm',
+    habitId: 'h_normal_1',
+    date: '2026-09-18',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-18T10:00:00.000Z',
+  };
+  const loopCheckin: HabitCheckin = {
+    id: 'c_loop',
+    habitId: 'loop_42_123456789',
+    date: '2026-09-18',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-18T10:00:00.000Z',
+  };
+  await saveCheckinRecord(normalCheckin);
+  await saveCheckinRecord(loopCheckin);
+
+  const res = await deleteImportedLoopHabitsRecord();
+  assert.equal(res.deletedHabitsCount, 1);
+  assert.equal(res.deletedCheckinsCount, 1);
+
+  const remainingHabits = await fetchAllHabits();
+  assert.equal(remainingHabits.length, 1);
+  assert.equal(remainingHabits[0].id, 'h_normal_1');
+
+  const remainingCheckins = await fetchAllCheckins();
+  assert.equal(remainingCheckins.length, 1);
+  assert.equal(remainingCheckins[0].id, 'c_norm');
+});
+
+test('database: batchSaveHabits creates multiple fresh habits without checkins', async () => {
+  await resetDatabase();
+  const h1: Habit = {
+    id: 'h_fresh_1',
+    name: 'أذكار الصباح ☀️',
+    icon: 'sunny-outline',
+    color: '#0E7490',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  };
+  const h2: Habit = {
+    id: 'h_fresh_2',
+    name: 'صلاة الضحى 🌤',
+    icon: 'sunny-outline',
+    color: '#9A3412',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  };
+
+  await batchSaveHabits([h1, h2]);
+
+  const habits = await fetchAllHabits();
+  assert.equal(habits.length, 2);
+  assert.ok(habits.some((h) => h.id === 'h_fresh_1'));
+  assert.ok(habits.some((h) => h.id === 'h_fresh_2'));
+
+  const checkins = await fetchAllCheckins();
+  assert.equal(checkins.length, 0, 'No checkins should be created');
+});
+
+test('database: batchSaveCheckinRecords saves and updates multiple checkin records atomically', async () => {
+  await resetDatabase();
+
+  // 1. Empty checkins array should complete safely without errors
+  await batchSaveCheckinRecords([]);
+  let checkins = await fetchAllCheckins();
+  assert.equal(checkins.length, 0);
+
+  // 2. Insert multiple checkin records
+  const c1: HabitCheckin = {
+    id: 'chk_b1',
+    habitId: 'habit_1',
+    date: '2026-09-18',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-18T10:00:00.000Z',
+  };
+  const c2: HabitCheckin = {
+    id: 'chk_b2',
+    habitId: 'habit_2',
+    date: '2026-09-18',
+    count: 3,
+    completed: true,
+    updatedAt: '2026-09-18T10:05:00.000Z',
+    note: 'إنجاز ممتاز',
+  };
+  const c3: HabitCheckin = {
+    id: 'chk_b3',
+    habitId: 'habit_1',
+    date: '2026-09-19',
+    count: 2,
+    completed: true,
+    updatedAt: '2026-09-19T08:00:00.000Z',
+  };
+
+  await batchSaveCheckinRecords([c1, c2, c3]);
+
+  checkins = await fetchAllCheckins();
+  assert.equal(checkins.length, 3);
+  assert.ok(checkins.some((c) => c.id === 'chk_b1' && c.completed));
+  assert.ok(checkins.some((c) => c.id === 'chk_b2' && c.note === 'إنجاز ممتاز'));
+  assert.ok(checkins.some((c) => c.id === 'chk_b3' && c.count === 2));
+
+  // 3. Batch update existing records and insert a new one simultaneously
+  const updatedC1: HabitCheckin = {
+    ...c1,
+    count: 5,
+    note: 'تم التحديث الدفعي',
+    updatedAt: '2026-09-18T11:00:00.000Z',
+  };
+  const c4: HabitCheckin = {
+    id: 'chk_b4',
+    habitId: 'habit_3',
+    date: '2026-09-19',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-19T09:00:00.000Z',
+  };
+
+  await batchSaveCheckinRecords([updatedC1, c4]);
+
+  checkins = await fetchAllCheckins();
+  assert.equal(checkins.length, 4);
+  const foundUpdatedC1 = checkins.find((c) => c.id === 'chk_b1');
+  assert.equal(foundUpdatedC1?.count, 5);
+  assert.equal(foundUpdatedC1?.note, 'تم التحديث الدفعي');
+  assert.ok(checkins.some((c) => c.id === 'chk_b4'));
+});
+
+test('database: importDatabaseRecords atomic batch import with checkins', async () => {
+  await resetDatabase();
+
+  const habitAlpha: Habit = {
+    id: 'h_alpha',
+    name: 'القراءة اليومية',
+    icon: 'book-outline',
+    color: '#2A4B3A',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+
+  const checkinAlpha: HabitCheckin = {
+    id: 'c_alpha',
+    habitId: 'h_alpha',
+    date: '2026-09-01',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-01T08:00:00.000Z',
+  };
+
+  // 1. Initial save
+  await saveHabitRecord(habitAlpha);
+  await saveCheckinRecord(checkinAlpha);
+
+  // 2. Replace with a batch containing habitBeta and 2 checkins
+  const habitBeta: Habit = {
+    id: 'h_beta',
+    name: 'المشي الصباحي',
+    icon: 'walk-outline',
+    color: '#0E7490',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-10T00:00:00.000Z',
+  };
+
+  const checkinsBeta: HabitCheckin[] = [
+    {
+      id: 'c_beta_1',
+      habitId: 'h_beta',
+      date: '2026-09-10',
+      count: 1,
+      completed: true,
+      updatedAt: '2026-09-10T07:00:00.000Z',
+    },
+    {
+      id: 'c_beta_2',
+      habitId: 'h_beta',
+      date: '2026-09-11',
+      count: 1,
+      completed: true,
+      updatedAt: '2026-09-11T07:00:00.000Z',
+      note: 'مشي 5 كم',
+    },
+  ];
+
+  await importDatabaseRecords([habitBeta], checkinsBeta, 'replace');
+
+  const habitsAfterReplace = await fetchAllHabits();
+  assert.equal(habitsAfterReplace.length, 1);
+  assert.equal(habitsAfterReplace[0].id, 'h_beta');
+
+  const checkinsAfterReplace = await fetchAllCheckins();
+  assert.equal(checkinsAfterReplace.length, 2);
+  assert.ok(checkinsAfterReplace.some((c) => c.id === 'c_beta_1'));
+  assert.ok(checkinsAfterReplace.some((c) => c.id === 'c_beta_2' && c.note === 'مشي 5 كم'));
+
+  // 3. Merge mode with another habit and checkin
+  const habitGamma: Habit = {
+    id: 'h_gamma',
+    name: 'كتابة اليوميات',
+    icon: 'create-outline',
+    color: '#9A3412',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-12T00:00:00.000Z',
+  };
+  const checkinGamma: HabitCheckin = {
+    id: 'c_gamma_1',
+    habitId: 'h_gamma',
+    date: '2026-09-12',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-12T21:00:00.000Z',
+  };
+
+  await importDatabaseRecords([habitGamma], [checkinGamma], 'merge');
+
+  const habitsAfterMerge = await fetchAllHabits();
+  assert.equal(habitsAfterMerge.length, 2);
+
+  const checkinsAfterMerge = await fetchAllCheckins();
+  assert.equal(checkinsAfterMerge.length, 3);
+  assert.ok(checkinsAfterMerge.some((c) => c.id === 'c_gamma_1'));
+});
+
 
 

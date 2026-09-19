@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   TextInput,
   StyleSheet,
   Pressable,
   Share,
-  Alert,
 } from 'react-native';
+import { appAlert } from '../../services/alertService';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
@@ -24,7 +24,7 @@ interface HabitNotesSectionProps {
   onDeleteNote: (date: string) => Promise<void>;
 }
 
-export const HabitNotesSection: React.FC<HabitNotesSectionProps> = ({
+export const HabitNotesSection: React.FC<HabitNotesSectionProps> = React.memo(({
   habit,
   selectedDate,
   currentCheckin,
@@ -66,7 +66,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = ({
   };
 
   const handleDelete = (date: string) => {
-    Alert.alert(
+    appAlert(
       'حذف الملاحظة',
       'هل تريد بالتأكيد حذف هذه الخاطرة من سجل العادة؟',
       [
@@ -403,7 +403,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = ({
       )}
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

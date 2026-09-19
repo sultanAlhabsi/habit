@@ -1,18 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  Alert,
   Pressable,
   Share,
 } from 'react-native';
+import { appAlert } from '../services/alertService';
+import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import dayjs from 'dayjs';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Header } from '../components/common/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -22,6 +23,7 @@ import { HabitStatGrid } from '../components/details/HabitStatGrid';
 import { StreakMilestoneCard } from '../components/details/StreakMilestoneCard';
 import { HabitConsistencyCard } from '../components/details/HabitConsistencyCard';
 import { HabitNotesSection } from '../components/details/HabitNotesSection';
+import { QuickQuantityModal } from '../components/home/QuickQuantityModal';
 import {
   calculateHabitStats,
   getHabitCategory,
@@ -32,6 +34,9 @@ import {
   getHabitCheckinNotes,
   formatArabicDate,
   exportSingleHabitToCsv,
+  calculateTotalLoggedUnits,
+  formatHabitFrequencyLabel,
+  isQuantitativeHabit,
 } from '../utils/habitUtils';
 import { exportCsvViaShare } from '../services/backupService';
 
@@ -54,15 +59,39 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     decrementCheckin,
     updateCheckinNote,
     deleteCheckinNote,
+    setHabitCount,
     toggleHabitActive,
     deleteHabit,
     archiveHabit,
     restoreHabit,
     togglePinHabit,
-  } = useHabitStore();
+  } = useHabitStore(
+    useShallow((state) => ({
+      habits: state.habits,
+      checkins: state.checkins,
+      toggleCheckin: state.toggleCheckin,
+      incrementCheckin: state.incrementCheckin,
+      decrementCheckin: state.decrementCheckin,
+      setHabitCount: state.setHabitCount,
+      updateCheckinNote: state.updateCheckinNote,
+      deleteCheckinNote: state.deleteCheckinNote,
+      toggleHabitActive: state.toggleHabitActive,
+      deleteHabit: state.deleteHabit,
+      archiveHabit: state.archiveHabit,
+      restoreHabit: state.restoreHabit,
+      togglePinHabit: state.togglePinHabit,
+    }))
+  );
 
   const habitId = route.params?.habitId;
   const habit = habits.find((h) => h.id === habitId);
+
+  const todayStr = dayjs().format('YYYY-MM-DD');
+  const initialDate = route.params?.date as string | undefined;
+  const [selectedDate, setSelectedDate] = useState<string>(
+    initialDate && dayjs(initialDate).isValid() ? initialDate : todayStr
+  );
+  const [isQuantityModalVisible, setIsQuantityModalVisible] = useState(false);
 
   if (!habit) {
     return (
@@ -78,33 +107,58 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   }
 
   const isArchived = Boolean(habit.archivedAt);
-  const todayStr = dayjs().format('YYYY-MM-DD');
-  const initialDate = route.params?.date as string | undefined;
-  const [selectedDate, setSelectedDate] = useState<string>(
-    initialDate && dayjs(initialDate).isValid() ? initialDate : todayStr
-  );
   const isViewingToday = selectedDate === todayStr;
 
-  const activeCheckin = checkins.find(
-    (c) => c.habitId === habit.id && c.date === selectedDate
+  const activeCheckin = useMemo(
+    () => checkins.find((c) => c.habitId === habit.id && c.date === selectedDate),
+    [checkins, habit.id, selectedDate]
   );
   const activeCount = activeCheckin ? activeCheckin.count : 0;
   const isCompletedOnDate = Boolean(activeCheckin?.completed);
 
-  const completedDates = new Set(
-    checkins
-      .filter((c) => c.habitId === habit.id && c.completed)
-      .map((c) => c.date)
+  const completedDates = useMemo(
+    () =>
+      new Set(
+        checkins
+          .filter((c) => c.habitId === habit.id && c.completed)
+          .map((c) => c.date)
+      ),
+    [checkins, habit.id]
   );
 
-  const stats = calculateHabitStats(habit, checkins);
-  const category = getHabitCategory(habit.icon);
-  const streakStatus = getHabitStreakStatus(habit, checkins, selectedDate);
-  const milestoneInfo = calculateStreakMilestone(stats.currentStreak);
-  const consistencyPattern = calculateHabitConsistencyPattern(habit, checkins, todayStr);
-  const allHabitNotes = getHabitCheckinNotes(checkins, habit.id);
+  const stats = useMemo(
+    () => calculateHabitStats(habit, checkins),
+    [habit, checkins]
+  );
 
-  const handleShare = async () => {
+  const totalLoggedUnits = useMemo(
+    () => calculateTotalLoggedUnits(habit.id, checkins),
+    [habit.id, checkins]
+  );
+
+  const category = useMemo(() => getHabitCategory(habit.icon), [habit.icon]);
+
+  const streakStatus = useMemo(
+    () => getHabitStreakStatus(habit, checkins, selectedDate),
+    [habit, checkins, selectedDate]
+  );
+
+  const milestoneInfo = useMemo(
+    () => calculateStreakMilestone(stats.currentStreak),
+    [stats.currentStreak]
+  );
+
+  const consistencyPattern = useMemo(
+    () => calculateHabitConsistencyPattern(habit, checkins, todayStr),
+    [habit, checkins, todayStr]
+  );
+
+  const allHabitNotes = useMemo(
+    () => getHabitCheckinNotes(checkins, habit.id),
+    [checkins, habit.id]
+  );
+
+  const handleShare = useCallback(async () => {
     try {
       const latestNote = allHabitNotes.length > 0 ? allHabitNotes[0].note : undefined;
       const shareMessage = formatHabitStatsForShare(habit, stats, milestoneInfo, latestNote);
@@ -112,22 +166,22 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     } catch {
       // Gracefully handle dismissed share dialog
     }
-  };
+  }, [habit, stats, milestoneInfo, allHabitNotes]);
 
-  const handleExportCsv = async () => {
+  const handleExportCsv = useCallback(async () => {
     try {
       const csv = exportSingleHabitToCsv(habit, checkins);
       const success = await exportCsvViaShare(csv, `سجل عادة - ${habit.name}`);
       if (!success) {
-        Alert.alert('تنبيه', 'تعذر فتح نافذة مشاركة الملف، يرجى المحاولة لاحقًا.');
+        appAlert('تنبيه', 'تعذر فتح نافذة مشاركة الملف، يرجى المحاولة لاحقًا.');
       }
     } catch {
-      Alert.alert('خطأ', 'حدث خطأ أثناء إعداد ملف التصدير.');
+      appAlert('خطأ', 'حدث خطأ أثناء إعداد ملف التصدير.');
     }
-  };
+  }, [habit, checkins]);
 
   const handleArchiveConfirm = () => {
-    Alert.alert(
+    appAlert(
       'أرشفة العادة',
       `هل تريد نقل عادة "${habit.name}" إلى الأرشيف؟ سيتم إيقاف التذكيرات مع الاحتفاظ بكافة السجلات والإحصائيات.`,
       [
@@ -135,8 +189,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         {
           text: 'أرشفة',
           onPress: async () => {
-            await archiveHabit(habit.id, true);
             navigation.goBack();
+            await archiveHabit(habit.id, true);
           },
         },
       ]
@@ -148,7 +202,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   };
 
   const handleDeleteConfirm = () => {
-    Alert.alert(
+    appAlert(
       'حذف العادة',
       `هل أنت متأكد من حذف عادة "${habit.name}" نهائيًا؟ سيتم حذف كافة السجلات التابعة لها ولا يمكن التراجع.`,
       [
@@ -157,8 +211,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
           text: 'حذف نهائي',
           style: 'destructive',
           onPress: async () => {
-            await deleteHabit(habit.id);
             navigation.goBack();
+            await deleteHabit(habit.id);
           },
         },
       ]
@@ -300,9 +354,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   { color: theme.textMuted, marginTop: 6, textAlign: 'right' },
                 ]}
               >
-                {habit.frequency === 'daily'
-                  ? 'يوميًا'
-                  : `أيام محددة (${habit.frequencyDays.length} أيام)`}
+                {formatHabitFrequencyLabel(habit)}
                 {' • '}
                 الهدف: {habit.targetCount} {habit.unit}
                 {isArchived ? ' • مؤرشفة' : !habit.isActive ? ' • متوقفة مؤقتًا' : ''}
@@ -378,7 +430,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
           {/* Clean Date Check Toggle (if not archived) */}
           {!isArchived ? (
-            habit.targetCount > 1 ? (
+            isQuantitativeHabit(habit) ? (
               <View
                 style={{
                   marginTop: spacing.md,
@@ -423,10 +475,16 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                 <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
                   <View style={{ flex: 1 }}>
                     <Button
-                      title={isCompletedOnDate ? 'مكتملة بالكامل' : 'إكمال العادة الآن'}
-                      iconName={isCompletedOnDate ? 'checkmark-circle' : 'checkmark-outline'}
+                      title={
+                        isCompletedOnDate
+                          ? `تعديل الكمية (${activeCount} ${habit.unit})`
+                          : activeCount > 0
+                          ? `متابعة التسجيل (${activeCount}/${habit.targetCount})`
+                          : 'تسجيل كمية اليوم'
+                      }
+                      iconName="create-outline"
                       variant={isCompletedOnDate ? 'outline' : 'primary'}
-                      onPress={() => toggleCheckin(habit.id, selectedDate)}
+                      onPress={() => setIsQuantityModalVisible(true)}
                     />
                   </View>
 
@@ -493,7 +551,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
             )
           ) : null}
 
-          {!isArchived && (
+          {streakStatus.status !== 'pending' && (
             <View
               style={[
                 styles.streakStatusCard,
@@ -542,10 +600,20 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
         </Card>
 
         {/* 4 Stats Grid */}
-        <HabitStatGrid stats={stats} habitColor={habit.color} unit={habit.unit} />
+        <HabitStatGrid
+          stats={stats}
+          habitColor={habit.color}
+          unit={habit.unit}
+          totalLoggedUnits={isQuantitativeHabit(habit) ? totalLoggedUnits : undefined}
+          frequency={habit.frequency}
+        />
 
         {/* Behavioral Psychology Streak Milestone Tier */}
-        <StreakMilestoneCard milestoneInfo={milestoneInfo} habitColor={habit.color} />
+        <StreakMilestoneCard
+          milestoneInfo={milestoneInfo}
+          habitColor={habit.color}
+          frequency={habit.frequency}
+        />
 
         {/* Daily Reflection Notes & Habit Diary */}
         <HabitNotesSection
@@ -659,6 +727,18 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
           />
         </View>
       </ScrollView>
+
+      {/* Quick Quantity Input Modal */}
+      <QuickQuantityModal
+        visible={isQuantityModalVisible}
+        habit={habit}
+        date={selectedDate}
+        currentCount={activeCount}
+        onClose={() => setIsQuantityModalVisible(false)}
+        onSave={async (count) => {
+          await setHabitCount(habit.id, count, selectedDate);
+        }}
+      />
     </View>
   );
 };

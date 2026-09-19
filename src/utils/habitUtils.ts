@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import type {
   Habit,
+  HabitFrequency,
   HabitCheckin,
   HabitStats,
   OverallStats,
@@ -120,12 +121,27 @@ export const normalizeArabicNumerals = (input: string | number | null | undefine
 };
 
 /**
- * Converts standard ASCII digits (0-9) to Eastern Arabic numerals (٠-٩).
+ * Converts standard ASCII digits (0-9) and Persian digits to Eastern Arabic numerals (٠-٩),
+ * turns decimals into Arabic decimal separator (٫), and percent signs to (٪).
  */
 export const toArabicNumerals = (input: number | string | null | undefined): string => {
   if (input === null || input === undefined) return '';
   const arabicDigits = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
-  return String(input).replace(/[0-9]/g, (w) => arabicDigits[Number(w)]);
+  return String(input)
+    .replace(/(\d)\.(\d)/g, '$1٫$2')
+    .replace(/([٠-٩0-9])\.([٠-٩0-9])/g, '$1٫$2')
+    .replace(/%/g, '٪')
+    .replace(/[0-9]/g, (w) => arabicDigits[Number(w)])
+    .replace(/[۰]/g, '٠')
+    .replace(/[۱]/g, '١')
+    .replace(/[۲]/g, '٢')
+    .replace(/[۳]/g, '٣')
+    .replace(/[۴]/g, '٤')
+    .replace(/[۵]/g, '٥')
+    .replace(/[۶]/g, '٦')
+    .replace(/[۷]/g, '٧')
+    .replace(/[۸]/g, '٨')
+    .replace(/[۹]/g, '٩');
 };
 
 /**
@@ -145,15 +161,16 @@ export const getHabitCategory = (iconName?: string): string => {
 export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = true): boolean => {
   if (requireActive && (!habit.isActive || habit.archivedAt)) return false;
 
-  const targetDate = dayjs(dateStr).startOf('day');
-  const createdDate = dayjs(habit.createdAt).startOf('day');
+  const targetDateOnly = dateStr.slice(0, 10);
+  const createdDateOnly = (habit.createdAt || '').slice(0, 10);
 
   // If date is before habit creation, it wasn't due then
-  if (targetDate.isBefore(createdDate)) return false;
+  if (createdDateOnly && targetDateOnly < createdDateOnly) return false;
 
   // If habit was archived, it was not due on dates after archive date
-  if (habit.archivedAt && targetDate.isAfter(dayjs(habit.archivedAt).startOf('day'))) {
-    return false;
+  if (habit.archivedAt) {
+    const archivedDateOnly = habit.archivedAt.slice(0, 10);
+    if (targetDateOnly > archivedDateOnly) return false;
   }
 
   if (habit.frequency === 'daily') {
@@ -161,12 +178,361 @@ export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = 
   }
 
   if (habit.frequency === 'specific_days') {
-    const dayOfWeek = targetDate.day(); // 0 is Sunday, 6 is Saturday
+    // 0 is Sunday, 6 is Saturday
+    const dayOfWeek = new Date(targetDateOnly + 'T00:00:00Z').getUTCDay();
     return Array.isArray(habit.frequencyDays) && habit.frequencyDays.includes(dayOfWeek);
   }
 
-  // weekly target is generally due any day
-  return true;
+  if (habit.frequency === 'monthly_day') {
+    const targetDayjs = dayjs(targetDateOnly);
+    const daysInMonth = targetDayjs.daysInMonth();
+    const targetDayOfMonth = targetDayjs.date();
+    const desiredDay = habit.monthlyDay || 1;
+    const effectiveDay = Math.min(desiredDay, daysInMonth);
+    return targetDayOfMonth === effectiveDay;
+  }
+
+  // Periodic flexible habits (weekly_target, monthly_target) are not bound to a single calendar due day
+  return false;
+};
+
+/**
+ * Checks if a habit is a flexible periodic habit (weekly_target or monthly_target)
+ */
+export const isPeriodicFlexibleHabit = (habitOrFrequency: Habit | HabitFrequency): boolean => {
+  const freq = typeof habitOrFrequency === 'string' ? habitOrFrequency : habitOrFrequency.frequency;
+  return freq === 'weekly_target' || freq === 'monthly_target';
+};
+
+/**
+ * Computes weekly progress for a weekly_target habit.
+ * Week runs from Sunday to Saturday.
+ */
+export const getWeeklyTargetProgress = (
+  habit: Habit,
+  completedDates: Set<string> | HabitCheckin[],
+  referenceDate?: string | dayjs.Dayjs
+): {
+  completedCount: number;
+  targetCount: number;
+  isCompleted: boolean;
+  startDate: string;
+  endDate: string;
+} => {
+  const ref = referenceDate ? dayjs(referenceDate) : dayjs();
+  const startOfWeek = ref.day(0).startOf('day');
+  const endOfWeek = ref.day(6).endOf('day');
+  const startStr = startOfWeek.format('YYYY-MM-DD');
+  const endStr = endOfWeek.format('YYYY-MM-DD');
+
+  let completedCount = 0;
+  if (completedDates instanceof Set) {
+    for (let i = 0; i < 7; i++) {
+      const dStr = startOfWeek.add(i, 'day').format('YYYY-MM-DD');
+      if (completedDates.has(dStr)) {
+        completedCount++;
+      }
+    }
+  } else {
+    const datesInWeek = new Set<string>();
+    for (const c of completedDates) {
+      if (c.habitId === habit.id && c.completed && c.date >= startStr && c.date <= endStr) {
+        datesInWeek.add(c.date);
+      }
+    }
+    completedCount = datesInWeek.size;
+  }
+
+  const targetCount = habit.weeklyTargetCount && habit.weeklyTargetCount > 0 ? habit.weeklyTargetCount : 1;
+  return {
+    completedCount,
+    targetCount,
+    isCompleted: completedCount >= targetCount,
+    startDate: startStr,
+    endDate: endStr,
+  };
+};
+
+/**
+ * Computes monthly progress for a monthly_target habit.
+ */
+export const getMonthlyTargetProgress = (
+  habit: Habit,
+  completedDates: Set<string> | HabitCheckin[],
+  referenceDate?: string | dayjs.Dayjs
+): {
+  completedCount: number;
+  targetCount: number;
+  isCompleted: boolean;
+  startDate: string;
+  endDate: string;
+} => {
+  const ref = referenceDate ? dayjs(referenceDate) : dayjs();
+  const startOfMonth = ref.startOf('month');
+  const endOfMonth = ref.endOf('month');
+  const startStr = startOfMonth.format('YYYY-MM-DD');
+  const endStr = endOfMonth.format('YYYY-MM-DD');
+  const daysInMonth = ref.daysInMonth();
+
+  let completedCount = 0;
+  if (completedDates instanceof Set) {
+    for (let i = 0; i < daysInMonth; i++) {
+      const dStr = startOfMonth.add(i, 'day').format('YYYY-MM-DD');
+      if (completedDates.has(dStr)) {
+        completedCount++;
+      }
+    }
+  } else {
+    const datesInMonth = new Set<string>();
+    for (const c of completedDates) {
+      if (c.habitId === habit.id && c.completed && c.date >= startStr && c.date <= endStr) {
+        datesInMonth.add(c.date);
+      }
+    }
+    completedCount = datesInMonth.size;
+  }
+
+  const targetCount = habit.monthlyTargetCount && habit.monthlyTargetCount > 0 ? habit.monthlyTargetCount : 1;
+  return {
+    completedCount,
+    targetCount,
+    isCompleted: completedCount >= targetCount,
+    startDate: startStr,
+    endDate: endStr,
+  };
+};
+
+/**
+ * Returns a user-friendly Arabic badge text for periodic flexible habits (weekly/monthly target).
+ * E.g. "1/3 هذا الأسبوع", "مكتمل للأسبوع (3/3) 🎯", "2/4 هذا الشهر"
+ */
+export const getPeriodicBadgeText = (
+  habit: Habit,
+  completedDates: Set<string> | HabitCheckin[],
+  referenceDate?: string | dayjs.Dayjs
+): string | undefined => {
+  if (habit.frequency === 'weekly_target') {
+    const prog = getWeeklyTargetProgress(habit, completedDates, referenceDate);
+    if (prog.isCompleted) {
+      return `مكتمل للأسبوع (${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)}) 🎯`;
+    }
+    return `${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)} هذا الأسبوع`;
+  }
+
+  if (habit.frequency === 'monthly_target') {
+    const prog = getMonthlyTargetProgress(habit, completedDates, referenceDate);
+    if (prog.isCompleted) {
+      return `مكتمل للشهر (${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)}) 🎯`;
+    }
+    return `${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)} هذا الشهر`;
+  }
+
+  return undefined;
+};
+
+export const calculateWeeklyStreak = (
+  habit: Habit,
+  completedDates: Set<string>,
+  referenceDate?: string | dayjs.Dayjs
+): number => {
+  const ref = referenceDate ? dayjs(referenceDate) : dayjs();
+  const target = habit.weeklyTargetCount && habit.weeklyTargetCount > 0 ? habit.weeklyTargetCount : 1;
+  const created = dayjs(habit.createdAt || ref).day(0).startOf('day');
+
+  let curWeekRef = ref;
+  const currentWeekProgress = getWeeklyTargetProgress(habit, completedDates, curWeekRef);
+
+  let streak = 0;
+  if (currentWeekProgress.completedCount >= target) {
+    streak = 1;
+    curWeekRef = curWeekRef.subtract(1, 'week');
+  } else {
+    curWeekRef = curWeekRef.subtract(1, 'week');
+  }
+
+  while (!curWeekRef.day(0).startOf('day').isBefore(created)) {
+    const prevWeekProg = getWeeklyTargetProgress(habit, completedDates, curWeekRef);
+    if (prevWeekProg.completedCount >= target) {
+      streak++;
+      curWeekRef = curWeekRef.subtract(1, 'week');
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+};
+
+export const calculateMonthlyStreak = (
+  habit: Habit,
+  completedDates: Set<string>,
+  referenceDate?: string | dayjs.Dayjs
+): number => {
+  const ref = referenceDate ? dayjs(referenceDate) : dayjs();
+  const target = habit.monthlyTargetCount && habit.monthlyTargetCount > 0 ? habit.monthlyTargetCount : 1;
+  const created = dayjs(habit.createdAt || ref).startOf('month');
+
+  let curMonthRef = ref;
+  const currentMonthProgress = getMonthlyTargetProgress(habit, completedDates, curMonthRef);
+
+  let streak = 0;
+  if (currentMonthProgress.completedCount >= target) {
+    streak = 1;
+    curMonthRef = curMonthRef.subtract(1, 'month');
+  } else {
+    curMonthRef = curMonthRef.subtract(1, 'month');
+  }
+
+  while (!curMonthRef.startOf('month').isBefore(created)) {
+    const prevMonthProg = getMonthlyTargetProgress(habit, completedDates, curMonthRef);
+    if (prevMonthProg.completedCount >= target) {
+      streak++;
+      curMonthRef = curMonthRef.subtract(1, 'month');
+    } else {
+      break;
+    }
+  }
+
+  return streak;
+};
+
+const calculateWeeklyStatsInternal = (
+  habit: Habit,
+  completedDates: Set<string>,
+  today: dayjs.Dayjs,
+  totalCompletions: number
+): HabitStats => {
+  const currentStreak = calculateWeeklyStreak(habit, completedDates, today);
+  const target = habit.weeklyTargetCount && habit.weeklyTargetCount > 0 ? habit.weeklyTargetCount : 1;
+  const created = dayjs(habit.createdAt || today).day(0).startOf('day');
+  const endOfWeek = today.day(6).endOf('day');
+
+  let bestStreak = currentStreak;
+  let runningStreak = 0;
+  let totalWeeks = 0;
+  let successfulWeeks = 0;
+
+  let iterWeek = created;
+  while (!iterWeek.isAfter(endOfWeek)) {
+    totalWeeks++;
+    const prog = getWeeklyTargetProgress(habit, completedDates, iterWeek);
+    if (prog.completedCount >= target) {
+      successfulWeeks++;
+      runningStreak++;
+      if (runningStreak > bestStreak) bestStreak = runningStreak;
+    } else {
+      if (!iterWeek.isSame(today, 'week')) {
+        runningStreak = 0;
+      }
+    }
+    iterWeek = iterWeek.add(1, 'week');
+  }
+
+  const completionRate = totalWeeks > 0 ? Math.round((successfulWeeks / totalWeeks) * 100) : 0;
+  return {
+    currentStreak,
+    bestStreak,
+    totalCompletions,
+    completionRate: Math.min(100, Math.max(0, completionRate)),
+    totalDueDays: totalWeeks,
+  };
+};
+
+const calculateMonthlyStatsInternal = (
+  habit: Habit,
+  completedDates: Set<string>,
+  today: dayjs.Dayjs,
+  totalCompletions: number
+): HabitStats => {
+  const currentStreak = calculateMonthlyStreak(habit, completedDates, today);
+  const target = habit.monthlyTargetCount && habit.monthlyTargetCount > 0 ? habit.monthlyTargetCount : 1;
+  const created = dayjs(habit.createdAt || today).startOf('month');
+  const endOfMonth = today.endOf('month');
+
+  let bestStreak = currentStreak;
+  let runningStreak = 0;
+  let totalMonths = 0;
+  let successfulMonths = 0;
+
+  let iterMonth = created;
+  while (!iterMonth.isAfter(endOfMonth)) {
+    totalMonths++;
+    const prog = getMonthlyTargetProgress(habit, completedDates, iterMonth);
+    if (prog.completedCount >= target) {
+      successfulMonths++;
+      runningStreak++;
+      if (runningStreak > bestStreak) bestStreak = runningStreak;
+    } else {
+      if (!iterMonth.isSame(today, 'month')) {
+        runningStreak = 0;
+      }
+    }
+    iterMonth = iterMonth.add(1, 'month');
+  }
+
+  const completionRate = totalMonths > 0 ? Math.round((successfulMonths / totalMonths) * 100) : 0;
+  return {
+    currentStreak,
+    bestStreak,
+    totalCompletions,
+    completionRate: Math.min(100, Math.max(0, completionRate)),
+    totalDueDays: totalMonths,
+  };
+};
+
+/**
+ * Ultra-fast O(1) current streak calculation using a pre-indexed Set of completed dates.
+ * Stops immediately once the streak is broken, avoiding linear scans through multi-year history.
+ */
+export const calculateCurrentStreakFromDates = (
+  habit: Habit,
+  completedDates: Set<string>,
+  referenceDate?: string | dayjs.Dayjs
+): number => {
+  if (habit.frequency === 'weekly_target') {
+    return calculateWeeklyStreak(habit, completedDates, referenceDate);
+  }
+  if (habit.frequency === 'monthly_target') {
+    return calculateMonthlyStreak(habit, completedDates, referenceDate);
+  }
+
+  const today = (referenceDate ? dayjs(referenceDate) : dayjs()).startOf('day');
+  const todayStr = today.format('YYYY-MM-DD');
+  const createdDate = dayjs(habit.createdAt).startOf('day');
+
+  let currentStreak = 0;
+  const isTodayCompleted = completedDates.has(todayStr);
+
+  let checkDate = today;
+  if (isTodayCompleted) {
+    currentStreak = 1;
+    checkDate = today.subtract(1, 'day');
+  } else {
+    checkDate = today.subtract(1, 'day');
+  }
+
+  // Look back consecutive days until streak is broken or creation date is reached
+  const maxDays = Math.min(3650, Math.max(1, today.diff(createdDate, 'day') + 1));
+  for (let i = 0; i < maxDays; i++) {
+    if (checkDate.isBefore(createdDate)) break;
+    const dateStr = checkDate.format('YYYY-MM-DD');
+    const isDue = isHabitDueOnDate(habit, dateStr, false);
+    const isCompleted = completedDates.has(dateStr);
+
+    if (isDue) {
+      if (isCompleted) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    } else if (isCompleted) {
+      currentStreak++;
+    }
+
+    checkDate = checkDate.subtract(1, 'day');
+  }
+
+  return currentStreak;
 };
 
 /**
@@ -180,70 +546,72 @@ export const calculateHabitStats = (
   const today = (referenceDate ? dayjs(referenceDate) : dayjs()).startOf('day');
   const todayStr = today.format('YYYY-MM-DD');
 
-  // Filter valid completed checkins up to today (ignore any accidental future dates)
+  // Filter valid completed checkins up to today using fast string comparison
   const habitCheckins = allCheckins.filter(
-    (c) => c.habitId === habit.id && c.completed && !dayjs(c.date).startOf('day').isAfter(today)
+    (c) => c.habitId === habit.id && c.completed && c.date <= todayStr
   );
 
   const completedDates = new Set(habitCheckins.map((c) => c.date));
   const totalCompletions = completedDates.size;
-  const createdDate = dayjs(habit.createdAt).startOf('day');
 
-  // Find earliest relevant date (created date or earliest checkin)
-  let earliestDate = createdDate;
-  completedDates.forEach((dStr) => {
-    const d = dayjs(dStr).startOf('day');
-    if (d.isBefore(earliestDate)) {
-      earliestDate = d;
-    }
-  });
-
-  // Calculate current streak
-  let currentStreak = 0;
-  const isTodayDue = isHabitDueOnDate(habit, todayStr, false);
-  const isTodayCompleted = completedDates.has(todayStr);
-
-  let checkDate = today;
-  if (isTodayCompleted) {
-    currentStreak = 1;
-    checkDate = today.subtract(1, 'day');
-  } else {
-    // If not completed today, start counting from yesterday (streak not broken until today ends)
-    checkDate = today.subtract(1, 'day');
+  if (habit.frequency === 'weekly_target') {
+    return calculateWeeklyStatsInternal(habit, completedDates, today, totalCompletions);
+  }
+  if (habit.frequency === 'monthly_target') {
+    return calculateMonthlyStatsInternal(habit, completedDates, today, totalCompletions);
   }
 
-  const maxBackwardDays = Math.min(3650, Math.max(1, today.diff(earliestDate, 'day') + 1));
-  for (let i = 0; i < maxBackwardDays; i++) {
-    if (checkDate.isBefore(earliestDate)) break;
-    const dateStr = checkDate.format('YYYY-MM-DD');
-    const isDue = isHabitDueOnDate(habit, dateStr, false);
-    const isCompleted = completedDates.has(dateStr);
+  const createdDateStr = (habit.createdAt || '').slice(0, 10) || todayStr;
 
-    if (isDue) {
-      if (isCompleted) {
-        currentStreak++;
-      } else {
-        // Streak is broken
-        break;
-      }
-    } else if (isCompleted) {
-      // Completed on an off day, still counts towards streak
-      currentStreak++;
+  // Find earliest relevant date string without Dayjs allocations
+  let earliestDateStr = createdDateStr;
+  for (const dStr of completedDates) {
+    if (dStr < earliestDateStr) {
+      earliestDateStr = dStr;
     }
-
-    checkDate = checkDate.subtract(1, 'day');
   }
 
-  // Calculate best streak and total due days chronologically
+  // Calculate current streak using ultra-fast backwards search
+  const currentStreak = calculateCurrentStreakFromDates(habit, completedDates, today);
+
+  // Calculate best streak and total due days chronologically using native Date stepping
   let bestStreak = currentStreak;
   let runningStreak = 0;
   let totalDueDays = 0;
 
-  const totalHistoryDays = Math.max(1, today.diff(earliestDate, 'day') + 1);
-  for (let i = 0; i < totalHistoryDays; i++) {
-    const curDate = earliestDate.add(i, 'day');
-    const curStr = curDate.format('YYYY-MM-DD');
-    const isDue = isHabitDueOnDate(habit, curStr, false);
+  const [eY, eM, eD] = earliestDateStr.split('-').map(Number);
+  const [tY, tM, tD] = todayStr.split('-').map(Number);
+  const curNativeDate = new Date(Date.UTC(eY, eM - 1, eD));
+  const endNativeTime = new Date(Date.UTC(tY, tM - 1, tD)).getTime();
+
+  const isDaily = habit.frequency === 'daily';
+  const isSpecificDays = habit.frequency === 'specific_days';
+  const isMonthlyDay = habit.frequency === 'monthly_day';
+  const targetMonthlyDay = habit.monthlyDay || 1;
+  const freqDays = Array.isArray(habit.frequencyDays) ? habit.frequencyDays : [];
+  const archivedDateStr = habit.archivedAt ? habit.archivedAt.slice(0, 10) : null;
+
+  while (curNativeDate.getTime() <= endNativeTime) {
+    const y = curNativeDate.getUTCFullYear();
+    const m = String(curNativeDate.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(curNativeDate.getUTCDate()).padStart(2, '0');
+    const curStr = `${y}-${m}-${d}`;
+    const dayOfWeek = curNativeDate.getUTCDay();
+
+    // Fast inlined check for isHabitDueOnDate(habit, curStr, false)
+    let isDue = false;
+    if (curStr >= createdDateStr && (!archivedDateStr || curStr <= archivedDateStr)) {
+      if (isDaily) {
+        isDue = true;
+      } else if (isSpecificDays) {
+        isDue = freqDays.includes(dayOfWeek);
+      } else if (isMonthlyDay) {
+        isDue = curNativeDate.getUTCDate() === targetMonthlyDay;
+      } else {
+        isDue = true;
+      }
+    }
+
     const isCompleted = completedDates.has(curStr);
 
     if (isDue) {
@@ -260,6 +628,8 @@ export const calculateHabitStats = (
         runningStreak = 0;
       }
     }
+
+    curNativeDate.setUTCDate(curNativeDate.getUTCDate() + 1);
   }
 
   if (currentStreak > bestStreak) {
@@ -291,6 +661,13 @@ export const getHabitsForDate = (
 ): Habit[] => {
   const targetDate = dayjs(dateStr).startOf('day');
 
+  // Build a Set of habitIds completed on this date for O(1) lookup
+  const completedHabitIdsOnDate = new Set(
+    allCheckins
+      .filter((c) => c.date === dateStr && c.completed)
+      .map((c) => c.habitId)
+  );
+
   return habits.filter((h) => {
     // If habit was archived prior to this date, skip
     if (h.archivedAt && targetDate.isAfter(dayjs(h.archivedAt).startOf('day'))) {
@@ -303,11 +680,7 @@ export const getHabitsForDate = (
     }
 
     // Or was it already completed on this past date?
-    const wasCompletedOnDate = allCheckins.some(
-      (c) => c.habitId === h.id && c.date === dateStr && c.completed
-    );
-
-    return wasCompletedOnDate;
+    return completedHabitIdsOnDate.has(h.id);
   });
 };
 
@@ -322,7 +695,11 @@ export const calculateWeekAdherence = (
   const ref = dayjs(referenceDate);
   const today = dayjs().startOf('day');
   const startOfWeek = ref.startOf('week'); // Sunday
-  const completedCheckins = allCheckins.filter((c) => c.completed);
+
+  // Build a Set of `habitId:date` for O(1) lookups inside the loop
+  const completedSet = new Set(
+    allCheckins.filter((c) => c.completed).map((c) => `${c.habitId}:${c.date}`)
+  );
 
   const dayNamesArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const dayShortArabic = ['أحد', 'إثن', 'ثلا', 'أرب', 'خمي', 'جمع', 'سبت'];
@@ -337,14 +714,14 @@ export const calculateWeekAdherence = (
     const isFuture = day.isAfter(today, 'day');
 
     const dueHabits = habits.filter((h) => isHabitDueOnDate(h, dStr, false));
+    const dueHabitIds = new Set(dueHabits.map((h) => h.id));
+
     const completedOffScheduleHabits = habits.filter(
-      (h) =>
-        !dueHabits.some((dh) => dh.id === h.id) &&
-        completedCheckins.some((c) => c.habitId === h.id && c.date === dStr)
+      (h) => !dueHabitIds.has(h.id) && completedSet.has(`${h.id}:${dStr}`)
     );
 
     const completedDueCount = dueHabits.filter((h) =>
-      completedCheckins.some((c) => c.habitId === h.id && c.date === dStr)
+      completedSet.has(`${h.id}:${dStr}`)
     ).length;
 
     const totalCompleted = completedDueCount + completedOffScheduleHabits.length;
@@ -381,14 +758,17 @@ export const hasEverHadPerfectDay = (
   if (habits.length === 0 || allCheckins.length === 0) return false;
 
   const completedCheckins = allCheckins.filter((c) => c.completed);
-  const distinctDates = Array.from(new Set(completedCheckins.map((c) => c.date)));
+  if (completedCheckins.length === 0) return false;
+
+  // Build a Set of `habitId:date` for O(1) lookups
+  const completedSet = new Set(completedCheckins.map((c) => `${c.habitId}:${c.date}`));
+  // Sort descending so the most recent dates are checked first, terminating early
+  const distinctDates = Array.from(new Set(completedCheckins.map((c) => c.date))).sort().reverse();
 
   for (const dateStr of distinctDates) {
     const dueHabits = habits.filter((h) => isHabitDueOnDate(h, dateStr, false));
     if (dueHabits.length > 0) {
-      const allCompleted = dueHabits.every((h) =>
-        completedCheckins.some((c) => c.habitId === h.id && c.date === dateStr)
-      );
+      const allCompleted = dueHabits.every((h) => completedSet.has(`${h.id}:${dateStr}`));
       if (allCompleted) {
         return true;
       }
@@ -396,6 +776,7 @@ export const hasEverHadPerfectDay = (
   }
 
   return false;
+
 };
 
 /**
@@ -404,15 +785,20 @@ export const hasEverHadPerfectDay = (
 export const calculateOverallStats = (
   habits: Habit[],
   allCheckins: HabitCheckin[],
-  selectedDate: string
+  selectedDate: string,
+  precalculatedBestStreak?: number,
+  precalculatedCheckinsByHabit?: Map<string, HabitCheckin[]>
 ): OverallStats => {
   const activeHabits = habits.filter((h) => h.isActive && !h.archivedAt);
   const completedCheckins = allCheckins.filter((c) => c.completed);
 
+  // Build a Set of `habitId:date` for completed checkins - O(1) lookup instead of O(n)
+  const completedSet = new Set(completedCheckins.map((c) => `${c.habitId}:${c.date}`));
+
   // Relevant habits for the selected date
   const relevantHabits = getHabitsForDate(habits, allCheckins, selectedDate);
   const todayCompletedCount = relevantHabits.filter((h) =>
-    completedCheckins.some((c) => c.habitId === h.id && c.date === selectedDate)
+    completedSet.has(`${h.id}:${selectedDate}`)
   ).length;
 
   const todayTotalCount = relevantHabits.length;
@@ -420,13 +806,35 @@ export const calculateOverallStats = (
     todayTotalCount > 0 ? Math.round((todayCompletedCount / todayTotalCount) * 100) : 0;
 
   // Best streak across all habits
-  let bestOverallStreak = 0;
-  habits.forEach((h) => {
-    const stats = calculateHabitStats(h, allCheckins);
-    if (stats.bestStreak > bestOverallStreak) {
-      bestOverallStreak = stats.bestStreak;
-    }
-  });
+  let bestOverallStreak: number;
+  if (precalculatedBestStreak !== undefined) {
+    bestOverallStreak = precalculatedBestStreak;
+  } else {
+    const checkinsByHabit =
+      precalculatedCheckinsByHabit ||
+      (() => {
+        const map = new Map<string, HabitCheckin[]>();
+        for (const c of allCheckins) {
+          let list = map.get(c.habitId);
+          if (!list) {
+            list = [];
+            map.set(c.habitId, list);
+          }
+          list.push(c);
+        }
+        return map;
+      })();
+
+    let maxStreak = 0;
+    habits.forEach((h) => {
+      const habitCheckins = checkinsByHabit.get(h.id) || [];
+      const stats = calculateHabitStats(h, habitCheckins);
+      if (stats.bestStreak > maxStreak) {
+        maxStreak = stats.bestStreak;
+      }
+    });
+    bestOverallStreak = maxStreak;
+  }
 
   const weeklyAdherence = calculateWeekAdherence(habits, allCheckins, selectedDate);
   const perfectDayAchieved = hasEverHadPerfectDay(habits, allCheckins);
@@ -460,12 +868,12 @@ export const formatArabicDate = (dateStr: string): string => {
   const dayNum = d.date();
   const monthName = arabicMonths[d.month()];
 
-  return `${dayName}، ${dayNum} ${monthName}`;
+  return `${dayName}، ${toArabicNumerals(dayNum)} ${monthName}`;
 };
 
 /**
  * Format week date range in Arabic
- * e.g. "10 - 16 سبتمبر 2026"
+ * e.g. "١٠ - ١٦ سبتمبر ٢٠٢٦"
  */
 export const formatWeekRangeArabic = (referenceDate: string | dayjs.Dayjs): string => {
   const ref = dayjs(referenceDate);
@@ -477,10 +885,14 @@ export const formatWeekRangeArabic = (referenceDate: string | dayjs.Dayjs): stri
     'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'
   ];
 
+  const sDate = toArabicNumerals(start.date());
+  const eDate = toArabicNumerals(end.date());
+  const yearStr = toArabicNumerals(start.year());
+
   if (start.month() === end.month()) {
-    return `${start.date()} - ${end.date()} ${arabicMonths[start.month()]} ${start.year()}`;
+    return `${sDate} - ${eDate} ${arabicMonths[start.month()]} ${yearStr}`;
   } else {
-    return `${start.date()} ${arabicMonths[start.month()]} - ${end.date()} ${arabicMonths[end.month()]} ${start.year()}`;
+    return `${sDate} ${arabicMonths[start.month()]} - ${eDate} ${arabicMonths[end.month()]} ${yearStr}`;
   }
 };
 
@@ -524,7 +936,22 @@ export interface CheckinProgress {
   isCompleted: boolean;
   progressRatio: number;
   progressPercent: number;
+  rawRatio: number;
+  rawPercent: number;
 }
+
+/**
+ * Determines whether a habit is quantitative (measured by numerical quantity/unit rather than a simple boolean checkbox).
+ */
+export const isQuantitativeHabit = (habit?: Habit | null): boolean => {
+  if (!habit) return false;
+  if (habit.targetCount > 1) return true;
+  const unit = (habit.unit || '').trim();
+  if (unit && unit !== 'مرة' && unit !== 'يوم') {
+    return true;
+  }
+  return false;
+};
 
 /**
  * Calculate progress details for a habit checkin
@@ -538,6 +965,8 @@ export const calculateCheckinProgress = (
   const isCompleted = Boolean(checkin?.completed) || count >= targetCount;
   const progressRatio = isCompleted ? 1 : Math.min(1, count / targetCount);
   const progressPercent = Math.round(progressRatio * 100);
+  const rawRatio = targetCount > 0 ? count / targetCount : 0;
+  const rawPercent = Math.round(rawRatio * 100);
 
   return {
     count,
@@ -546,7 +975,25 @@ export const calculateCheckinProgress = (
     isCompleted,
     progressRatio,
     progressPercent,
+    rawRatio,
+    rawPercent,
   };
+};
+
+/**
+ * Calculates the total logged units across all checkins for a quantitative habit.
+ */
+export const calculateTotalLoggedUnits = (
+  habitId: string,
+  allCheckins: HabitCheckin[]
+): number => {
+  let total = 0;
+  for (const c of allCheckins) {
+    if (c.habitId === habitId && c.count && c.count > 0) {
+      total += c.count;
+    }
+  }
+  return total;
 };
 
 export interface HabitStreakStatusInfo {
@@ -635,8 +1082,8 @@ export const formatDailySummaryForShare = (
     const count = chk ? chk.count : 0;
 
     let text = h.name;
-    if (h.targetCount > 1) {
-      text += ` (${count}/${h.targetCount} ${h.unit})`;
+    if (isQuantitativeHabit(h)) {
+      text += ` (${toArabicNumerals(count)}/${toArabicNumerals(h.targetCount)} ${h.unit})`;
     }
 
     if (isCompleted) {
@@ -650,7 +1097,7 @@ export const formatDailySummaryForShare = (
 
   const sections = [
     `تقرير إنجاز (${dateFormatted})`,
-    `نسبة الالتزام: ${completionRate}% (${completedList.length} من ${dueHabits.length} مكتملة)`,
+    `نسبة الالتزام: ${toArabicNumerals(completionRate)}٪ (${toArabicNumerals(completedList.length)} من ${toArabicNumerals(dueHabits.length)} مكتملة)`,
     '',
   ];
 
@@ -684,10 +1131,10 @@ export const formatOverallStatsForShare = (
 
   return [
     'إحصائياتي في تطبيق إنجاز:',
-    `• نسبة إنجاز اليوم: ${overall.todayCompletionRate}%`,
+    `• نسبة إنجاز اليوم: ${toArabicNumerals(overall.todayCompletionRate)}٪`,
     `• أعلى سلسلة متتالية: ${streakText}`,
-    `• إجمالي الإنجازات: ${overall.totalCheckinsEver} إنجاز`,
-    `• العادات النشطة: ${overall.activeHabits} عادات`,
+    `• إجمالي الإنجازات: ${toArabicNumerals(overall.totalCheckinsEver)} إنجاز`,
+    `• العادات النشطة: ${formatArabicCount(overall.activeHabits, 'عادة واحدة', 'عادتان', 'عادات', 'عادة')}`,
     '',
     'تطبيق إنجاز للالتزام وبناء العادات',
   ].join('\n');
@@ -719,27 +1166,45 @@ export const sortHabits = (
   let streakCache: Map<string, number> | null = null;
   if (sortOption === 'streak') {
     streakCache = new Map();
+    const completedDatesByHabit = new Map<string, Set<string>>();
+    for (const c of allCheckins) {
+      if (c.completed) {
+        let set = completedDatesByHabit.get(c.habitId);
+        if (!set) {
+          set = new Set();
+          completedDatesByHabit.set(c.habitId, set);
+        }
+        set.add(c.date);
+      }
+    }
     habits.forEach((h) => {
+      const dates = completedDatesByHabit.get(h.id) || new Set<string>();
       streakCache!.set(
         h.id,
-        calculateHabitStats(h, allCheckins, selectedDate).currentStreak
+        calculateCurrentStreakFromDates(h, dates, selectedDate)
       );
     });
   }
 
   return [...habits].sort((a, b) => {
-    // 1. Pinned habits always come first
+    // 1. In default and pending_first modes: completed habits always go to the bottom of the list (below all habits, even unpinned)
+    if (sortOption === 'default' || sortOption === 'pending_first') {
+      const aDone = completedSet.has(a.id) ? 1 : 0;
+      const bDone = completedSet.has(b.id) ? 1 : 0;
+      if (aDone !== bDone) {
+        return aDone - bDone;
+      }
+    }
+
+    // 2. Among habits with identical completion status, pinned habits always come first
     const aPinned = a.isPinned ? 1 : 0;
     const bPinned = b.isPinned ? 1 : 0;
     if (aPinned !== bPinned) {
       return bPinned - aPinned;
     }
 
-    // 2. Secondary sort according to sortOption
+    // 3. Secondary sort according to sortOption
     if (sortOption === 'pending_first') {
-      const aDone = completedSet.has(a.id) ? 1 : 0;
-      const bDone = completedSet.has(b.id) ? 1 : 0;
-      if (aDone !== bDone) return aDone - bDone;
       return 0;
     }
 
@@ -768,8 +1233,34 @@ export const sortHabits = (
       return a.name.localeCompare(b.name, 'ar');
     }
 
+    if (sortOption === 'default') {
+      if (a.order !== undefined && b.order !== undefined && a.order !== b.order) {
+        return a.order - b.order;
+      }
+      return 0;
+    }
+
     return 0;
   });
+};
+
+/**
+ * Reorders an array by moving an item from fromIndex to toIndex immutably
+ */
+export const reorderArray = <T>(list: T[], fromIndex: number, toIndex: number): T[] => {
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    fromIndex >= list.length ||
+    toIndex < 0 ||
+    toIndex >= list.length
+  ) {
+    return [...list];
+  }
+  const result = [...list];
+  const [removed] = result.splice(fromIndex, 1);
+  result.splice(toIndex, 0, removed);
+  return result;
 };
 
 const ARABIC_MONTH_NAMES = [
@@ -808,21 +1299,34 @@ export const calculateMonthAdherence = (
   let totalCompletions = 0;
   let perfectDaysCount = 0;
 
+  // Pre-group completed checkins by date for O(1) lookups per day
+  const completedHabitsByDate = new Map<string, Set<string>>();
+  const completedCountByDate = new Map<string, number>();
+  for (const c of allCheckins) {
+    if (c.completed) {
+      let set = completedHabitsByDate.get(c.date);
+      if (!set) {
+        set = new Set<string>();
+        completedHabitsByDate.set(c.date, set);
+      }
+      set.add(c.habitId);
+      completedCountByDate.set(c.date, (completedCountByDate.get(c.date) || 0) + 1);
+    }
+  }
+
   for (let day = 1; day <= daysToEvaluate; day++) {
     const curDate = targetMonth.date(day);
     const dateStr = curDate.format('YYYY-MM-DD');
 
     const dueOnDate = habits.filter((h) => isHabitDueOnDate(h, dateStr, false));
-    const dayCheckins = allCheckins.filter((c) => c.date === dateStr && c.completed);
+    const completedSetOnDay = completedHabitsByDate.get(dateStr);
+    const completedCountOnDay = completedCountByDate.get(dateStr) || 0;
 
-    const completedCountOnDay = dayCheckins.length;
     totalDueOpportunities += dueOnDate.length;
     totalCompletions += completedCountOnDay;
 
-    if (dueOnDate.length > 0) {
-      const allDueCompleted = dueOnDate.every((h) =>
-        dayCheckins.some((c) => c.habitId === h.id)
-      );
+    if (dueOnDate.length > 0 && completedSetOnDay) {
+      const allDueCompleted = dueOnDate.every((h) => completedSetOnDay.has(h.id));
       if (allDueCompleted) {
         perfectDaysCount++;
       }
@@ -854,10 +1358,10 @@ export const calculateMonthAdherence = (
 export const formatMonthlySummaryForShare = (stats: MonthAdherenceStats): string => {
   return [
     `ملخص إنجازات شهر ${stats.monthLabel}:`,
-    `• نسبة الالتزام الشهرية: ${stats.completionRate}%`,
-    `• إجمالي الإنجازات: ${stats.totalCompletions} إنجاز`,
-    `• الأيام المكتملة 100%: ${stats.perfectDaysCount} ${stats.perfectDaysCount === 1 ? 'يوم' : 'أيام'}`,
-    `• العادات النشطة: ${stats.activeHabitsCount}`,
+    `• نسبة الالتزام الشهرية: ${toArabicNumerals(stats.completionRate)}٪`,
+    `• إجمالي الإنجازات: ${toArabicNumerals(stats.totalCompletions)} إنجاز`,
+    `• الأيام المكتملة ١٠٠٪: ${formatArabicDaysCount(stats.perfectDaysCount)}`,
+    `• العادات النشطة: ${formatArabicCount(stats.activeHabitsCount, 'عادة واحدة', 'عادتان', 'عادات', 'عادة')}`,
     '',
     'تطبيق إنجاز لبناء العادات وتتبع الأهداف',
   ].join('\n');
@@ -886,7 +1390,7 @@ export const STREAK_MILESTONES: StreakMilestoneTier[] = [
     name: 'أسبوع متواصل',
     days: 7,
     icon: 'ribbon-outline',
-    description: 'إتمام 7 أيام متتالية وبناء الزخم الإيجابي',
+    description: 'إتمام ٧ أيام متتالية وبناء الزخم الإيجابي',
   },
   {
     id: 'tier_14',
@@ -1080,11 +1584,11 @@ export const calculateHabitConsistencyPattern = (
   if (daysWithDue.length === 0 || (!bestDay && !weakestDay)) {
     insightMessage = 'سجل إنجازاتك خلال الأيام القادمة لبناء نمط الالتزام الأسبوعي الخاص بك.';
   } else if (bestDay && !weakestDay && bestDay.rate === 100) {
-    insightMessage = 'ما شاء الله! التزام ممتاز ومثالي بنسبة 100% في جميع الأيام المجدولة.';
+    insightMessage = 'ما شاء الله! التزام ممتاز ومثالي بنسبة ١٠٠٪ في جميع الأيام المجدولة.';
   } else if (bestDay && weakestDay) {
-    insightMessage = `أفضل أيام التزامك هو يوم ${bestDay.dayName} بنسبة (${bestDay.rate}%)، بينما يقل الإنجاز في يوم ${weakestDay.dayName} (${weakestDay.rate}%).`;
+    insightMessage = `أفضل أيام التزامك هو يوم ${bestDay.dayName} بنسبة (${toArabicNumerals(bestDay.rate)}٪)، بينما يقل الإنجاز في يوم ${weakestDay.dayName} (${toArabicNumerals(weakestDay.rate)}٪).`;
   } else if (bestDay) {
-    insightMessage = `يوم ${bestDay.dayName} هو أكثر أيامك التزامًا بهذه العادة بنسبة (${bestDay.rate}%).`;
+    insightMessage = `يوم ${bestDay.dayName} هو أكثر أيامك التزامًا بهذه العادة بنسبة (${toArabicNumerals(bestDay.rate)}٪).`;
   } else {
     insightMessage = 'استمر في تسجيل إنجازاتك لاكتشاف نمط انضباطك الأسبوعي.';
   }
@@ -1106,16 +1610,16 @@ export const formatHabitStatsForShare = (
   milestone: StreakMilestoneInfo,
   latestNote?: string
 ): string => {
-  const currentStreakText = formatArabicStreakDays(stats.currentStreak);
-  const bestStreakText = formatArabicDaysCount(stats.bestStreak);
+  const currentStreakText = formatHabitStreakArabic(stats.currentStreak, habit.frequency);
+  const bestStreakText = formatHabitStreakArabic(stats.bestStreak, habit.frequency);
 
   const lines = [
     `إنجازي في عادة: ${habit.name}`,
     `• السلسلة الحالية: ${currentStreakText}`,
     `• أطول سلسلة: ${bestStreakText}`,
-    `• مرحلة الالتزام: ${milestone.currentTier.name} (${milestone.currentTier.days} يوم)`,
-    `• إجمالي الإنجازات: ${stats.totalCompletions} ${habit.unit}`,
-    `• نسبة الالتزام: ${stats.completionRate}%`,
+    `• مرحلة الالتزام: ${milestone.currentTier.name} (${toArabicNumerals(milestone.currentTier.days)} يوم)`,
+    `• إجمالي الإنجازات: ${toArabicNumerals(stats.totalCompletions)} ${habit.unit}`,
+    `• نسبة الالتزام: ${toArabicNumerals(stats.completionRate)}٪`,
   ];
 
   if (latestNote && latestNote.trim()) {
@@ -1145,7 +1649,7 @@ export const getHabitCheckinNotes = (
 };
 
 /**
- * Format habit reflection diary notes for native sharing
+ * Formats a reflection diary note summary for native sharing
  */
 export const formatHabitNotesForShare = (
   habit: Habit,
@@ -1162,7 +1666,7 @@ export const formatHabitNotesForShare = (
 
   return [
     `مذكرات إنجازي في عادة: ${habit.name}`,
-    `إجمالي الخواطر والتدوينات: ${notes.length}`,
+    `إجمالي الخواطر والتدوينات: ${toArabicNumerals(notes.length)}`,
     '',
     ...formattedNotes,
     '',
@@ -1180,16 +1684,16 @@ export const formatHabitNotesForShare = (
  */
 export const formatArabicDaysCount = (count: number): string => {
   const safe = Math.max(0, Math.floor(count || 0));
-  if (safe === 0) return '0 يوم';
+  if (safe === 0) return '٠ يوم';
   if (safe === 1) return 'يوم واحد';
   if (safe === 2) return 'يومان';
-  if (safe >= 3 && safe <= 10) return `${safe} أيام`;
-  return `${safe} يوم`;
+  if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} أيام`;
+  return `${toArabicNumerals(safe)} يوم`;
 };
 
 /**
  * Formats streak count into authentic Arabic phrasing with 'متتالية':
- * 0 -> '0 يوم'
+ * 0 -> '٠ يوم'
  * 1 -> 'يوم واحد'
  * 2 -> 'يومان متتاليان'
  * 3..10 -> 'X أيام متتالية'
@@ -1197,11 +1701,69 @@ export const formatArabicDaysCount = (count: number): string => {
  */
 export const formatArabicStreakDays = (count: number): string => {
   const safe = Math.max(0, Math.floor(count || 0));
-  if (safe === 0) return '0 يوم';
+  if (safe === 0) return '٠ يوم';
   if (safe === 1) return 'يوم واحد';
   if (safe === 2) return 'يومان متتاليان';
-  if (safe >= 3 && safe <= 10) return `${safe} أيام متتالية`;
-  return `${safe} يوم متتالية`;
+  if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} أيام متتالية`;
+  return `${toArabicNumerals(safe)} يوم متتالية`;
+};
+
+/**
+ * Formats streak count into Arabic according to habit frequency (days, weeks, months).
+ */
+export const formatHabitStreakArabic = (count: number, frequency: HabitFrequency): string => {
+  const safe = Math.max(0, Math.floor(count || 0));
+  if (frequency === 'weekly_target') {
+    if (safe === 0) return '٠ أسبوع';
+    if (safe === 1) return 'أسبوع واحد';
+    if (safe === 2) return 'أسبوعان متتاليان';
+    if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} أسابيع متتالية`;
+    return `${toArabicNumerals(safe)} أسبوعاً متتالياً`;
+  }
+  if (frequency === 'monthly_target') {
+    if (safe === 0) return '٠ شهر';
+    if (safe === 1) return 'شهر واحد';
+    if (safe === 2) return 'شهران متتاليان';
+    if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} أشهر متتالية`;
+    return `${toArabicNumerals(safe)} شهراً متتالياً`;
+  }
+  return formatArabicStreakDays(safe);
+};
+
+/**
+ * Returns a human-friendly Arabic label describing the habit's frequency schedule.
+ */
+export const formatHabitFrequencyLabel = (habit: Habit): string => {
+  switch (habit.frequency) {
+    case 'daily':
+      return 'يوميًا';
+    case 'specific_days': {
+      const daysCount = Array.isArray(habit.frequencyDays) ? habit.frequencyDays.length : 0;
+      if (daysCount === 0 || daysCount === 7) return 'يوميًا';
+      if (daysCount === 1) return 'يوم واحد أسبوعيًا';
+      if (daysCount === 2) return 'يومان أسبوعيًا';
+      if (daysCount >= 3 && daysCount <= 10) return `${toArabicNumerals(daysCount)} أيام أسبوعيًا`;
+      return `${toArabicNumerals(daysCount)} يومًا أسبوعيًا`;
+    }
+    case 'weekly_target': {
+      const count = habit.weeklyTargetCount || 1;
+      if (count === 1) return 'مرة واحدة أسبوعيًا';
+      if (count === 2) return 'مرتان أسبوعيًا';
+      if (count >= 3 && count <= 10) return `${toArabicNumerals(count)} مرات أسبوعيًا`;
+      return `${toArabicNumerals(count)} مرة أسبوعيًا`;
+    }
+    case 'monthly_day':
+      return `يوم ${toArabicNumerals(habit.monthlyDay || 1)} من كل شهر`;
+    case 'monthly_target': {
+      const count = habit.monthlyTargetCount || 1;
+      if (count === 1) return 'مرة واحدة شهريًا';
+      if (count === 2) return 'مرتان شهريًا';
+      if (count >= 3 && count <= 10) return `${toArabicNumerals(count)} مرات شهريًا`;
+      return `${toArabicNumerals(count)} مرة شهريًا`;
+    }
+    default:
+      return 'يوميًا';
+  }
 };
 
 export const CATEGORY_CONFIG: {
@@ -1226,27 +1788,50 @@ export const calculateCategoryAnalytics = (
   const activeHabits = habits.filter((h) => !h.archivedAt && h.isActive);
   const completedCheckins = allCheckins.filter((c) => c.completed);
 
-  const habitMap = new Map<string, Habit>();
-  habits.forEach((h) => habitMap.set(h.id, h));
+  // Pre-calculate habit category and stats
+  const habitCategoryMap = new Map<string, string>();
+  const habitStatsCache = new Map<string, number>();
+
+  const totalHabitsByCat = new Map<string, number>();
+  const activeHabitsByCat = new Map<string, Habit[]>();
+
+  for (const h of habits) {
+    const cat = getHabitCategory(h.icon);
+    habitCategoryMap.set(h.id, cat);
+    totalHabitsByCat.set(cat, (totalHabitsByCat.get(cat) || 0) + 1);
+
+    if (!h.archivedAt && h.isActive) {
+      let activeList = activeHabitsByCat.get(cat);
+      if (!activeList) {
+        activeList = [];
+        activeHabitsByCat.set(cat, activeList);
+      }
+      activeList.push(h);
+
+      // Pre-compute completion rate for this active habit once
+      const stats = calculateHabitStats(h, allCheckins);
+      habitStatsCache.set(h.id, stats.completionRate);
+    }
+  }
+
+  // Count checkins per category in one pass
+  const checkinsByCat = new Map<string, number>();
+  for (const c of completedCheckins) {
+    const cat = habitCategoryMap.get(c.habitId);
+    if (cat) {
+      checkinsByCat.set(cat, (checkinsByCat.get(cat) || 0) + 1);
+    }
+  }
 
   const categories: CategoryPerformanceItem[] = CATEGORY_CONFIG.map((cfg) => {
-    const catHabits = habits.filter(
-      (h) => getHabitCategory(h.icon) === cfg.category
-    );
-    const catActiveHabits = activeHabits.filter(
-      (h) => getHabitCategory(h.icon) === cfg.category
-    );
-
-    const catCheckins = completedCheckins.filter((c) => {
-      const h = habitMap.get(c.habitId);
-      return h && getHabitCategory(h.icon) === cfg.category;
-    });
+    const catTotalHabits = totalHabitsByCat.get(cfg.category) || 0;
+    const catActiveHabits = activeHabitsByCat.get(cfg.category) || [];
+    const catTotalCheckins = checkinsByCat.get(cfg.category) || 0;
 
     let completionRate = 0;
     if (catActiveHabits.length > 0) {
       const sumRates = catActiveHabits.reduce((acc, h) => {
-        const stats = calculateHabitStats(h, allCheckins);
-        return acc + stats.completionRate;
+        return acc + (habitStatsCache.get(h.id) || 0);
       }, 0);
       completionRate = Math.round(sumRates / catActiveHabits.length);
     }
@@ -1255,9 +1840,9 @@ export const calculateCategoryAnalytics = (
       category: cfg.category,
       iconName: cfg.iconName,
       color: cfg.color,
-      totalHabits: catHabits.length,
+      totalHabits: catTotalHabits,
       activeHabits: catActiveHabits.length,
-      totalCheckins: catCheckins.length,
+      totalCheckins: catTotalCheckins,
       completionRate: Math.min(100, Math.max(0, completionRate)),
     };
   });
@@ -1296,11 +1881,11 @@ export const calculateCategoryAnalytics = (
   if (activeHabits.length === 0) {
     insightMessage = 'أضف عاداتك الأولى في مختلف مجالات الحياة لبدء رحلة التوازن والتطوير.';
   } else if (topCategory && !focusCategory && topCategory.completionRate === 100) {
-    insightMessage = 'توازن استثنائي! التزام تام في جميع مجالات حياتك بنسبة 100%';
+    insightMessage = 'توازن استثنائي! التزام تام في جميع مجالات حياتك بنسبة ١٠٠٪';
   } else if (topCategory && focusCategory) {
-    insightMessage = `أداؤك متميز في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%)، وركّز أكثر على ${focusCategory.category} (${focusCategory.completionRate}%) لتحقيق التوازن الشامل.`;
+    insightMessage = `أداؤك متميز في مجال ${topCategory.category} بنسبة (${toArabicNumerals(topCategory.completionRate)}٪)، وركّز أكثر على ${focusCategory.category} (${toArabicNumerals(focusCategory.completionRate)}٪) لتحقيق التوازن الشامل.`;
   } else if (topCategory) {
-    insightMessage = `استمرارية رائعة في مجال ${topCategory.category} بنسبة (${topCategory.completionRate}%)، وسّع نطاق عاداتك لتشمل مجالات جديدة`;
+    insightMessage = `استمرارية رائعة في مجال ${topCategory.category} بنسبة (${toArabicNumerals(topCategory.completionRate)}٪)، وسّع نطاق عاداتك لتشمل مجالات جديدة`;
   } else {
     insightMessage = 'واصل بناء عاداتك في مختلف المجالات للارتقاء بنمط حياتك اليومي.';
   }
@@ -1326,11 +1911,11 @@ export const formatArabicCount = (
 ): string => {
   const safe = Math.max(0, Math.floor(count || 0));
   const fallbackUnit = overTenUnit || singular;
-  if (safe === 0) return `0 ${fallbackUnit}`;
+  if (safe === 0) return `٠ ${fallbackUnit}`;
   if (safe === 1) return singular;
   if (safe === 2) return dual;
-  if (safe >= 3 && safe <= 10) return `${safe} ${plural}`;
-  return `${safe} ${fallbackUnit}`;
+  if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} ${plural}`;
+  return `${toArabicNumerals(safe)} ${fallbackUnit}`;
 };
 
 /**
@@ -1436,7 +2021,7 @@ export const exportHabitsSummaryToCsv = (
   for (const habit of habits) {
     const stats = calculateHabitStats(habit, checkins);
     const category = getHabitCategory(habit.icon);
-    const freqLabel = habit.frequency === 'daily' ? 'يومي' : 'أيام محددة';
+    const freqLabel = formatHabitFrequencyLabel(habit);
     const statusLabel = habit.archivedAt ? 'مؤرشفة' : habit.isActive ? 'نشطة' : 'متوقفة';
     const isPinnedLabel = habit.isPinned ? 'نعم' : 'لا';
     const reminderLabel = habit.reminderTime || 'بدون تذكير';

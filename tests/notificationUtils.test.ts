@@ -51,10 +51,10 @@ test('parseReminderTime: correctly extracts numeric hour and minute', () => {
 });
 
 test('formatReminderTimeArabic: formats 12-hour AM/PM in Arabic', () => {
-  assert.equal(formatReminderTimeArabic('08:00'), '08:00 ص');
-  assert.equal(formatReminderTimeArabic('13:30'), '01:30 م');
-  assert.equal(formatReminderTimeArabic('00:00'), '12:00 ص');
-  assert.equal(formatReminderTimeArabic('12:15'), '12:15 م');
+  assert.equal(formatReminderTimeArabic('08:00'), '٠٨:٠٠ ص');
+  assert.equal(formatReminderTimeArabic('13:30'), '٠١:٣٠ م');
+  assert.equal(formatReminderTimeArabic('00:00'), '١٢:٠٠ ص');
+  assert.equal(formatReminderTimeArabic('12:15'), '١٢:١٥ م');
   assert.equal(formatReminderTimeArabic(null), '');
 });
 
@@ -131,6 +131,44 @@ test('generateEveningReviewTrigger: generates daily trigger descriptor for eveni
   // Returns null for invalid time format
   assert.equal(generateEveningReviewTrigger('invalid'), null);
   assert.equal(generateEveningReviewTrigger('25:00'), null);
+});
+
+test('generateHabitReminderTriggers: returns monthly trigger for monthly_day habit', () => {
+  const habit = createTestHabit({
+    frequency: 'monthly_day',
+    monthlyDay: 15,
+    reminderTime: '10:30',
+  });
+  const triggers = generateHabitReminderTriggers(habit);
+
+  assert.equal(triggers.length, 1);
+  assert.equal(triggers[0].type, 'monthly');
+  assert.equal(triggers[0].day, 15);
+  assert.equal(triggers[0].hour, 10);
+  assert.equal(triggers[0].minute, 30);
+  assert.equal(triggers[0].identifier, `habit_${habit.id}_monthly_15`);
+});
+
+test('generateHabitReminderTriggers: safely handles missing or invalid monthlyDay for monthly_day habit', () => {
+  const habitMissingDay = createTestHabit({
+    frequency: 'monthly_day',
+    monthlyDay: undefined,
+    reminderTime: '09:00',
+  });
+  const triggersMissing = generateHabitReminderTriggers(habitMissingDay);
+  assert.equal(triggersMissing.length, 1);
+  assert.equal(triggersMissing[0].type, 'monthly');
+  assert.equal(triggersMissing[0].day, 1);
+
+  const habitInvalidDay = createTestHabit({
+    frequency: 'monthly_day',
+    monthlyDay: 40,
+    reminderTime: '09:00',
+  });
+  const triggersInvalid = generateHabitReminderTriggers(habitInvalidDay);
+  assert.equal(triggersInvalid.length, 1);
+  assert.equal(triggersInvalid[0].type, 'monthly');
+  assert.equal(triggersInvalid[0].day, 1);
 });
 
 

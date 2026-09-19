@@ -10,6 +10,7 @@ export interface BackupPayload {
   metadata?: {
     theme_mode?: string;
     haptics_enabled?: string;
+    sound_enabled?: string;
     notifications_enabled?: string;
   };
 }
@@ -43,6 +44,7 @@ export const createBackupPayload = (
     metadata: {
       theme_mode: metadata.theme_mode || 'system',
       haptics_enabled: metadata.haptics_enabled || 'true',
+      sound_enabled: metadata.sound_enabled || 'true',
       notifications_enabled: metadata.notifications_enabled || 'true',
     },
   };

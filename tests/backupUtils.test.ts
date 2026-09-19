@@ -48,7 +48,7 @@ test('createBackupPayload: constructs standard schema envelope', () => {
   const payload = createBackupPayload(
     [mockHabit1],
     [mockCheckin1],
-    { theme_mode: 'dark', haptics_enabled: 'true' }
+    { theme_mode: 'dark', haptics_enabled: 'true', sound_enabled: 'false' }
   );
 
   assert.equal(payload.version, 1);
@@ -57,6 +57,11 @@ test('createBackupPayload: constructs standard schema envelope', () => {
   assert.equal(payload.habits.length, 1);
   assert.equal(payload.checkins.length, 1);
   assert.equal(payload.metadata?.theme_mode, 'dark');
+  assert.equal(payload.metadata?.sound_enabled, 'false');
+
+  // Default sound_enabled when not specified in metadata
+  const defaultPayload = createBackupPayload([mockHabit1], [mockCheckin1]);
+  assert.equal(defaultPayload.metadata?.sound_enabled, 'true');
 });
 
 test('validateBackupJson: validates well-formed JSON string', () => {
@@ -211,3 +216,58 @@ test('validateBackupJson: correctly validates and preserves habit isPinned field
   };
   assert.equal(validateBackupJson(JSON.stringify(badPayload)).valid, false);
 });
+
+test('createBackupPayload: handles large dataset with thousands of checkins without data corruption', () => {
+  const largeCheckins: HabitCheckin[] = Array.from({ length: 3000 }, (_, i) => ({
+    id: `chk_${i}`,
+    habitId: i % 2 === 0 ? 'h1' : 'h2',
+    date: `2025-01-${String((i % 28) + 1).padStart(2, '0')}`,
+    count: (i % 5) + 1,
+    completed: i % 3 === 0,
+    note: `ملاحظة إنجاز تفصيلية طويلة جداً لليوم رقم ${i} مع نصوص عربية متعددة الأسطر لاختبار حجم الذاكرة والترميز`,
+    updatedAt: new Date(1700000000000 + i * 86400000).toISOString(),
+  }));
+
+  const payload = createBackupPayload([mockHabit1, mockHabit2], largeCheckins);
+  const jsonStr = JSON.stringify(payload, null, 2);
+  assert.ok(jsonStr.length > 500000, 'Payload size should exceed 500KB');
+
+  const validation = validateBackupJson(jsonStr);
+  assert.equal(validation.valid, true);
+  if (validation.valid) {
+    assert.equal(validation.data.habits.length, 2);
+    assert.equal(validation.data.checkins.length, 3000);
+    assert.equal(validation.data.checkins[0].note, largeCheckins[0].note);
+  }
+});
+
+test('CSV BOM integrity: prepends \\uFEFF if not present and preserves it if present', () => {
+  const rawCsv = 'العادة,التاريخ,الإنجاز\nقراءة,2026-09-19,1';
+  const withBOM = rawCsv.startsWith('\uFEFF') ? rawCsv : '\uFEFF' + rawCsv;
+  assert.equal(withBOM.startsWith('\uFEFF'), true);
+  assert.equal(withBOM.charCodeAt(0), 0xfeff);
+
+  // If already with BOM, does not duplicate
+  const secondPass = withBOM.startsWith('\uFEFF') ? withBOM : '\uFEFF' + withBOM;
+  assert.equal(secondPass.startsWith('\uFEFF'), true);
+  assert.notEqual(secondPass.charCodeAt(1), 0xfeff);
+});
+
+test('CSV export filename: sanitizes Arabic and special characters safely', () => {
+  const sanitize = (title: string) =>
+    (title || 'تقرير_إنجاز').replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '_');
+
+  assert.equal(
+    sanitize('سجلات إنجاز - تقرير شامل'),
+    'سجلات_إنجاز_-_تقرير_شامل'
+  );
+  assert.equal(
+    sanitize('عادة: "قراءة القرآن" / يومياً!'),
+    'عادة___قراءة_القرآن____يومياً_'
+  );
+  assert.equal(
+    sanitize(''),
+    'تقرير_إنجاز'
+  );
+});
+

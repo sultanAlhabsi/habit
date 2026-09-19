@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -10,20 +9,32 @@ import {
   Share,
   Modal,
   RefreshControl,
-  Alert,
+  LayoutAnimation,
+  Platform,
 } from 'react-native';
+import { appAlert } from '../services/alertService';
+import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Header } from '../components/common/Header';
 import { DateStrip } from '../components/home/DateStrip';
 import { DailyProgressCard } from '../components/home/DailyProgressCard';
+import { DailyCelebrationBanner } from '../components/home/DailyCelebrationBanner';
 import { HabitCard } from '../components/home/HabitCard';
 import { QuickNoteModal } from '../components/home/QuickNoteModal';
+import { QuickQuantityModal } from '../components/home/QuickQuantityModal';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { HabitQuickActionsModal } from '../components/home/HabitQuickActionsModal';
+import { ReorderHabitsModal } from '../components/home/ReorderHabitsModal';
 import { EmptyState } from '../components/common/EmptyState';
+import { FilterTabsBar } from '../components/home/FilterTabsBar';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+
+
 import {
   HABIT_CATEGORIES,
   HabitCategory,
@@ -32,8 +43,8 @@ import {
   Habit,
 } from '../types/habit';
 import {
-  calculateOverallStats,
   calculateHabitStats,
+  calculateCurrentStreakFromDates,
   getHabitsForDate,
   filterHabitsByQuery,
   formatDailySummaryForShare,
@@ -42,6 +53,10 @@ import {
   sortHabits,
   formatHabitStatsForShare,
   calculateStreakMilestone,
+  isPeriodicFlexibleHabit,
+  getWeeklyTargetProgress,
+  getMonthlyTargetProgress,
+  getPeriodicBadgeText,
 } from '../utils/habitUtils';
 
 interface HomeScreenProps {
@@ -51,6 +66,27 @@ interface HomeScreenProps {
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { theme, radius, spacing, typography, touchTarget } = useTheme();
+  const flashListRef = useRef<FlashListRef<Habit>>(null);
+
+  const triggerSmoothLayoutTransition = useCallback(() => {
+    try {
+      flashListRef.current?.prepareForLayoutAnimationRender();
+      LayoutAnimation.configureNext({
+        duration: 450,
+        create: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+        update: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+        },
+        delete: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+      });
+    } catch (_) {}
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -62,7 +98,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     date: string;
     initialNote?: string;
   } | null>(null);
+  const [activeQuantityModal, setActiveQuantityModal] = useState<{
+    habit: Habit;
+    currentCount: number;
+    date: string;
+  } | null>(null);
   const [activeQuickActionHabit, setActiveQuickActionHabit] = useState<Habit | null>(null);
+  const [isReorderModalVisible, setIsReorderModalVisible] = useState(false);
+  const [activeReorderHabitId, setActiveReorderHabitId] = useState<string | null>(null);
 
   const {
     habits,
@@ -79,12 +122,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     toggleCheckin,
     togglePinHabit,
     toggleHabitActive,
-    completeAllDueHabits,
+    deleteHabit,
     incrementCheckin,
     decrementCheckin,
+    setHabitCount,
     updateCheckinNote,
     deleteCheckinNote,
-  } = useHabitStore();
+    cloudSyncState,
+  } = useHabitStore(
+    useShallow((state) => ({
+      habits: state.habits,
+      checkins: state.checkins,
+      selectedDate: state.selectedDate,
+      filter: state.filter,
+      sortOption: state.sortOption,
+      isLoading: state.isLoading,
+      isRefreshing: state.isRefreshing,
+      refreshHabits: state.refreshHabits,
+      setSelectedDate: state.setSelectedDate,
+      setFilter: state.setFilter,
+      setSortOption: state.setSortOption,
+      toggleCheckin: state.toggleCheckin,
+      togglePinHabit: state.togglePinHabit,
+      toggleHabitActive: state.toggleHabitActive,
+      deleteHabit: state.deleteHabit,
+      incrementCheckin: state.incrementCheckin,
+      decrementCheckin: state.decrementCheckin,
+      setHabitCount: state.setHabitCount,
+      updateCheckinNote: state.updateCheckinNote,
+      deleteCheckinNote: state.deleteCheckinNote,
+      cloudSyncState: state.cloudSyncState,
+    }))
+  );
 
   const activeSortItem =
     HABIT_SORT_OPTIONS.find((s) => s.id === sortOption) || HABIT_SORT_OPTIONS[0];
@@ -93,6 +162,677 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const isToday = selectedDate === todayStr;
   const isFutureDate = dayjs(selectedDate).startOf('day').isAfter(dayjs().startOf('day'));
 
+  // Build a fast lookup map: `${habitId}:${date}` -> HabitCheckin
+  // This eliminates O(n*m) checkins.find() calls inside render map()
+  const checkinsMap = useMemo(() => {
+    const map = new Map<string, typeof checkins[0]>();
+    for (const c of checkins) {
+      map.set(`${c.habitId}:${c.date}`, c);
+    }
+    return map;
+  }, [checkins]);
+
+  // Unarchived active habits (memoized)
+  const activeUnarchivedHabits = useMemo(
+    () => habits.filter((h) => !h.archivedAt),
+    [habits]
+  );
+
+  // Periodic flexible habits (weekly_target and monthly_target)
+  const periodicHabits = useMemo(
+    () => activeUnarchivedHabits.filter(isPeriodicFlexibleHabit),
+    [activeUnarchivedHabits]
+  );
+
+  // Scheduled habits (daily, specific_days, and monthly_day)
+  const scheduledHabits = useMemo(
+    () => activeUnarchivedHabits.filter((h) => !isPeriodicFlexibleHabit(h)),
+    [activeUnarchivedHabits]
+  );
+
+  // Relevant scheduled habits due on selected date (memoized)
+  const dueHabits = useMemo(
+    () => getHabitsForDate(scheduledHabits, checkins, selectedDate),
+    [scheduledHabits, checkins, selectedDate]
+  );
+
+  // Fast O(dueHabits) daily progress calculation - replaces heavy multi-year calculateOverallStats
+  const dailyStats = useMemo(() => {
+    const todayTotalCount = dueHabits.length;
+    const todayCompletedCount = dueHabits.filter(
+      (h) => checkinsMap.get(`${h.id}:${selectedDate}`)?.completed
+    ).length;
+    const todayCompletionRate =
+      todayTotalCount > 0 ? Math.round((todayCompletedCount / todayTotalCount) * 100) : 0;
+    return {
+      todayCompletedCount,
+      todayTotalCount,
+      todayCompletionRate,
+    };
+  }, [dueHabits, checkinsMap, selectedDate]);
+
+  const isSearchActive = Boolean(searchQuery.trim());
+
+  // Base habits for rendering (memoized)
+  const baseHabits = useMemo(() => {
+    if (isSearchActive) {
+      return filterHabitsByQuery(activeUnarchivedHabits, searchQuery);
+    }
+    return dueHabits;
+  }, [isSearchActive, activeUnarchivedHabits, searchQuery, dueHabits]);
+
+  // Category-filtered habits (memoized)
+  const categoryFilteredHabits = useMemo(() => {
+    if (selectedCategory === 'الكل') return baseHabits;
+    return baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  }, [baseHabits, selectedCategory]);
+
+  const categoryCompletedCount = useMemo(() =>
+    categoryFilteredHabits.filter((h) =>
+      checkinsMap.get(`${h.id}:${selectedDate}`)?.completed
+    ).length,
+    [categoryFilteredHabits, checkinsMap, selectedDate]
+  );
+
+  // Final filtered + sorted habits (memoized)
+  const sortedFilteredHabits = useMemo(() => {
+    const filtered = categoryFilteredHabits.filter((h) => {
+      const isCompleted = Boolean(checkinsMap.get(`${h.id}:${selectedDate}`)?.completed);
+      if (filter === 'completed') return isCompleted;
+      if (filter === 'pending') return !isCompleted;
+      return true;
+    });
+    return sortHabits(filtered, sortOption, checkins, selectedDate);
+  }, [categoryFilteredHabits, checkinsMap, selectedDate, filter, sortOption, checkins]);
+
+  // Pre-index completed dates by habit: habitId -> Set<dateStr>
+  // Runs in O(checkins) once, enabling instant O(1) date lookups and ultra-fast streak calculations
+  const completedDatesByHabit = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const c of checkins) {
+      if (c.completed) {
+        let set = map.get(c.habitId);
+        if (!set) {
+          set = new Set();
+          map.set(c.habitId, set);
+        }
+        set.add(c.date);
+      }
+    }
+    return map;
+  }, [checkins]);
+
+  // Ultra-fast current streak pre-computation for visible habits (O(1) lookups per habit)
+  const habitStreakMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const habit of sortedFilteredHabits) {
+      const dates = completedDatesByHabit.get(habit.id) || new Set<string>();
+      map.set(habit.id, calculateCurrentStreakFromDates(habit, dates, selectedDate));
+    }
+    return map;
+  }, [sortedFilteredHabits, completedDatesByHabit, selectedDate]);
+
+  // Off-schedule habits: scheduled habits that are NOT due on selected date
+  const offScheduleHabits = useMemo(() =>
+    scheduledHabits.filter(
+      (h) => !dueHabits.some((dh) => dh.id === h.id)
+    ),
+    [scheduledHabits, dueHabits]
+  );
+
+  const filteredOffScheduleHabits = useMemo(() => {
+    if (selectedCategory === 'الكل') return offScheduleHabits;
+    return offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  }, [offScheduleHabits, selectedCategory]);
+
+  const sortedOffScheduleHabits = useMemo(
+    () => sortHabits(filteredOffScheduleHabits, sortOption, checkins, selectedDate),
+    [filteredOffScheduleHabits, sortOption, checkins, selectedDate]
+  );
+
+  // Off-schedule streak cache (for expanded section)
+  const offScheduleStreakMap = useMemo(() => {
+    if (!isOffScheduleExpanded) return new Map<string, number>();
+    const map = new Map<string, number>();
+    for (const habit of sortedOffScheduleHabits) {
+      const dates = completedDatesByHabit.get(habit.id) || new Set<string>();
+      map.set(habit.id, calculateCurrentStreakFromDates(habit, dates, selectedDate));
+    }
+    return map;
+  }, [sortedOffScheduleHabits, completedDatesByHabit, selectedDate, isOffScheduleExpanded]);
+
+  // Periodic habits filtered & sorted
+  const filteredPeriodicHabits = useMemo(() => {
+    if (selectedCategory === 'الكل') return periodicHabits;
+    return periodicHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+  }, [periodicHabits, selectedCategory]);
+
+  const sortedPeriodicHabits = useMemo(
+    () => sortHabits(filteredPeriodicHabits, sortOption, checkins, selectedDate),
+    [filteredPeriodicHabits, sortOption, checkins, selectedDate]
+  );
+
+  // Periodic streak cache
+  const periodicStreakMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const habit of sortedPeriodicHabits) {
+      const dates = completedDatesByHabit.get(habit.id) || new Set<string>();
+      map.set(habit.id, calculateCurrentStreakFromDates(habit, dates, selectedDate));
+    }
+    return map;
+  }, [sortedPeriodicHabits, completedDatesByHabit, selectedDate]);
+
+  // Memoized handlers to avoid creating new function references on every render
+  const handleShareDaily = useCallback(async () => {
+    try {
+      const message = formatDailySummaryForShare(selectedDate, habits, checkins);
+      await Share.share({ message });
+    } catch (_) {}
+  }, [selectedDate, habits, checkins]);
+
+  const handleToggleCheckin = useCallback(
+    (habitId: string) => {
+      triggerSmoothLayoutTransition();
+      toggleCheckin(habitId, selectedDate);
+    },
+    [triggerSmoothLayoutTransition, toggleCheckin, selectedDate]
+  );
+
+  const handleIncrementCheckin = useCallback(
+    (habitId: string) => {
+      triggerSmoothLayoutTransition();
+      incrementCheckin(habitId, selectedDate);
+    },
+    [incrementCheckin, selectedDate]
+  );
+
+  const handleDecrementCheckin = useCallback(
+    (habitId: string) => {
+      triggerSmoothLayoutTransition();
+      decrementCheckin(habitId, selectedDate);
+    },
+    [decrementCheckin, selectedDate]
+  );
+
+  const handlePressDetails = useCallback(
+    (habitId: string) => {
+      navigation.navigate('HabitDetails', { habitId, date: selectedDate });
+    },
+    [navigation, selectedDate]
+  );
+
+  const handleLongPressHabit = useCallback((habit: Habit) => {
+    setActiveReorderHabitId(habit.id);
+    setIsReorderModalVisible(true);
+  }, []);
+
+  const handleQuickActions = useCallback((habit: Habit) => {
+    setActiveQuickActionHabit(habit);
+  }, []);
+
+  const handlePressNote = useCallback(
+    (habit: Habit, note?: string) => {
+      setActiveNoteModal({
+        habit,
+        date: selectedDate,
+        initialNote: note,
+      });
+    },
+    [selectedDate]
+  );
+
+  const handlePressQuantity = useCallback(
+    (habit: Habit, currentCount: number) => {
+      setActiveQuantityModal({
+        habit,
+        currentCount,
+        date: selectedDate,
+      });
+    },
+    [selectedDate]
+  );
+
+  const renderHabitItem = useCallback(
+    ({ item: habit, index }: { item: Habit; index: number }) => {
+      const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
+      const isCompleted = Boolean(checkin?.completed);
+      const currentCount = checkin ? checkin.count : 0;
+      const streak = habitStreakMap.get(habit.id) ?? 0;
+      const isDue = isHabitDueOnDate(habit, selectedDate, true);
+      const periodicBadgeText = getPeriodicBadgeText(
+        habit,
+        completedDatesByHabit.get(habit.id) || new Set<string>(),
+        selectedDate
+      );
+
+      const isFirstFew = index < 6;
+
+      return (
+        <Animated.View
+          entering={isFirstFew ? FadeInDown.delay(index * 25).duration(200) : undefined}
+        >
+          <HabitCard
+            habit={habit}
+            isCompleted={isCompleted}
+            currentCount={currentCount}
+            streak={streak}
+            isFuture={isFutureDate}
+            isOffSchedule={!isDue}
+            periodicBadgeText={periodicBadgeText}
+            hasNote={Boolean(checkin?.note?.trim())}
+            onToggleCheckin={() => handleToggleCheckin(habit.id)}
+            onPressDetails={() => handlePressDetails(habit.id)}
+            onLongPress={() => handleLongPressHabit(habit)}
+            onPressNote={() => handlePressNote(habit, checkin?.note)}
+            onPressQuantity={() => handlePressQuantity(habit, currentCount)}
+            onPressQuickActions={() => handleQuickActions(habit)}
+          />
+        </Animated.View>
+      );
+    },
+    [
+      checkinsMap,
+      selectedDate,
+      habitStreakMap,
+      completedDatesByHabit,
+      isFutureDate,
+      handleToggleCheckin,
+      handlePressDetails,
+      handleLongPressHabit,
+      handleQuickActions,
+      handlePressNote,
+      handlePressQuantity,
+    ]
+  );
+
+
+  const listHeaderComponent = useMemo(
+    () => (
+      <View>
+        {/* Date Selector Strip */}
+        <DateStrip
+          selectedDate={selectedDate}
+          onSelectDate={(date) => setSelectedDate(date)}
+        />
+
+        {/* Daily Progress Overview */}
+        <DailyProgressCard
+          date={selectedDate}
+          completedCount={dailyStats.todayCompletedCount}
+          totalCount={dailyStats.todayTotalCount}
+          completionRate={dailyStats.todayCompletionRate}
+          isToday={isToday}
+          onPressToday={() => setSelectedDate(todayStr)}
+        />
+
+        {/* Celebratory Banner when all habits completed for today */}
+        {isToday && dailyStats.todayTotalCount > 0 && dailyStats.todayCompletionRate === 100 && (
+          <DailyCelebrationBanner />
+        )}
+
+        {/* Category Filter Chips */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.categoryScroll, { paddingHorizontal: spacing.base }]}
+          style={{ marginBottom: spacing.sm }}
+        >
+          {HABIT_CATEGORIES.map((cat) => {
+            const isCatSelected = selectedCategory === cat;
+            return (
+              <Pressable
+                key={cat}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isCatSelected }}
+                onPress={() => setSelectedCategory(cat)}
+                style={({ pressed }) => [
+                  styles.categoryChip,
+                  {
+                    backgroundColor: isCatSelected ? theme.primary : theme.cardSecondary,
+                    borderColor: isCatSelected ? theme.primary : theme.border,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: isCatSelected ? '#FFFFFF' : theme.textSecondary,
+                      fontWeight: isCatSelected ? '700' : '400',
+                    },
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* Quiet Filter Tabs & Sort Button */}
+        <View style={[styles.filterBarContainer, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
+          <FilterTabsBar
+            filter={filter}
+            onSelectFilter={setFilter}
+            allCount={categoryFilteredHabits.length}
+            pendingCount={Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)}
+            completedCount={categoryCompletedCount}
+          />
+
+          {/* Sort Selector Button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`ترتيب العادات: ${activeSortItem.label}`}
+            onPress={() => setIsSortModalVisible(true)}
+            style={({ pressed }) => [
+              styles.sortBtn,
+              {
+                backgroundColor: sortOption !== 'default' ? theme.cardSecondary : 'transparent',
+                borderColor: sortOption !== 'default' ? theme.border : theme.border,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name={activeSortItem.icon as any}
+              size={13}
+              color={sortOption !== 'default' ? theme.text : theme.textMuted}
+            />
+            <Text
+              style={[
+                typography.caption,
+                {
+                  color: sortOption !== 'default' ? theme.text : theme.textSecondary,
+                  fontWeight: sortOption !== 'default' ? '600' : '400',
+                  marginRight: 4,
+                  fontSize: 11,
+                },
+              ]}
+            >
+              {activeSortItem.label}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    ),
+    [
+      selectedDate,
+      dailyStats,
+      isToday,
+      todayStr,
+      isFutureDate,
+      theme,
+      radius,
+      spacing,
+      typography,
+      selectedCategory,
+      filter,
+      categoryFilteredHabits.length,
+      categoryCompletedCount,
+      activeSortItem,
+      sortOption,
+    ]
+  );
+
+  const listEmptyComponent = useMemo(() => {
+    if (baseHabits.length === 0 && !isSearchActive) {
+      return (
+        <View style={{ alignItems: 'center' }}>
+          <EmptyState
+            icon="leaf-outline"
+            title="لا توجد عادات لهذا اليوم"
+            description="أنشئ عاداتك اليومية لتبدأ في بناء جدولك ومتابعة التزامك"
+            actionTitle="إضافة عادة جديدة"
+            onActionPress={() => navigation.navigate('AddEditHabit', {})}
+          />
+          {habits.length === 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="استعراض نماذج العادات الجاهزة"
+              onPress={() => navigation.navigate('AddEditHabit', { openTemplates: true })}
+              style={({ pressed }) => [
+                styles.emptyStateTemplatesBtn,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.md,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="sparkles" size={15} color={theme.primary} style={{ marginLeft: 6 }} />
+              <Text style={[typography.subMedium, { color: theme.primary, fontWeight: '600' }]}>
+                استكشف نماذج العادات الجاهزة (24 نموذج)
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      );
+    }
+
+    if (sortedFilteredHabits.length === 0) {
+      if (selectedCategory !== 'الكل' && categoryFilteredHabits.length === 0) {
+        return (
+          <EmptyState
+            icon="filter-outline"
+            title="لا توجد عادات في هذا التصنيف"
+            description={`لم يتم العثور على عادات تنتمي لتصنيف "${selectedCategory}"`}
+            actionTitle="عرض جميع التصنيفات"
+            onActionPress={() => setSelectedCategory('الكل')}
+          />
+        );
+      }
+      if (isSearchActive) {
+        return (
+          <EmptyState
+            icon="search-outline"
+            title="لم يتم العثور على نتائج"
+            description={`لا توجد عادات مطابقة للبحث "${searchQuery}"`}
+            actionTitle="مسح البحث"
+            onActionPress={() => setSearchQuery('')}
+          />
+        );
+      }
+      if (filter === 'pending') {
+        return (
+          <EmptyState
+            icon="checkmark-outline"
+            title="أتممت عادات اليوم"
+            description="جميع العادات المجدولة مكتملة بنجاح"
+          />
+        );
+      }
+      return (
+        <EmptyState
+          icon="ellipse-outline"
+          title="لا توجد عادات مكتملة بعد"
+          description="اضغط على الدائرة بجانب أي عادة لتسجيل إنجازها"
+        />
+      );
+    }
+
+    return null;
+  }, [
+    baseHabits.length,
+    isSearchActive,
+    habits.length,
+    navigation,
+    theme.cardSecondary,
+    theme.border,
+    theme.primary,
+    radius.md,
+    typography.subMedium,
+    sortedFilteredHabits.length,
+    selectedCategory,
+    categoryFilteredHabits.length,
+    searchQuery,
+    filter,
+  ]);
+
+  const listFooterComponent = useMemo(() => {
+    const hasPeriodic = !isSearchActive && filteredPeriodicHabits.length > 0;
+    const hasOffSchedule = !isSearchActive && filteredOffScheduleHabits.length > 0;
+
+    if (!hasPeriodic && !hasOffSchedule) {
+      return <View style={{ height: insets.bottom + 80 }} />;
+    }
+
+    return (
+      <View style={{ marginTop: spacing.base, paddingBottom: insets.bottom + 80 }}>
+        {/* Periodic Flexible Habits Section (Weekly & Monthly) */}
+        {hasPeriodic && (
+          <View style={{ marginBottom: spacing.md }}>
+            <View style={styles.periodicHeaderContainer}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                <Ionicons name="repeat-outline" size={16} color={theme.text} style={{ marginLeft: 6 }} />
+                <Text style={[typography.subMedium, { color: theme.text, fontWeight: '700' }]}>
+                  عادات أسبوعية وشهرية ({filteredPeriodicHabits.length})
+                </Text>
+              </View>
+              <Text style={[typography.caption, { color: theme.textMuted }]}>
+                أهداف مرنة حسب الفترة
+              </Text>
+            </View>
+
+            {sortedPeriodicHabits.map((habit) => {
+              const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
+              const isCompletedToday = Boolean(checkin?.completed);
+              const currentCount = checkin ? checkin.count : 0;
+              const streak = periodicStreakMap.get(habit.id) ?? 0;
+              const periodicBadgeText = getPeriodicBadgeText(
+                habit,
+                completedDatesByHabit.get(habit.id) || new Set<string>(),
+                selectedDate
+              );
+
+              return (
+                <HabitCard
+                  key={`periodic_${habit.id}`}
+                  habit={habit}
+                  isCompleted={isCompletedToday}
+                  currentCount={currentCount}
+                  streak={streak}
+                  isFuture={isFutureDate}
+                  isOffSchedule={false}
+                  periodicBadgeText={periodicBadgeText}
+                  hasNote={Boolean(checkin?.note?.trim())}
+                  onToggleCheckin={() => handleToggleCheckin(habit.id)}
+                  onPressDetails={() => handlePressDetails(habit.id)}
+                  onLongPress={() => handleLongPressHabit(habit)}
+                  onPressNote={() => handlePressNote(habit, checkin?.note)}
+                  onPressQuantity={() => handlePressQuantity(habit, currentCount)}
+                  onPressQuickActions={() => handleQuickActions(habit)}
+                />
+              );
+            })}
+          </View>
+        )}
+
+        {/* Off-schedule habits */}
+        {hasOffSchedule && (
+          <View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إظهار العادات غير المجدولة لليوم"
+              accessibilityState={{ expanded: isOffScheduleExpanded }}
+              onPress={() => setIsOffScheduleExpanded(!isOffScheduleExpanded)}
+              style={({ pressed }) => [
+                styles.offScheduleHeader,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.md,
+                  marginHorizontal: spacing.base,
+                  marginBottom: isOffScheduleExpanded ? spacing.sm : spacing.md,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <View style={styles.offScheduleHeaderRow}>
+                <View style={styles.offScheduleHeaderTitle}>
+                  <Ionicons name="calendar-outline" size={16} color={theme.textSecondary} />
+                  <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
+                    عادات أخرى غير مجدولة اليوم ({filteredOffScheduleHabits.length})
+                  </Text>
+                </View>
+                <Ionicons
+                  name={isOffScheduleExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={theme.textSecondary}
+                />
+              </View>
+            </Pressable>
+
+            {isOffScheduleExpanded &&
+              sortedOffScheduleHabits.map((habit, offIndex) => {
+                const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
+                const isCompleted = Boolean(checkin?.completed);
+                const currentCount = checkin ? checkin.count : 0;
+                const streak = offScheduleStreakMap.get(habit.id) ?? 0;
+                const periodicBadgeText = getPeriodicBadgeText(
+                  habit,
+                  completedDatesByHabit.get(habit.id) || new Set<string>(),
+                  selectedDate
+                );
+
+                return (
+                  <Animated.View
+                    key={`off_${habit.id}`}
+                    entering={FadeInDown.delay(Math.min(offIndex, 4) * 25).duration(180)}
+                  >
+                    <HabitCard
+                      key={`off_${habit.id}`}
+                      habit={habit}
+                      isCompleted={isCompleted}
+                      currentCount={currentCount}
+                      streak={streak}
+                      isFuture={isFutureDate}
+                      isOffSchedule={true}
+                      periodicBadgeText={periodicBadgeText}
+                      hasNote={Boolean(checkin?.note?.trim())}
+                      onToggleCheckin={() => handleToggleCheckin(habit.id)}
+                      onPressDetails={() => handlePressDetails(habit.id)}
+                      onLongPress={() => handleLongPressHabit(habit)}
+                      onPressNote={() => handlePressNote(habit, checkin?.note)}
+                      onPressQuantity={() => handlePressQuantity(habit, currentCount)}
+                      onPressQuickActions={() => handleQuickActions(habit)}
+                    />
+                  </Animated.View>
+                );
+              })}
+          </View>
+        )}
+      </View>
+    );
+  }, [
+    isSearchActive,
+    filteredPeriodicHabits,
+    sortedPeriodicHabits,
+    periodicStreakMap,
+    completedDatesByHabit,
+    filteredOffScheduleHabits.length,
+    isOffScheduleExpanded,
+    sortedOffScheduleHabits,
+    checkinsMap,
+    selectedDate,
+    offScheduleStreakMap,
+    isFutureDate,
+    handleToggleCheckin,
+    handleIncrementCheckin,
+    handleDecrementCheckin,
+    handlePressDetails,
+    handleLongPressHabit,
+    handleQuickActions,
+    handlePressNote,
+    theme,
+    radius.md,
+    spacing,
+    typography,
+    insets.bottom,
+    sortedFilteredHabits.length,
+  ]);
+
   if (isLoading) {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
@@ -100,68 +840,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       </View>
     );
   }
-
-  // Calculate overall stats for selected date
-  const overallStats = calculateOverallStats(habits, checkins, selectedDate);
-
-  // Unarchived active habits
-  const activeUnarchivedHabits = habits.filter((h) => !h.archivedAt);
-
-  // Relevant habits for selected date (active due habits + paused habits completed on this date)
-  const dueHabits = getHabitsForDate(habits, checkins, selectedDate);
-  const isSearchActive = Boolean(searchQuery.trim());
-
-  // Search searches across ALL active habits so user can find and log off-schedule habits too
-  const baseHabits = isSearchActive
-    ? filterHabitsByQuery(activeUnarchivedHabits, searchQuery)
-    : dueHabits;
-
-  // Filter by category
-  const categoryFilteredHabits = selectedCategory === 'الكل'
-    ? baseHabits
-    : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
-
-  const categoryCompletedCount = categoryFilteredHabits.filter((h) =>
-    checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
-  ).length;
-
-  const filteredHabits = categoryFilteredHabits.filter((h) => {
-    const isCompleted = checkins.some(
-      (c) => c.habitId === h.id && c.date === selectedDate && c.completed
-    );
-    if (filter === 'completed') return isCompleted;
-    if (filter === 'pending') return !isCompleted;
-    return true; // 'all'
-  });
-
-  const sortedFilteredHabits = sortHabits(
-    filteredHabits,
-    sortOption,
-    checkins,
-    selectedDate
-  );
-
-  // Off-schedule habits for selected date (when not searching)
-  const offScheduleHabits = activeUnarchivedHabits.filter(
-    (h) => !dueHabits.some((dh) => dh.id === h.id)
-  );
-  const filteredOffScheduleHabits = selectedCategory === 'الكل'
-    ? offScheduleHabits
-    : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
-
-  const sortedOffScheduleHabits = sortHabits(
-    filteredOffScheduleHabits,
-    sortOption,
-    checkins,
-    selectedDate
-  );
-
-  const handleShareDaily = async () => {
-    try {
-      const message = formatDailySummaryForShare(selectedDate, habits, checkins);
-      await Share.share({ message });
-    } catch (_) {}
-  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -178,9 +856,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         ]}
       >
         <View style={styles.headerTitles}>
-          <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
-            العادات
-          </Text>
+          <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+            <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
+              العادات
+            </Text>
+            {cloudSyncState === 'syncing' && (
+              <View
+                style={{
+                  flexDirection: 'row-reverse',
+                  alignItems: 'center',
+                  marginRight: 10,
+                  backgroundColor: theme.cardSecondary,
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                }}
+              >
+                <ActivityIndicator size="small" color={theme.primary} style={{ marginLeft: 5 }} />
+                <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                  جارٍ المزامنة...
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         <View style={styles.headerActions}>
@@ -292,9 +992,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         </View>
       )}
 
-      <ScrollView
+      <FlashList
+        ref={flashListRef}
+        data={sortedFilteredHabits}
+        renderItem={renderHabitItem}
+        keyExtractor={(item) => item.id}
+        extraData={selectedDate}
+        ListHeaderComponent={listHeaderComponent}
+        ListEmptyComponent={listEmptyComponent}
+        ListFooterComponent={listFooterComponent}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 80 }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -303,365 +1010,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             tintColor={theme.primary}
           />
         }
-      >
-        {/* Date Selector Strip */}
-        <DateStrip
-          selectedDate={selectedDate}
-          onSelectDate={(date) => setSelectedDate(date)}
-        />
-
-        {/* Daily Progress Overview */}
-        <DailyProgressCard
-          date={selectedDate}
-          completedCount={overallStats.todayCompletedCount}
-          totalCount={overallStats.todayTotalCount}
-          completionRate={overallStats.todayCompletionRate}
-          isToday={isToday}
-          onPressToday={() => setSelectedDate(todayStr)}
-          onCompleteAll={
-            !isFutureDate &&
-            overallStats.todayTotalCount > 0 &&
-            overallStats.todayCompletedCount < overallStats.todayTotalCount
-              ? () => {
-                  const pendingCount =
-                    overallStats.todayTotalCount - overallStats.todayCompletedCount;
-                  Alert.alert(
-                    'إكمال جميع العادات',
-                    `هل ترغب في تسجيل إنجاز جميع العادات المتبقية (${pendingCount}) لهذا اليوم؟`,
-                    [
-                      { text: 'إلغاء', style: 'cancel' },
-                      {
-                        text: 'إكمال الكل',
-                        style: 'default',
-                        onPress: async () => {
-                          await completeAllDueHabits(selectedDate);
-                        },
-                      },
-                    ]
-                  );
-                }
-              : undefined
-          }
-        />
-
-        {/* Celebratory Banner when all habits completed for today */}
-        {isToday && overallStats.todayTotalCount > 0 && overallStats.todayCompletionRate === 100 && (
-          <View
-            style={[
-              styles.celebrationCard,
-              {
-                backgroundColor: theme.primaryLight,
-                borderColor: theme.primary,
-                borderRadius: radius.md,
-                marginHorizontal: spacing.base,
-                marginBottom: spacing.md,
-              },
-            ]}
-          >
-            <Ionicons name="sparkles" size={20} color={theme.primary} style={{ marginLeft: 8 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={[typography.subMedium, { color: theme.primary, textAlign: 'right' }]}>
-                أحسنت! أتممت جميع عاداتك لليوم بنجاح
-              </Text>
-              <Text style={[typography.caption, { color: theme.textSecondary, marginTop: 2, textAlign: 'right' }]}>
-                حافظ على هذا الزخم والاستمرارية لبناء عادات راسخة.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Category Filter Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.categoryScroll, { paddingHorizontal: spacing.base }]}
-          style={{ marginBottom: spacing.sm }}
-        >
-          {HABIT_CATEGORIES.map((cat) => {
-            const isCatSelected = selectedCategory === cat;
-            return (
-              <Pressable
-                key={cat}
-                accessibilityRole="button"
-                accessibilityState={{ selected: isCatSelected }}
-                onPress={() => setSelectedCategory(cat)}
-                style={({ pressed }) => [
-                  styles.categoryChip,
-                  {
-                    backgroundColor: isCatSelected ? theme.text : theme.cardSecondary,
-                    borderColor: isCatSelected ? theme.text : theme.border,
-                    opacity: pressed ? 0.75 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    typography.caption,
-                    {
-                      color: isCatSelected ? theme.background : theme.textSecondary,
-                      fontWeight: isCatSelected ? '700' : '500',
-                    },
-                  ]}
-                >
-                  {cat}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        {/* Quiet Filter Tabs & Sort Button */}
-        <View style={[styles.filterBarContainer, { marginHorizontal: spacing.base, marginBottom: spacing.md }]}>
-          <View style={styles.filterTabsRow}>
-            {(['all', 'pending', 'completed'] as const).map((tab) => {
-              const isSelected = filter === tab;
-              const labels = {
-                all: `الكل (${categoryFilteredHabits.length})`,
-                pending: `المتبقية (${Math.max(0, categoryFilteredHabits.length - categoryCompletedCount)})`,
-                completed: `المكتملة (${categoryCompletedCount})`,
-              };
-
-              return (
-                <Pressable
-                  key={tab}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isSelected }}
-                  onPress={() => setFilter(tab)}
-                  style={({ pressed }) => [
-                    styles.filterTab,
-                    {
-                      borderBottomColor: isSelected ? theme.text : 'transparent',
-                      borderBottomWidth: 1.5,
-                      opacity: pressed ? 0.7 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      typography.caption,
-                      {
-                        color: isSelected ? theme.text : theme.textMuted,
-                        fontWeight: isSelected ? '600' : '400',
-                        paddingBottom: 6,
-                      },
-                    ]}
-                  >
-                    {labels[tab]}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Sort Selector Button */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`ترتيب العادات: ${activeSortItem.label}`}
-            onPress={() => setIsSortModalVisible(true)}
-            style={({ pressed }) => [
-              styles.sortBtn,
-              {
-                backgroundColor: sortOption !== 'default' ? theme.cardSecondary : 'transparent',
-                borderColor: sortOption !== 'default' ? theme.border : theme.border,
-                opacity: pressed ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Ionicons
-              name={activeSortItem.icon as any}
-              size={13}
-              color={sortOption !== 'default' ? theme.text : theme.textMuted}
-            />
-            <Text
-              style={[
-                typography.caption,
-                {
-                  color: sortOption !== 'default' ? theme.text : theme.textSecondary,
-                  fontWeight: sortOption !== 'default' ? '600' : '400',
-                  marginRight: 4,
-                  fontSize: 11,
-                },
-              ]}
-            >
-              {activeSortItem.label}
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Habits List or Empty States */}
-        {baseHabits.length === 0 && !isSearchActive ? (
-          <View style={{ alignItems: 'center' }}>
-            <EmptyState
-              icon="leaf-outline"
-              title="لا توجد عادات لهذا اليوم"
-              description="أنشئ عاداتك اليومية لتبدأ في بناء جدولك ومتابعة التزامك"
-              actionTitle="إضافة عادة جديدة"
-              onActionPress={() => navigation.navigate('AddEditHabit', {})}
-            />
-            {habits.length === 0 && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="استعراض نماذج العادات الجاهزة"
-                onPress={() => navigation.navigate('AddEditHabit', { openTemplates: true })}
-                style={({ pressed }) => [
-                  styles.emptyStateTemplatesBtn,
-                  {
-                    backgroundColor: theme.cardSecondary,
-                    borderColor: theme.border,
-                    borderRadius: radius.md,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Ionicons name="sparkles" size={15} color={theme.primary} style={{ marginLeft: 6 }} />
-                <Text style={[typography.subMedium, { color: theme.primary, fontWeight: '600' }]}>
-                  استكشف نماذج العادات الجاهزة (24 نموذج)
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        ) : sortedFilteredHabits.length === 0 ? (
-          selectedCategory !== 'الكل' && categoryFilteredHabits.length === 0 ? (
-            <EmptyState
-              icon="filter-outline"
-              title="لا توجد عادات في هذا التصنيف"
-              description={`لم يتم العثور على عادات تنتمي لتصنيف "${selectedCategory}"`}
-              actionTitle="عرض جميع التصنيفات"
-              onActionPress={() => setSelectedCategory('الكل')}
-            />
-          ) : isSearchActive ? (
-            <EmptyState
-              icon="search-outline"
-              title="لم يتم العثور على نتائج"
-              description={`لا توجد عادات مطابقة للبحث "${searchQuery}"`}
-              actionTitle="مسح البحث"
-              onActionPress={() => setSearchQuery('')}
-            />
-          ) : filter === 'pending' ? (
-            <EmptyState
-              icon="checkmark-outline"
-              title="أتممت عادات اليوم"
-              description="جميع العادات المجدولة مكتملة بنجاح"
-            />
-          ) : (
-            <EmptyState
-              icon="ellipse-outline"
-              title="لا توجد عادات مكتملة بعد"
-              description="اضغط على الدائرة بجانب أي عادة لتسجيل إنجازها"
-            />
-          )
-        ) : (
-          sortedFilteredHabits.map((habit) => {
-            const checkin = checkins.find(
-              (c) => c.habitId === habit.id && c.date === selectedDate
-            );
-            const isCompleted = Boolean(checkin?.completed);
-            const currentCount = checkin ? checkin.count : 0;
-            const stats = calculateHabitStats(habit, checkins);
-            const isDue = isHabitDueOnDate(habit, selectedDate, true);
-
-            return (
-              <HabitCard
-                key={habit.id}
-                habit={habit}
-                isCompleted={isCompleted}
-                currentCount={currentCount}
-                streak={stats.currentStreak}
-                isFuture={isFutureDate}
-                isOffSchedule={!isDue}
-                hasNote={Boolean(checkin?.note?.trim())}
-                onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
-                onIncrement={() => incrementCheckin(habit.id, selectedDate)}
-                onDecrement={() => decrementCheckin(habit.id, selectedDate)}
-                onPressDetails={() =>
-                  navigation.navigate('HabitDetails', { habitId: habit.id, date: selectedDate })
-                }
-                onLongPress={() => setActiveQuickActionHabit(habit)}
-                onPressNote={() =>
-                  setActiveNoteModal({
-                    habit,
-                    date: selectedDate,
-                    initialNote: checkin?.note,
-                  })
-                }
-              />
-            );
-          })
-        )}
-
-        {/* Off-Schedule Habits Collapsible Section */}
-        {!isSearchActive && filteredOffScheduleHabits.length > 0 && (
-          <View style={{ marginTop: spacing.base }}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إظهار العادات غير المجدولة لليوم"
-              onPress={() => setIsOffScheduleExpanded(!isOffScheduleExpanded)}
-              style={({ pressed }) => [
-                styles.offScheduleHeader,
-                {
-                  backgroundColor: theme.cardSecondary,
-                  borderColor: theme.border,
-                  borderRadius: radius.md,
-                  marginHorizontal: spacing.base,
-                  marginBottom: isOffScheduleExpanded ? spacing.sm : spacing.md,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <View style={styles.offScheduleHeaderRow}>
-                <View style={styles.offScheduleHeaderTitle}>
-                  <Ionicons name="calendar-outline" size={16} color={theme.textSecondary} />
-                  <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
-                    عادات أخرى غير مجدولة اليوم ({filteredOffScheduleHabits.length})
-                  </Text>
-                </View>
-                <Ionicons
-                  name={isOffScheduleExpanded ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={theme.textSecondary}
-                />
-              </View>
-            </Pressable>
-
-            {isOffScheduleExpanded &&
-              sortedOffScheduleHabits.map((habit) => {
-                const checkin = checkins.find(
-                  (c) => c.habitId === habit.id && c.date === selectedDate
-                );
-                const isCompleted = Boolean(checkin?.completed);
-                const currentCount = checkin ? checkin.count : 0;
-                const stats = calculateHabitStats(habit, checkins);
-
-                return (
-                  <HabitCard
-                    key={`off_${habit.id}`}
-                    habit={habit}
-                    isCompleted={isCompleted}
-                    currentCount={currentCount}
-                    streak={stats.currentStreak}
-                    isFuture={isFutureDate}
-                    isOffSchedule={true}
-                    hasNote={Boolean(checkin?.note?.trim())}
-                    onToggleCheckin={() => toggleCheckin(habit.id, selectedDate)}
-                    onIncrement={() => incrementCheckin(habit.id, selectedDate)}
-                    onDecrement={() => decrementCheckin(habit.id, selectedDate)}
-                    onPressDetails={() =>
-                      navigation.navigate('HabitDetails', { habitId: habit.id, date: selectedDate })
-                    }
-                    onLongPress={() => setActiveQuickActionHabit(habit)}
-                    onPressNote={() =>
-                      setActiveNoteModal({
-                        habit,
-                        date: selectedDate,
-                        initialNote: checkin?.note,
-                      })
-                    }
-                  />
-                );
-              })}
-          </View>
-        )}
-      </ScrollView>
+      />
 
       {/* Quick Daily Reflection Note Modal */}
       <QuickNoteModal
@@ -682,6 +1031,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         }}
       />
 
+      {/* Quick Quantity Input Modal */}
+      <QuickQuantityModal
+        visible={activeQuantityModal !== null}
+        habit={activeQuantityModal?.habit || null}
+        date={activeQuantityModal?.date || selectedDate}
+        currentCount={activeQuantityModal?.currentCount || 0}
+        onClose={() => setActiveQuantityModal(null)}
+        onSave={async (count) => {
+          if (activeQuantityModal) {
+            triggerSmoothLayoutTransition();
+            await setHabitCount(activeQuantityModal.habit.id, count, activeQuantityModal.date);
+          }
+        }}
+      />
+
       {/* Habit Quick Actions Modal (on Long Press) */}
       <HabitQuickActionsModal
         visible={activeQuickActionHabit !== null}
@@ -690,26 +1054,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         isCompleted={
           Boolean(
             activeQuickActionHabit &&
-            checkins.some(
-              (c) =>
-                c.habitId === activeQuickActionHabit.id &&
-                c.date === selectedDate &&
-                c.completed
-            )
+            checkinsMap.get(`${activeQuickActionHabit.id}:${selectedDate}`)?.completed
           )
         }
         streak={
           activeQuickActionHabit
-            ? calculateHabitStats(activeQuickActionHabit, checkins).currentStreak
+            ? (habitStreakMap.get(activeQuickActionHabit.id) ??
+               offScheduleStreakMap.get(activeQuickActionHabit.id) ??
+               0)
             : 0
         }
         hasNote={
           Boolean(
             activeQuickActionHabit &&
-            checkins.find(
-              (c) =>
-                c.habitId === activeQuickActionHabit.id && c.date === selectedDate
-            )?.note?.trim()
+            checkinsMap.get(`${activeQuickActionHabit.id}:${selectedDate}`)?.note?.trim()
           )
         }
         isFutureDate={isFutureDate}
@@ -731,11 +1089,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         }}
         onOpenNote={() => {
           if (activeQuickActionHabit) {
-            const chk = checkins.find(
-              (c) =>
-                c.habitId === activeQuickActionHabit.id &&
-                c.date === selectedDate
-            );
+            const chk = checkinsMap.get(`${activeQuickActionHabit.id}:${selectedDate}`);
             setActiveNoteModal({
               habit: activeQuickActionHabit,
               date: selectedDate,
@@ -771,6 +1125,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               date: selectedDate,
             });
           }
+        }}
+        onReorderHabit={() => {
+          const targetId = activeQuickActionHabit?.id || null;
+          setActiveQuickActionHabit(null);
+          setActiveReorderHabitId(targetId);
+          setIsReorderModalVisible(true);
+        }}
+        onDeleteHabit={() => {
+          if (activeQuickActionHabit) {
+            const habitToDelete = activeQuickActionHabit;
+            appAlert(
+              'حذف العادة',
+              `هل أنت متأكد من حذف عادة "${habitToDelete.name}" نهائيًا؟ سيتم حذف كافة السجلات التابعة لها ولا يمكن التراجع.`,
+              [
+                { text: 'إلغاء', style: 'cancel' },
+                {
+                  text: 'حذف نهائي',
+                  style: 'destructive',
+                  onPress: async () => {
+                    await deleteHabit(habitToDelete.id);
+                  },
+                },
+              ]
+            );
+          }
+        }}
+      />
+
+      {/* Reorder Habits Modal */}
+      <ReorderHabitsModal
+        visible={isReorderModalVisible}
+        initialFocusedHabitId={activeReorderHabitId}
+        onClose={() => {
+          setIsReorderModalVisible(false);
+          setActiveReorderHabitId(null);
         }}
       />
 
@@ -855,6 +1244,47 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 </Pressable>
               );
             })}
+
+            <View style={{ height: 1, backgroundColor: theme.border, marginVertical: 8 }} />
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="فتح وضع إعادة ترتيب العادات بالسحب والإفلات"
+              onPress={() => {
+                setIsSortModalVisible(false);
+                setTimeout(() => {
+                  setActiveReorderHabitId(null);
+                  setIsReorderModalVisible(true);
+                }, 150);
+              }}
+              style={({ pressed }) => [
+                styles.sortOptionRow,
+                {
+                  backgroundColor: `${theme.primary}12`,
+                  borderColor: theme.primary,
+                  borderWidth: 1,
+                  borderRadius: radius.md,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <View style={styles.sortOptionRight}>
+                <Ionicons name="swap-vertical" size={18} color={theme.primary} />
+                <Text
+                  style={[
+                    typography.subMedium,
+                    {
+                      color: theme.primary,
+                      fontWeight: '700',
+                      marginRight: 10,
+                    },
+                  ]}
+                >
+                  إعادة الترتيب اليدوي (سحب وإفلات)
+                </Text>
+              </View>
+              <Ionicons name="chevron-back" size={16} color={theme.primary} />
+            </Pressable>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1012,6 +1442,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: -8,
     marginBottom: 20,
+  },
+  periodicHeaderContainer: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingVertical: 4,
   },
 });
 

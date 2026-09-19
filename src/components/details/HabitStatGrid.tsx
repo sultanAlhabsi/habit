@@ -1,23 +1,32 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { HabitStats } from '../../types/habit';
+import {View, StyleSheet} from 'react-native';
+import { Text } from '../common/AppText';
+import { HabitStats, HabitFrequency } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
-import { formatArabicStreakDays } from '../../utils/habitUtils';
+import { formatHabitStreakArabic } from '../../utils/habitUtils';
 
 interface HabitStatGridProps {
   stats: HabitStats;
   habitColor?: string;
   unit?: string;
+  totalLoggedUnits?: number;
+  frequency?: HabitFrequency;
 }
 
-export const HabitStatGrid: React.FC<HabitStatGridProps> = ({ stats, unit }) => {
+export const HabitStatGrid: React.FC<HabitStatGridProps> = React.memo(({ stats, unit, totalLoggedUnits, frequency = 'daily' }) => {
   const { theme, spacing, typography } = useTheme();
 
   const items = [
-    { title: 'الالتزام الحالي', value: formatArabicStreakDays(stats.currentStreak) },
-    { title: 'أفضل إنجاز', value: formatArabicStreakDays(stats.bestStreak) },
-    { title: 'إجمالي المرات', value: `${stats.totalCompletions} ${unit || 'مرة'}` },
+    { title: 'الالتزام الحالي', value: formatHabitStreakArabic(stats.currentStreak, frequency) },
+    { title: 'أفضل إنجاز', value: formatHabitStreakArabic(stats.bestStreak, frequency) },
+    {
+      title: totalLoggedUnits !== undefined && totalLoggedUnits > 0 ? 'إجمالي المنجز' : 'إجمالي المرات',
+      value:
+        totalLoggedUnits !== undefined && totalLoggedUnits > 0
+          ? `${totalLoggedUnits} ${unit || ''}`
+          : `${stats.totalCompletions} ${unit || 'مرة'}`,
+    },
     { title: 'نسبة الالتزام', value: `${stats.completionRate}%` },
   ];
 
@@ -47,7 +56,7 @@ export const HabitStatGrid: React.FC<HabitStatGridProps> = ({ stats, unit }) => 
       </View>
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

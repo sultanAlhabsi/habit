@@ -1,5 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import {View, StyleSheet} from 'react-native';
+import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { Habit, HabitCheckin } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
@@ -12,14 +13,20 @@ interface CategoryPerformanceCardProps {
   checkins: HabitCheckin[];
 }
 
-export const CategoryPerformanceCard: React.FC<CategoryPerformanceCardProps> = ({
+export const CategoryPerformanceCard: React.FC<CategoryPerformanceCardProps> = React.memo(({
   habits,
   checkins,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
-  const analytics = calculateCategoryAnalytics(habits, checkins);
+  const analytics = useMemo(
+    () => calculateCategoryAnalytics(habits, checkins),
+    [habits, checkins]
+  );
 
-  const activeCategoriesCount = analytics.categories.filter((c) => c.activeHabits > 0).length;
+  const activeCategoriesCount = useMemo(
+    () => analytics.categories.filter((c) => c.activeHabits > 0).length,
+    [analytics.categories]
+  );
 
   return (
     <Card style={{ padding: spacing.base, marginBottom: spacing.base }}>
@@ -174,7 +181,7 @@ export const CategoryPerformanceCard: React.FC<CategoryPerformanceCardProps> = (
       </View>
     </Card>
   );
-};
+});
 
 const styles = StyleSheet.create({
   headerRow: {

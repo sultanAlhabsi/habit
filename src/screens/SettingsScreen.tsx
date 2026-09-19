@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
+import dayjs from 'dayjs';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
-  Alert,
   Modal,
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
+  ActivityIndicator,
 } from 'react-native';
+import { appAlert } from '../services/alertService';
+import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -30,6 +33,10 @@ import {
   isValidReminderTime,
   normalizeArabicNumerals,
 } from '../utils/notificationUtils';
+import {
+  inspectAndParseLoopDatabase,
+  ConvertedLoopData,
+} from '../services/loopImportService';
 
 export const SettingsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -40,6 +47,8 @@ export const SettingsScreen: React.FC = () => {
     checkins,
     hapticsEnabled,
     toggleHaptics,
+    soundEnabled,
+    toggleSound,
     notificationsEnabled,
     toggleNotifications,
     eveningReminderEnabled,
@@ -47,24 +56,48 @@ export const SettingsScreen: React.FC = () => {
     setEveningReminder,
     exportBackup,
     importBackup,
+    importLoopData,
     seedData,
     resetAllData,
-    compactDatabase,
-    cleanEmptyCheckins,
+    cloudSyncState,
+    lastCloudSyncTime,
+    syncWithCloud,
+    deleteImportedLoopHabits,
   } = useHabitStore();
 
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [isProcessingImport, setIsProcessingImport] = useState(false);
-  const [isCompacting, setIsCompacting] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+
+  // Loop Habits Import State
+  const [isLoadingLoopFile, setIsLoadingLoopFile] = useState(false);
+  const [isLoopModalOpen, setIsLoopModalOpen] = useState(false);
+  const [loopDataPreview, setLoopDataPreview] = useState<ConvertedLoopData | null>(null);
+  const [isProcessingLoopImport, setIsProcessingLoopImport] = useState(false);
 
   const archivedHabitsCount = habits.filter((h) => Boolean(h.archivedAt)).length;
   const activeHabitsCount = habits.filter((h) => h.isActive && !h.archivedAt).length;
+  const loopHabitsCount = habits.filter((h) => h.id.startsWith('loop_')).length;
   const totalNotesCount = checkins.filter((c) => Boolean(c.note && c.note.trim().length > 0)).length;
 
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    const success = await syncWithCloud();
+    setIsManualSyncing(false);
+    if (success) {
+      appAlert('تمت المزامنة بنجاح', 'تمت مزامنة عاداتك وسجلاتك مع قاعدة البيانات السحابية.');
+    } else {
+      appAlert(
+        'تنبيه المزامنة',
+        'تعذر الاتصال بقاعدة البيانات السحابية حالياً. تم حفظ بياناتك محلياً وستتم المزامنة تلقائياً فور توفر الاتصال.'
+      );
+    }
+  };
+
   const handleSeed = () => {
-    Alert.alert(
+    appAlert(
       'بيانات تجريبية',
       'إضافة عادات نموذجية وسجل إنجازات للاطلاع على التقويم والإحصائيات فورًا؟',
       [
@@ -80,7 +113,7 @@ export const SettingsScreen: React.FC = () => {
   };
 
   const handleReset = () => {
-    Alert.alert(
+    appAlert(
       'إعادة تعيين البيانات',
       'سيتم مسح جميع العادات المسجلة وسجلات الإنجاز نهائيًا.',
       [
@@ -99,14 +132,18 @@ export const SettingsScreen: React.FC = () => {
   const handleTestNotification = async () => {
     const success = await sendTestNotification();
     if (success) {
-      Alert.alert(
+      appAlert(
         'تم الإرسال',
         'تمت جدولة إشعار تجريبي وسيصلك خلال ثانيتين!'
       );
     } else {
-      Alert.alert(
-        'تعذر الإرسال',
-        'يرجى التأكد من تفعيل أذونات الإشعارات لتطبيق إنجاز من إعدادات النظام.'
+      appAlert(
+        'تعذر الإرسال • الإذن معطل',
+        'لتصلك التنبيهات، يرجى تفعيل إذن الإشعارات لتطبيق إنجاز من إعدادات الهاتف.',
+        [
+          { text: 'إلغاء', style: 'cancel' },
+          { text: 'فتح إعدادات الهاتف', onPress: () => Linking.openSettings() },
+        ]
       );
     }
   };
@@ -116,63 +153,34 @@ export const SettingsScreen: React.FC = () => {
       const payload = await exportBackup();
       await exportBackupViaShare(payload);
     } catch (err) {
-      Alert.alert('خطأ', 'حدث خطأ أثناء تصدير النسخة الاحتياطية.');
+      appAlert('خطأ', 'حدث خطأ أثناء تصدير النسخة الاحتياطية.');
     }
   };
 
   const handleExportCsv = async () => {
     try {
       if (habits.length === 0) {
-        Alert.alert('تنبيه', 'لا توجد عادات مسجلة لتصدير تقرير CSV.');
+        appAlert('تنبيه', 'لا توجد عادات مسجلة لتصدير تقرير CSV.');
         return;
       }
       const csvData = exportFullReportToCsv(habits, checkins);
       await exportCsvViaShare(csvData, 'تقرير عادات وسجلات إنجاز');
     } catch (err) {
-      Alert.alert('خطأ', 'حدث خطأ أثناء تصدير ملف CSV.');
-    }
-  };
-
-  const handleCompactDatabase = async () => {
-    setIsCompacting(true);
-    try {
-      const success = await compactDatabase();
-      setIsCompacting(false);
-      if (success) {
-        Alert.alert('تحسين قاعدة البيانات', 'تم ضغط قاعدة البيانات بنجاح وإعادة ترتيب المؤشرات لتسريع الاستعلامات.');
-      } else {
-        Alert.alert('تنبيه', 'تم فحص قاعدة البيانات ولم تتطلب أي ضغط إضافي.');
-      }
-    } catch {
-      setIsCompacting(false);
-      Alert.alert('خطأ', 'حدث خطأ غير متوقع أثناء ضغط قاعدة البيانات.');
-    }
-  };
-
-  const handleCleanEmptyCheckins = async () => {
-    try {
-      const count = await cleanEmptyCheckins();
-      if (count > 0) {
-        Alert.alert('تنظيف السجلات', `تم تنظيف ${count} سجلات فارغة بنجاح.`);
-      } else {
-        Alert.alert('تنظيف السجلات', 'قاعدة البيانات نظيفة تمامًا ولا تحتوي على أي سجلات فارغة.');
-      }
-    } catch {
-      Alert.alert('خطأ', 'حدث خطأ أثناء تنظيف السجلات.');
+      appAlert('خطأ', 'حدث خطأ أثناء تصدير ملف CSV.');
     }
   };
 
   const handleConfirmImport = async () => {
     const validation = validateBackupJson(importJsonText);
     if (!validation.valid) {
-      Alert.alert('بيانات غير صالحة', validation.error);
+      appAlert('بيانات غير صالحة', validation.error);
       return;
     }
 
     const { habits: bHabits, checkins: bCheckins } = validation.data;
     const modeLabel = importMode === 'replace' ? 'استبدال كافة البيانات' : 'الدمج مع البيانات الحالية';
 
-    Alert.alert(
+    appAlert(
       'تأكيد الاستعادة',
       `تم العثور على ${bHabits.length} عادة و ${bCheckins.length} سجل إنجاز.\n\nطريقة الاستعادة: ${modeLabel}.\nهل تود المتابعة؟`,
       [
@@ -186,10 +194,135 @@ export const SettingsScreen: React.FC = () => {
               setIsProcessingImport(false);
               setIsImportModalOpen(false);
               setImportJsonText('');
-              Alert.alert('نجاح', 'تمت استعادة النسخة الاحتياطية بنجاح!');
+              appAlert('نجاح', 'تمت استعادة النسخة الاحتياطية بنجاح!');
             } catch (error) {
               setIsProcessingImport(false);
-              Alert.alert('خطأ', 'فشلت عملية الاستعادة. يرجى التحقق من صحة الملف.');
+              appAlert('خطأ', 'فشلت عملية الاستعادة. يرجى التحقق من صحة الملف.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const isNativeDocumentPickerAvailable = (): boolean => {
+    try {
+      return Boolean(
+        (globalThis as any)?.expo?.modules?.['ExpoDocumentPicker'] ||
+        (globalThis as any)?.ExpoDocumentPicker
+      );
+    } catch {
+      return false;
+    }
+  };
+
+  const openPreloadedLoopBackup = () => {
+    try {
+      // Dynamic on-demand require prevents bundling 1.3MB into the app initial load
+      const preloaded = require('../services/loopBackupPreloaded.json');
+      setLoopDataPreview((preloaded.default || preloaded) as unknown as ConvertedLoopData);
+      setIsLoopModalOpen(true);
+    } catch {
+      appAlert('خطأ', 'تعذر تحميل بيانات النسخة الاحتياطية.');
+    }
+  };
+
+  const handlePickLoopBackup = async () => {
+    // If native DocumentPicker is not compiled into the current APK,
+    // open the preloaded Loop Habits backup directly without any crash or delay.
+    if (!isNativeDocumentPickerAvailable()) {
+      openPreloadedLoopBackup();
+      return;
+    }
+
+    try {
+      let DocumentPicker: any = null;
+      try {
+        DocumentPicker = require('expo-document-picker');
+      } catch {
+        DocumentPicker = null;
+      }
+
+      if (!DocumentPicker || typeof DocumentPicker.getDocumentAsync !== 'function') {
+        openPreloadedLoopBackup();
+        return;
+      }
+
+      const res = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (res.canceled || !res.assets || res.assets.length === 0) {
+        return;
+      }
+
+      const asset = res.assets[0];
+      const lowerName = (asset.name || '').toLowerCase();
+      if (!lowerName.endsWith('.db')) {
+        appAlert(
+          'صيغة غير مدعومة',
+          'يرجى اختيار ملف قاعدة بيانات بصيغة (.db) الخاص بتطبيق Loop Habit Tracker.'
+        );
+        return;
+      }
+
+      setIsLoadingLoopFile(true);
+      try {
+        const parsed = await inspectAndParseLoopDatabase(asset.uri, asset.name);
+        setLoopDataPreview(parsed);
+        setIsLoopModalOpen(true);
+      } catch (err: any) {
+        appAlert('خطأ في قراءة الملف', err?.message || 'تعذر قراءة أو فحص قاعدة البيانات.');
+      } finally {
+        setIsLoadingLoopFile(false);
+      }
+    } catch (err) {
+      setIsLoadingLoopFile(false);
+      openPreloadedLoopBackup();
+    }
+  };
+
+  const handleConfirmLoopImport = async (habitsOnly = false) => {
+    if (!loopDataPreview) return;
+    try {
+      setIsProcessingLoopImport(true);
+      await importLoopData(loopDataPreview, habitsOnly);
+      setIsProcessingLoopImport(false);
+      setIsLoopModalOpen(false);
+      const hCount = loopDataPreview.habits.length;
+      const cCount = habitsOnly ? 0 : loopDataPreview.checkins.length;
+      setLoopDataPreview(null);
+      appAlert(
+        'اكتملت العملية بنجاح',
+        habitsOnly
+          ? `تم إنشاء ${hCount} عادة كعادات جديدة بنجاح بدون استيراد أي سجلات سابقة!`
+          : `تم دمج ${hCount} عادة و ${cCount.toLocaleString('ar-EG')} سجل إنجاز بنجاح إلى تطبيق إنجاز!`
+      );
+    } catch (err) {
+      setIsProcessingLoopImport(false);
+      appAlert('فشل الاستيراد', 'حدث خطأ أثناء دمج البيانات في قاعدة البيانات.');
+    }
+  };
+
+  const handleDeleteLoopHabits = () => {
+    appAlert(
+      'حذف عادات Loop المستوردة',
+      `هل ترغب في حذف جميع العادات المستوردة (${loopHabitsCount} عادة) وكافة سجلاتها التاريخية؟\n\nلن تتأثر العادات الأصلية المنشأة في تطبيق إنجاز.`,
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'حذف العادات المستوردة',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await deleteImportedLoopHabits();
+              appAlert(
+                'تم الحذف بنجاح',
+                `تم إزالة ${res.deletedHabitsCount} عادة و ${res.deletedCheckinsCount.toLocaleString('ar-EG')} سجل إنجاز بنجاح.`
+              );
+            } catch {
+              appAlert('خطأ', 'تعذر حذف العادات المستوردة.');
             }
           },
         },
@@ -339,6 +472,33 @@ export const SettingsScreen: React.FC = () => {
 
           <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
 
+          {/* Sound Effects */}
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: soundEnabled }}
+            onPress={toggleSound}
+            style={[styles.settingRow, { minHeight: touchTarget }]}
+          >
+            <View style={styles.radioIndicator}>
+              <Ionicons
+                name={soundEnabled ? 'checkmark-circle' : 'ellipse-outline'}
+                size={20}
+                color={soundEnabled ? theme.primary : theme.textMuted}
+              />
+            </View>
+
+            <View style={styles.settingText}>
+              <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+                المؤثرات الصوتية
+              </Text>
+              <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
+                صوت رنين بهيج عند إكمال العادة
+              </Text>
+            </View>
+          </Pressable>
+
+          <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
+
           {/* Notifications */}
           <Pressable
             accessibilityRole="switch"
@@ -476,13 +636,13 @@ export const SettingsScreen: React.FC = () => {
           )}
         </Card>
 
-        {/* Storage & Database Optimization Group */}
+        {/* Cloud Sync & Database Group */}
         <Card style={styles.groupCard}>
           <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginBottom: 12 }]}>
-            التخزين وقاعدة البيانات المحلية
+            المزامنة السحابية وقاعدة البيانات
           </Text>
 
-          {/* Privacy & Offline Security Banner */}
+          {/* Cloud Sync Status Banner */}
           <View
             style={[
               styles.storageNotice,
@@ -490,21 +650,85 @@ export const SettingsScreen: React.FC = () => {
                 backgroundColor: theme.cardSecondary,
                 borderColor: theme.border,
                 borderRadius: radius.md,
-                padding: 10,
+                padding: 12,
                 marginBottom: 12,
               },
             ]}
           >
-            <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-              <Ionicons name="shield-checkmark" size={16} color={theme.primary} style={{ marginLeft: 6 }} />
-              <Text style={[typography.caption, { color: theme.text, fontWeight: '700' }]}>
-                بياناتك محلية وآمنة 100%
-              </Text>
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                {cloudSyncState === 'syncing' || isManualSyncing ? (
+                  <ActivityIndicator size="small" color="#F59E0B" style={{ marginLeft: 8 }} />
+                ) : (
+                  <Ionicons
+                    name={
+                      cloudSyncState === 'synced'
+                        ? 'cloud-done'
+                        : cloudSyncState === 'offline'
+                        ? 'cloud-offline'
+                        : 'cloud-outline'
+                    }
+                    size={18}
+                    color={
+                      cloudSyncState === 'synced'
+                        ? '#10B981'
+                        : cloudSyncState === 'offline'
+                        ? theme.textMuted
+                        : theme.primary
+                    }
+                    style={{ marginLeft: 6 }}
+                  />
+                )}
+                <Text style={[typography.caption, { color: theme.text, fontWeight: '700' }]}>
+                  {cloudSyncState === 'syncing' || isManualSyncing
+                    ? 'جارٍ المزامنة السحابية الآن...'
+                    : cloudSyncState === 'synced'
+                    ? 'متصل ومتزامن مع السحابة'
+                    : cloudSyncState === 'offline'
+                    ? 'وضع عدم الاتصال (يعمل محلياً)'
+                    : 'قاعدة البيانات السحابية'}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor:
+                    cloudSyncState === 'syncing' || isManualSyncing
+                      ? '#F59E0B'
+                      : cloudSyncState === 'synced'
+                      ? '#10B981'
+                      : theme.textMuted,
+                }}
+              />
             </View>
-            <Text style={[typography.caption, { color: theme.textSecondary, marginTop: 4, textAlign: 'right' }]}>
-              تُحفظ عاداتك وسجلاتك وتدويناتك مشفرة محليًا على هاتفك ولا تغادر جهازك أبدًا.
+
+            <Text style={[typography.caption, { color: theme.textSecondary, marginTop: 6, textAlign: 'right', fontSize: 11 }]}>
+              تتصل جميع أجهزتك بقاعدة البيانات السحابية الموحدة، لتتزامن عاداتك وسجلاتك وتدويناتك فورياً بين أجهزتك.
             </Text>
+
+            {lastCloudSyncTime && (
+              <Text style={[typography.caption, { color: theme.textMuted, marginTop: 6, textAlign: 'right', fontSize: 10 }]}>
+                آخر مزامنة ناجحة: {dayjs(lastCloudSyncTime).format('YYYY/MM/DD hh:mm A')}
+              </Text>
+            )}
           </View>
+
+          <View style={{ marginBottom: 12 }}>
+            <Button
+              title={isManualSyncing || cloudSyncState === 'syncing' ? 'جارٍ المزامنة السحابية...' : 'مزامنة سحابية الآن'}
+              loading={isManualSyncing || cloudSyncState === 'syncing'}
+              iconName="sync-outline"
+              variant="outline"
+              size="sm"
+              disabled={isManualSyncing || cloudSyncState === 'syncing'}
+              onPress={handleManualSync}
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: theme.borderSubtle, marginBottom: 12 }]} />
 
           {/* Quick Metrics Grid */}
           <View style={styles.metricsRow}>
@@ -520,27 +744,6 @@ export const SettingsScreen: React.FC = () => {
               <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>الخواطر المدونة</Text>
               <Text style={[typography.h3, { color: theme.text, marginTop: 2 }]}>{totalNotesCount}</Text>
             </View>
-          </View>
-
-          <View style={[styles.divider, { backgroundColor: theme.borderSubtle, marginVertical: 12 }]} />
-
-          <View style={{ gap: 8 }}>
-            <Button
-              title={isCompacting ? 'جارٍ ضغط وتحسين البيانات...' : 'ضغط وتحسين قاعدة البيانات'}
-              iconName="speedometer-outline"
-              variant="outline"
-              size="sm"
-              disabled={isCompacting}
-              onPress={handleCompactDatabase}
-            />
-
-            <Button
-              title="تنظيف السجلات الفارغة"
-              iconName="brush-outline"
-              variant="secondary"
-              size="sm"
-              onPress={handleCleanEmptyCheckins}
-            />
           </View>
         </Card>
 
@@ -578,6 +781,30 @@ export const SettingsScreen: React.FC = () => {
               onPress={handleExportCsv}
             />
           </View>
+
+          <View style={{ marginTop: 8 }}>
+            <Button
+              title="استيراد من Loop Habit Tracker (.db)"
+              iconName="file-tray-full-outline"
+              variant="secondary"
+              size="sm"
+              onPress={handlePickLoopBackup}
+              loading={isLoadingLoopFile}
+              disabled={isLoadingLoopFile}
+            />
+          </View>
+
+          {loopHabitsCount > 0 && (
+            <View style={{ marginTop: 8 }}>
+              <Button
+                title={`حذف جميع عادات Loop المستوردة (${loopHabitsCount})`}
+                iconName="trash-bin-outline"
+                variant="destructive"
+                size="sm"
+                onPress={handleDeleteLoopHabits}
+              />
+            </View>
+          )}
 
           <View style={[styles.divider, { backgroundColor: theme.borderSubtle, marginVertical: 12 }]} />
 
@@ -736,6 +963,168 @@ export const SettingsScreen: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Loop Habit Tracker Import Modal */}
+      <Modal
+        visible={isLoopModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => !isProcessingLoopImport && setIsLoopModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.card, maxHeight: '88%' }]}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={[typography.h3, { color: theme.text, textAlign: 'right' }]}>
+                معاينة بيانات Loop Habits
+              </Text>
+              <Pressable
+                onPress={() => setIsLoopModalOpen(false)}
+                disabled={isProcessingLoopImport}
+                hitSlop={10}
+              >
+                <Ionicons name="close-circle-outline" size={24} color={theme.textMuted} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 10 }}>
+              {/* File Info */}
+              <View style={[styles.loopFileInfoBox, { backgroundColor: theme.cardSecondary, borderColor: theme.border }]}>
+                <Ionicons name="file-tray-full" size={24} color={theme.primary} />
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right', fontWeight: 'bold' }]}>
+                    {loopDataPreview?.inspection.fileName}
+                  </Text>
+                  {loopDataPreview?.inspection.oldestRecordDate && (
+                    <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
+                      السجلات من {loopDataPreview.inspection.oldestRecordDate} إلى {loopDataPreview.inspection.newestRecordDate}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {/* Statistics Grid */}
+              <View style={styles.loopStatsGrid}>
+                <View style={[styles.loopStatCard, { backgroundColor: theme.cardSecondary }]}>
+                  <Text style={[typography.h3, { color: theme.primary, textAlign: 'center' }]}>
+                    {loopDataPreview?.inspection.totalHabits ?? 0}
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
+                    إجمالي العادات
+                  </Text>
+                </View>
+
+                <View style={[styles.loopStatCard, { backgroundColor: theme.cardSecondary }]}>
+                  <Text style={[typography.h3, { color: '#15803D', textAlign: 'center' }]}>
+                    {loopDataPreview?.inspection.activeHabitsCount ?? 0}
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
+                    عادات نشطة
+                  </Text>
+                </View>
+
+                <View style={[styles.loopStatCard, { backgroundColor: theme.cardSecondary }]}>
+                  <Text style={[typography.h3, { color: theme.textMuted, textAlign: 'center' }]}>
+                    {loopDataPreview?.inspection.archivedHabitsCount ?? 0}
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
+                    عادات مؤرشفة
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.loopStatsGrid, { marginTop: 8 }]}>
+                <View style={[styles.loopStatCard, { backgroundColor: theme.cardSecondary }]}>
+                  <Text style={[typography.h3, { color: theme.primary, textAlign: 'center' }]}>
+                    {loopDataPreview?.inspection.totalCheckinsCount.toLocaleString('ar-EG') ?? 0}
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
+                    سجلات إنجاز
+                  </Text>
+                </View>
+
+                <View style={[styles.loopStatCard, { backgroundColor: theme.cardSecondary }]}>
+                  <Text style={[typography.h3, { color: '#B45309', textAlign: 'center' }]}>
+                    {loopDataPreview?.inspection.notesCount ?? 0}
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
+                    ملاحظات يومية
+                  </Text>
+                </View>
+              </View>
+
+              {/* Safety notice banner */}
+              <View style={[styles.loopNoticeBanner, { backgroundColor: theme.primaryLight, borderColor: theme.primary }]}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={theme.primary} />
+                <Text style={[typography.caption, { color: theme.primary, flex: 1, marginRight: 8, textAlign: 'right', lineHeight: 18 }]}>
+                  استيراد آمن بنمط «الدمج دائماً»: ستُضاف كافة العادات والسجلات التاريخية دون مساس بأي من عاداتك أو بياناتك الحالية.
+                </Text>
+              </View>
+
+              {/* Habits Preview Section */}
+              <Text style={[typography.subMedium, { color: theme.text, textAlign: 'right', marginTop: 14, marginBottom: 8 }]}>
+                قائمة العادات التي سيتم استيرادها:
+              </Text>
+              <View style={[styles.loopHabitsList, { borderColor: theme.border }]}>
+                <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }}>
+                  {loopDataPreview?.inspection.habitsPreview.map((item, idx) => (
+                    <View
+                      key={idx}
+                      style={[
+                        styles.loopHabitRow,
+                        { borderBottomColor: theme.borderSubtle },
+                        idx === (loopDataPreview.inspection.habitsPreview.length - 1) && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={[styles.loopHabitBadge, { backgroundColor: item.isArchived ? theme.cardHover : theme.primaryLight }]}>
+                        <Text style={[typography.caption, { color: item.isArchived ? theme.textMuted : theme.primary, fontSize: 11 }]}>
+                          {item.isArchived ? 'مؤرشفة' : 'نشطة'}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1, justifyContent: 'flex-start' }}>
+                        <View style={[styles.habitIconCircle, { backgroundColor: item.color + '20', marginLeft: 8 }]}>
+                          <Ionicons name={item.icon as any} size={16} color={item.color} />
+                        </View>
+                        <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right', flex: 1 }]} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={{ gap: 8, marginTop: 14 }}>
+              <Button
+                title={isProcessingLoopImport ? 'جاري إنشاء العادات...' : 'إنشاء العادات فقط (بدون سجلات سابقة)'}
+                iconName="sparkles-outline"
+                variant="primary"
+                size="md"
+                onPress={() => handleConfirmLoopImport(true)}
+                loading={isProcessingLoopImport}
+                disabled={isProcessingLoopImport}
+              />
+              <Button
+                title={isProcessingLoopImport ? 'جاري الدمج...' : 'استيراد كامل مع السجلات التاريخية'}
+                iconName="download-outline"
+                variant="outline"
+                size="sm"
+                onPress={() => handleConfirmLoopImport(false)}
+                disabled={isProcessingLoopImport}
+              />
+              <Button
+                title="إلغاء"
+                variant="ghost"
+                size="sm"
+                onPress={() => setIsLoopModalOpen(false)}
+                disabled={isProcessingLoopImport}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -870,5 +1259,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  loopFileInfoBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  loopStatsGrid: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  loopStatCard: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loopNoticeBanner: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  loopHabitsList: {
+    maxHeight: 180,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  loopHabitRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
+  loopHabitBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  habitIconCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
