@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -102,59 +102,70 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   }
 
   // Calculate overall stats for selected date
-  const overallStats = calculateOverallStats(habits, checkins, selectedDate);
+  const overallStats = useMemo(() => calculateOverallStats(habits, checkins, selectedDate), [habits, checkins, selectedDate]);
 
   // Unarchived active habits
-  const activeUnarchivedHabits = habits.filter((h) => !h.archivedAt);
+  const activeUnarchivedHabits = useMemo(() => habits.filter((h) => !h.archivedAt), [habits]);
 
   // Relevant habits for selected date (active due habits + paused habits completed on this date)
-  const dueHabits = getHabitsForDate(habits, checkins, selectedDate);
+  const dueHabits = useMemo(() => getHabitsForDate(habits, checkins, selectedDate), [habits, checkins, selectedDate]);
   const isSearchActive = Boolean(searchQuery.trim());
 
   // Search searches across ALL active habits so user can find and log off-schedule habits too
-  const baseHabits = isSearchActive
+  const baseHabits = useMemo(() => isSearchActive
     ? filterHabitsByQuery(activeUnarchivedHabits, searchQuery)
-    : dueHabits;
+    : dueHabits, [isSearchActive, activeUnarchivedHabits, searchQuery, dueHabits]);
 
   // Filter by category
-  const categoryFilteredHabits = selectedCategory === 'الكل'
+  const categoryFilteredHabits = useMemo(() => selectedCategory === 'الكل'
     ? baseHabits
-    : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+    : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory), [baseHabits, selectedCategory]);
 
-  const categoryCompletedCount = categoryFilteredHabits.filter((h) =>
+  const categoryCompletedCount = useMemo(() => categoryFilteredHabits.filter((h) =>
     checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
-  ).length;
+  ).length, [categoryFilteredHabits, checkins, selectedDate]);
 
-  const filteredHabits = categoryFilteredHabits.filter((h) => {
+  const filteredHabits = useMemo(() => categoryFilteredHabits.filter((h) => {
     const isCompleted = checkins.some(
       (c) => c.habitId === h.id && c.date === selectedDate && c.completed
     );
     if (filter === 'completed') return isCompleted;
     if (filter === 'pending') return !isCompleted;
     return true; // 'all'
-  });
+  }), [categoryFilteredHabits, checkins, selectedDate, filter]);
 
-  const sortedFilteredHabits = sortHabits(
+  const sortedFilteredHabits = useMemo(() => sortHabits(
     filteredHabits,
     sortOption,
     checkins,
     selectedDate
-  );
+  ), [filteredHabits, sortOption, checkins, selectedDate]);
 
   // Off-schedule habits for selected date (when not searching)
-  const offScheduleHabits = activeUnarchivedHabits.filter(
+  const offScheduleHabits = useMemo(() => activeUnarchivedHabits.filter(
     (h) => !dueHabits.some((dh) => dh.id === h.id)
-  );
-  const filteredOffScheduleHabits = selectedCategory === 'الكل'
+  ), [activeUnarchivedHabits, dueHabits]);
+  const filteredOffScheduleHabits = useMemo(() => selectedCategory === 'الكل'
     ? offScheduleHabits
-    : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
+    : offScheduleHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory), [offScheduleHabits, selectedCategory]);
 
-  const sortedOffScheduleHabits = sortHabits(
+  const sortedOffScheduleHabits = useMemo(() => sortHabits(
     filteredOffScheduleHabits,
     sortOption,
     checkins,
     selectedDate
-  );
+  ), [filteredOffScheduleHabits, sortOption, checkins, selectedDate]);
+
+  const habitStatsCache = useMemo(() => {
+    const cache = new Map();
+    const allHabitsToRender = [...sortedFilteredHabits, ...(isOffScheduleExpanded ? sortedOffScheduleHabits : [])];
+    allHabitsToRender.forEach(h => {
+      if (!cache.has(h.id)) {
+        cache.set(h.id, calculateHabitStats(h, checkins));
+      }
+    });
+    return cache;
+  }, [sortedFilteredHabits, sortedOffScheduleHabits, checkins, isOffScheduleExpanded]);
 
   const handleShareDaily = async () => {
     try {
@@ -557,7 +568,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             );
             const isCompleted = Boolean(checkin?.completed);
             const currentCount = checkin ? checkin.count : 0;
-            const stats = calculateHabitStats(habit, checkins);
+            const stats = habitStatsCache.get(habit.id) || calculateHabitStats(habit, checkins);
             const isDue = isHabitDueOnDate(habit, selectedDate, true);
 
             return (
@@ -630,7 +641,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 );
                 const isCompleted = Boolean(checkin?.completed);
                 const currentCount = checkin ? checkin.count : 0;
-                const stats = calculateHabitStats(habit, checkins);
+                const stats = habitStatsCache.get(habit.id) || calculateHabitStats(habit, checkins);
 
                 return (
                   <HabitCard
@@ -746,7 +757,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         onShare={async () => {
           if (activeQuickActionHabit) {
             try {
-              const stats = calculateHabitStats(activeQuickActionHabit, checkins);
+              const stats = habitStatsCache.get(activeQuickActionHabit.id) || calculateHabitStats(activeQuickActionHabit, checkins);
               const milestone = calculateStreakMilestone(stats.currentStreak);
               const text = formatHabitStatsForShare(
                 activeQuickActionHabit,
