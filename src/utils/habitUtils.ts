@@ -145,15 +145,17 @@ export const getHabitCategory = (iconName?: string): string => {
 export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = true): boolean => {
   if (requireActive && (!habit.isActive || habit.archivedAt)) return false;
 
-  const targetDate = dayjs(dateStr).startOf('day');
-  const createdDate = dayjs(habit.createdAt).startOf('day');
+  // Performance Optimization (Bolt ⚡): Use string comparison for YYYY-MM-DD formats
+  // instead of dayjs parsing. This is called heavily in loops and significantly reduces CPU overhead.
+  // Note: We use dayjs().format('YYYY-MM-DD') for createdAt/archivedAt because the raw ISO string
+  // is in UTC, which might be a different calendar date than the user's local timezone.
+  // We format once and compare strings rather than calling .isBefore/.isAfter multiple times.
+  const habitCreatedAtDate = dayjs(habit.createdAt).format('YYYY-MM-DD');
+  if (dateStr < habitCreatedAtDate) return false;
 
-  // If date is before habit creation, it wasn't due then
-  if (targetDate.isBefore(createdDate)) return false;
-
-  // If habit was archived, it was not due on dates after archive date
-  if (habit.archivedAt && targetDate.isAfter(dayjs(habit.archivedAt).startOf('day'))) {
-    return false;
+  if (habit.archivedAt) {
+    const archivedAtDate = dayjs(habit.archivedAt).format('YYYY-MM-DD');
+    if (dateStr > archivedAtDate) return false;
   }
 
   if (habit.frequency === 'daily') {
@@ -161,7 +163,8 @@ export const isHabitDueOnDate = (habit: Habit, dateStr: string, requireActive = 
   }
 
   if (habit.frequency === 'specific_days') {
-    const dayOfWeek = targetDate.day(); // 0 is Sunday, 6 is Saturday
+    // Only parse dayjs if we really need to know the day of the week
+    const dayOfWeek = dayjs(dateStr).day(); // 0 is Sunday, 6 is Saturday
     return Array.isArray(habit.frequencyDays) && habit.frequencyDays.includes(dayOfWeek);
   }
 
