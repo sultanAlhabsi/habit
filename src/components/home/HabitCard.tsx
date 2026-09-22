@@ -26,7 +26,7 @@ interface HabitCardProps {
   onPressNote?: () => void;
 }
 
-export const HabitCard: React.FC<HabitCardProps> = ({
+const HabitCardComponent: React.FC<HabitCardProps> = ({
   habit,
   isCompleted,
   streak,
@@ -542,3 +542,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// Performance optimization: prevent unnecessary re-renders in lists
+const areEqual = (prevProps: HabitCardProps, nextProps: HabitCardProps) => {
+  return (
+    prevProps.isCompleted === nextProps.isCompleted &&
+    prevProps.streak === nextProps.streak &&
+    prevProps.currentCount === nextProps.currentCount &&
+    prevProps.isFuture === nextProps.isFuture &&
+    prevProps.isOffSchedule === nextProps.isOffSchedule &&
+    prevProps.hasNote === nextProps.hasNote &&
+    prevProps.habit === nextProps.habit
+  );
+};
+
+export const HabitCard = React.memo(HabitCardComponent, areEqual);

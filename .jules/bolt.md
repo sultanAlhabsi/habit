@@ -1,0 +1,3 @@
+## 2024-05-24 - [React Native FlatList Performance]
+**Learning:** Using React.memo with a custom areEqual function in a React Native app with complex list items (like HabitCard) is tricky. By strictly whitelisting props, we ignore changes to callbacks, creating a risk of stale closures if parent callbacks depend on state.
+**Action:** When optimizing list components with many callbacks, either rely on default shallow comparison combined with `useCallback` on the parent, or if a custom `areEqual` is necessary, deep compare the main data object (`habit`) instead of hardcoding its keys to avoid silent bugs when new fields are added.
