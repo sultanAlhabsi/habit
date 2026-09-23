@@ -2,16 +2,34 @@
  * Neon PostgreSQL Serverless Cloud Service
  * Communicates directly with Neon's HTTP SQL endpoint over HTTPS.
  * Fully compatible with React Native / Hermes (Zero Node native binary dependencies).
+ *
+ * SECURITY: The DATABASE_URL is never hardcoded here.
+ * It is injected at build time from EAS Secrets via app.config.js → expo.extra.databaseUrl.
+ * Manage the secret with: `eas env:set --scope project --name DATABASE_URL --visibility secret`
  */
 
+import Constants from 'expo-constants';
 import type { Habit, HabitCheckin } from '../types/habit';
 
-export const NEON_CONNECTION_STRING =
-  process.env.DATABASE_URL ||
-  'postgresql://neondb_owner:npg_khwMZUG5Imv1@ep-crimson-term-ayuzmta1-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require';
+/**
+ * Reads the Neon PostgreSQL connection string from EAS Secrets (injected at build time).
+ * Returns null if not configured — cloud sync will be silently disabled.
+ */
+export const NEON_CONNECTION_STRING: string | null =
+  (Constants.expoConfig?.extra?.databaseUrl as string | undefined) ?? null;
 
-const NEON_HOST = 'ep-crimson-term-ayuzmta1-pooler.c-5.us-east-2.aws.neon.tech';
-const NEON_SQL_ENDPOINT = `https://${NEON_HOST}/sql`;
+const _getHost = (): string | null => {
+  if (!NEON_CONNECTION_STRING) return null;
+  try {
+    const url = new URL(NEON_CONNECTION_STRING);
+    return url.hostname;
+  } catch {
+    return null;
+  }
+};
+
+const NEON_HOST = _getHost();
+const NEON_SQL_ENDPOINT = NEON_HOST ? `https://${NEON_HOST}/sql` : null;
 
 export interface NeonQueryResult<T = any> {
   rows?: T[];
@@ -22,11 +40,16 @@ export interface NeonQueryResult<T = any> {
 
 /**
  * Execute a parameterized query against the Neon PostgreSQL HTTP endpoint.
+ * Throws immediately if DATABASE_URL was not provided via EAS Secrets.
  */
 export const runNeonQuery = async <T = any>(
   query: string,
   params: any[] = []
 ): Promise<T[]> => {
+  if (!NEON_SQL_ENDPOINT || !NEON_CONNECTION_STRING) {
+    throw new Error('[NeonService] DATABASE_URL is not configured. Cloud sync is unavailable.');
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12000);
 
@@ -58,6 +81,7 @@ export const runNeonQuery = async <T = any>(
     throw error;
   }
 };
+
 
 /**
  * Check if the remote Neon database is reachable.
