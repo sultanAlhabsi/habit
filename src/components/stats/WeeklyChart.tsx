@@ -13,7 +13,7 @@ import dayjs from 'dayjs';
 import { DayAdherence, Habit, HabitCheckin } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
-import { calculateWeekAdherence, formatWeekRangeArabic } from '../../utils/habitUtils';
+import { calculateWeekAdherence, formatWeekRangeArabic, toArabicNumerals } from '../../utils/habitUtils';
 
 interface WeeklyChartProps {
   habits?: Habit[];
@@ -95,7 +95,7 @@ const AnimatedWeeklyBar: React.FC<AnimatedWeeklyBarProps> = React.memo(({
     isItemFuture
       ? 'يوم قادم'
       : item.totalCount > 0
-      ? `نسبة الالتزام ${item.rate}%`
+      ? `نسبة الالتزام ${toArabicNumerals(item.rate)}٪`
       : 'لا توجد عادات'
   }`;
 
@@ -116,7 +116,7 @@ const AnimatedWeeklyBar: React.FC<AnimatedWeeklyBarProps> = React.memo(({
             },
           ]}
         >
-          {isItemFuture ? '-' : item.totalCount > 0 ? `${item.rate}%` : '-'}
+          {isItemFuture ? '-' : item.totalCount > 0 ? `${toArabicNumerals(item.rate)}٪` : '-'}
         </Text>
       </Animated.View>
 

@@ -685,6 +685,116 @@ export const getHabitsForDate = (
 };
 
 /**
+ * Retrieve habits that are active, non-archived, scheduled on dateStr, and not completed yet.
+ */
+export const getPendingDueHabitsForDate = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[],
+  dateStr: string
+): Habit[] => {
+  const targetDay = dayjs(dateStr).startOf('day');
+  const today = dayjs().startOf('day');
+  // Disallow completing future dates
+  if (targetDay.isAfter(today)) return [];
+
+  // Completed habit IDs on this date
+  const completedIds = new Set(
+    allCheckins
+      .filter((c) => c.date === dateStr && c.completed)
+      .map((c) => c.habitId)
+  );
+
+  return habits.filter((h) => {
+    if (!h.isActive || h.archivedAt) return false;
+    if (!isHabitDueOnDate(h, dateStr, true)) return false;
+    return !completedIds.has(h.id);
+  });
+};
+
+/**
+ * Retrieve habits that are active, non-archived, scheduled on dateStr, and currently completed.
+ */
+export const getCompletedDueHabitsForDate = (
+  habits: Habit[],
+  allCheckins: HabitCheckin[],
+  dateStr: string
+): Habit[] => {
+  const completedIds = new Set(
+    allCheckins
+      .filter((c) => c.date === dateStr && c.completed)
+      .map((c) => c.habitId)
+  );
+
+  return habits.filter((h) => {
+    if (!h.isActive || h.archivedAt) return false;
+    if (!isHabitDueOnDate(h, dateStr, true)) return false;
+    return completedIds.has(h.id);
+  });
+};
+
+/**
+ * Generate HabitCheckin records to mark pending habits completed on dateStr.
+ */
+export const buildBatchCheckinPayloadForCompletion = (
+  pendingHabits: Habit[],
+  allCheckins: HabitCheckin[],
+  dateStr: string,
+  nowIso = new Date().toISOString()
+): HabitCheckin[] => {
+  const existingMap = new Map<string, HabitCheckin>();
+  for (const c of allCheckins) {
+    if (c.date === dateStr) {
+      existingMap.set(c.habitId, c);
+    }
+  }
+
+  return pendingHabits.map((habit) => {
+    const existing = existingMap.get(habit.id);
+    const targetCount = Math.max(1, habit.targetCount || 1);
+    return {
+      id: existing ? existing.id : `chk_${habit.id}_${dateStr}`,
+      habitId: habit.id,
+      date: dateStr,
+      count: targetCount,
+      completed: true,
+      updatedAt: nowIso,
+      note: existing?.note,
+    };
+  });
+};
+
+/**
+ * Generate HabitCheckin records to reset completed habits back to pending on dateStr.
+ */
+export const buildBatchCheckinPayloadForReset = (
+  completedHabits: Habit[],
+  allCheckins: HabitCheckin[],
+  dateStr: string,
+  nowIso = new Date().toISOString()
+): HabitCheckin[] => {
+  const existingMap = new Map<string, HabitCheckin>();
+  for (const c of allCheckins) {
+    if (c.date === dateStr) {
+      existingMap.set(c.habitId, c);
+    }
+  }
+
+  return completedHabits.map((habit) => {
+    const existing = existingMap.get(habit.id);
+    return {
+      id: existing ? existing.id : `chk_${habit.id}_${dateStr}`,
+      habitId: habit.id,
+      date: dateStr,
+      count: 0,
+      completed: false,
+      updatedAt: nowIso,
+      note: existing?.note,
+    };
+  });
+};
+
+
+/**
  * Calculate 7-day adherence for any week (Sunday to Saturday) around a reference date
  */
 export const calculateWeekAdherence = (

@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
+import dayjs from 'dayjs';
 import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { ProgressBar } from '../common/ProgressBar';
 import { useTheme } from '../../theme/ThemeContext';
-import { formatArabicDate } from '../../utils/habitUtils';
+import { formatArabicDate, toArabicNumerals } from '../../utils/habitUtils';
 
 interface DailyProgressCardProps {
   date: string;
@@ -13,6 +14,8 @@ interface DailyProgressCardProps {
   completionRate: number;
   isToday?: boolean;
   onPressToday?: () => void;
+  onCompleteAll?: () => void;
+  onResetAll?: () => void;
 }
 
 export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
@@ -22,8 +25,11 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
   completionRate,
   isToday = true,
   onPressToday,
+  onCompleteAll,
+  onResetAll,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
+  const isFutureDate = dayjs(date).startOf('day').isAfter(dayjs().startOf('day'));
 
   return (
     <View
@@ -80,7 +86,7 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
         <View style={styles.metricRow}>
           <Text style={[typography.sub, { color: theme.textSecondary, marginLeft: 6 }]}>
             {totalCount > 0
-              ? `${completedCount} من ${totalCount} مكتملة`
+              ? `${toArabicNumerals(completedCount)} من ${toArabicNumerals(totalCount)} مكتملة`
               : 'لا توجد عادات'}
           </Text>
           {totalCount > 0 && (
@@ -94,7 +100,7 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
                   },
                 ]}
               >
-                {completionRate}%
+                {toArabicNumerals(completionRate)}٪
               </Text>
               {completionRate === 100 && (
                 <Ionicons
@@ -116,6 +122,53 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
             height={completionRate === 100 ? 4 : 3}
             color={theme.primary}
           />
+        </View>
+      )}
+
+      {/* Quick Bulk Completion / Reset Row */}
+      {totalCount > 0 && !isFutureDate && (
+        <View style={styles.actionRow}>
+          {completedCount < totalCount && onCompleteAll && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`إكمال جميع العادات المتبقية (${toArabicNumerals(totalCount - completedCount)})`}
+              onPress={onCompleteAll}
+              style={({ pressed }) => [
+                styles.actionButton,
+                {
+                  backgroundColor: theme.isDark ? `${theme.primary}18` : `${theme.primary}10`,
+                  borderColor: theme.isDark ? `${theme.primary}40` : `${theme.primary}25`,
+                  opacity: pressed ? 0.75 : 1,
+                },
+              ]}
+            >
+              <Ionicons name="checkmark-done-outline" size={14} color={theme.primary} style={{ marginLeft: 5 }} />
+              <Text style={[typography.caption, { color: theme.primary, fontWeight: '600', fontSize: 11 }]}>
+                إكمال المتبقي ({toArabicNumerals(totalCount - completedCount)})
+              </Text>
+            </Pressable>
+          )}
+
+          {completionRate === 100 && onResetAll && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إعادة تعيين عادات اليوم"
+              onPress={onResetAll}
+              style={({ pressed }) => [
+                styles.actionButton,
+                {
+                  backgroundColor: 'transparent',
+                  borderColor: 'transparent',
+                  opacity: pressed ? 0.6 : 0.85,
+                },
+              ]}
+            >
+              <Ionicons name="refresh-outline" size={13} color={theme.textMuted} style={{ marginLeft: 4 }} />
+              <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>
+                إلغاء تحديد الكل
+              </Text>
+            </Pressable>
+          )}
         </View>
       )}
     </View>
@@ -147,4 +200,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
   },
+  actionRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'flex-start',
+    marginTop: 8,
+  },
+  actionButton: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
 });
+

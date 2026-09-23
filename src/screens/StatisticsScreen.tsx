@@ -99,10 +99,10 @@ export const StatisticsScreen: React.FC = () => {
   const remainingHabitsCount = Math.max(0, rankedHabits.length - LEADERBOARD_INITIAL_COUNT);
 
   const kpis = [
-    { title: 'إنجاز اليوم', value: `${overall.todayCompletionRate}%` },
+    { title: 'إنجاز اليوم', value: `${toArabicNumerals(overall.todayCompletionRate)}٪` },
     { title: 'أعلى سلسلة', value: formatArabicStreakDays(overall.bestOverallStreak) },
-    { title: 'إجمالي المرات', value: `${overall.totalCheckinsEver}` },
-    { title: 'العادات النشطة', value: `${overall.activeHabits}` },
+    { title: 'إجمالي المرات', value: toArabicNumerals(overall.totalCheckinsEver) },
+    { title: 'العادات النشطة', value: toArabicNumerals(overall.activeHabits) },
   ];
 
   return (

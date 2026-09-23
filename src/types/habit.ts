@@ -1,3 +1,5 @@
+export type ThemeMode = 'light' | 'dark' | 'system';
+
 export type HabitFrequency = 'daily' | 'specific_days' | 'weekly_target' | 'monthly_day' | 'monthly_target';
 
 export interface Habit {

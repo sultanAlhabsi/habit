@@ -59,6 +59,7 @@ import {
   getWeeklyTargetProgress,
   getMonthlyTargetProgress,
   getPeriodicBadgeText,
+  toArabicNumerals,
 } from '../utils/habitUtils';
 
 
@@ -119,6 +120,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     updateCheckinNote,
     deleteCheckinNote,
     cloudSyncState,
+    completeAllDueHabits,
+    resetAllDueHabits,
   } = useHabitStore(
     useShallow((state) => ({
       habits: state.habits,
@@ -142,6 +145,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       updateCheckinNote: state.updateCheckinNote,
       deleteCheckinNote: state.deleteCheckinNote,
       cloudSyncState: state.cloudSyncState,
+      completeAllDueHabits: state.completeAllDueHabits,
+      resetAllDueHabits: state.resetAllDueHabits,
     }))
   );
 
@@ -395,6 +400,43 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     [selectedDate]
   );
 
+  const handleCompleteAll = useCallback(() => {
+    const pendingCount = dailyStats.todayTotalCount - dailyStats.todayCompletedCount;
+    if (pendingCount <= 0) return;
+
+    appAlert(
+      'إكمال عادات اليوم',
+      `هل تريد تسجيل إنجاز كافة العادات المتبقية (${toArabicNumerals(pendingCount)}) لهذا اليوم؟`,
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'إكمال الكل',
+          onPress: async () => {
+            await completeAllDueHabits(selectedDate);
+          },
+        },
+      ]
+    );
+  }, [dailyStats.todayTotalCount, dailyStats.todayCompletedCount, completeAllDueHabits, selectedDate]);
+
+  const handleResetAll = useCallback(() => {
+    if (dailyStats.todayCompletedCount <= 0) return;
+
+    appAlert(
+      'إعادة تعيين عادات اليوم',
+      'هل ترغب في إلغاء تحديد إنجاز عادات هذا اليوم؟',
+      [
+        { text: 'تراجع', style: 'cancel' },
+        {
+          text: 'إعادة تعيين',
+          style: 'destructive',
+          onPress: async () => {
+            await resetAllDueHabits(selectedDate);
+          },
+        },
+      ]
+    );
+  }, [dailyStats.todayCompletedCount, resetAllDueHabits, selectedDate]);
 
   const listHeaderComponent = useMemo(
     () => (
@@ -413,6 +455,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           completionRate={dailyStats.todayCompletionRate}
           isToday={isToday}
           onPressToday={() => setSelectedDate(todayStr)}
+          onCompleteAll={handleCompleteAll}
+          onResetAll={handleResetAll}
         />
 
         {/* Celebratory Banner when all habits completed for today */}
@@ -522,6 +566,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       categoryCompletedCount,
       activeSortItem,
       sortOption,
+      handleCompleteAll,
+      handleResetAll,
     ]
   );
 

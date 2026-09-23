@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Vibration, Linking } from 'react-native';
-import { appAlert } from '../services/alertService';
+import { appAlert } from '../services/alertService.ts';
 import dayjs from 'dayjs';
 
 /**
@@ -10,7 +10,7 @@ import dayjs from 'dayjs';
 const runWhenIdle = (callback: () => void) => {
   setTimeout(callback, 1500);
 };
-import { Habit, HabitCheckin, HabitSortOption } from '../types/habit';
+import { Habit, HabitCheckin, HabitSortOption, ThemeMode } from '../types/habit.ts';
 import {
   initDatabase,
   fetchAllHabits,
@@ -39,8 +39,8 @@ import {
   deduplicateLocalHabits,
   hasCompletedOnboarding as dbHasCompletedOnboarding,
   setCompletedOnboarding as dbSetCompletedOnboarding,
-} from '../services/database';
-import type { ConvertedLoopData } from '../services/loopImportService';
+} from '../services/database.ts';
+import type { ConvertedLoopData } from '../services/loopImportService.ts';
 import {
   scheduleHabitReminder,
   cancelHabitReminders,
@@ -48,14 +48,20 @@ import {
   requestNotificationPermissions,
   scheduleEveningReviewReminder,
   cancelEveningReviewReminder,
-} from '../services/notificationService';
+} from '../services/notificationService.ts';
 import {
   BackupPayload,
   createBackupPayload,
   mergeBackupData,
-} from '../services/backupService';
-import { ThemeMode } from '../theme/ThemeContext';
-import { isHabitDueOnDate, reorderArray } from '../utils/habitUtils';
+} from '../services/backupService.ts';
+import {
+  isHabitDueOnDate,
+  reorderArray,
+  getPendingDueHabitsForDate,
+  getCompletedDueHabitsForDate,
+  buildBatchCheckinPayloadForCompletion,
+  buildBatchCheckinPayloadForReset,
+} from '../utils/habitUtils.ts';
 import {
   syncWithNeon,
   pushHabitChangeAsync,
@@ -64,8 +70,8 @@ import {
   pushMetaChangeAsync,
   getLastSyncTime,
   SyncState,
-} from '../services/syncService';
-import { playCompletionSound, initSound } from '../services/soundService';
+} from '../services/syncService.ts';
+import { playCompletionSound, initSound } from '../services/soundService.ts';
 
 interface HabitState {
   habits: Habit[];
@@ -110,6 +116,7 @@ interface HabitState {
   moveHabit: (habitId: string, direction: 'up' | 'down') => Promise<void>;
   toggleCheckin: (habitId: string, date?: string) => Promise<boolean>;
   completeAllDueHabits: (date?: string) => Promise<number>;
+  resetAllDueHabits: (date?: string) => Promise<number>;
   incrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   decrementCheckin: (habitId: string, date?: string, step?: number) => Promise<void>;
   setHabitCount: (habitId: string, count: number, date?: string) => Promise<void>;
@@ -649,38 +656,17 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   completeAllDueHabits: async (targetDate?: string) => {
     const date = targetDate || get().selectedDate;
-    const today = dayjs().startOf('day');
-    const targetDay = dayjs(date).startOf('day');
-    // Cannot complete future dates
-    if (targetDay.isAfter(today)) return 0;
-
     const { habits, checkins } = get();
-    // Only active, non-archived habits scheduled on this date
-    const dueHabits = habits.filter(
-      (h) => h.isActive && !h.archivedAt && isHabitDueOnDate(h, date, true)
-    );
 
-    // Filter to those not completed yet
-    const pendingHabits = dueHabits.filter(
-      (h) => !checkins.some((c) => c.habitId === h.id && c.date === date && c.completed)
-    );
-
+    const pendingHabits = getPendingDueHabitsForDate(habits, checkins, date);
     if (pendingHabits.length === 0) return 0;
 
-    const now = dayjs().toISOString();
-    const newOrUpdatedCheckins: HabitCheckin[] = pendingHabits.map((habit) => {
-      const existing = checkins.find((c) => c.habitId === habit.id && c.date === date);
-      const targetCount = Math.max(1, habit.targetCount || 1);
-      return {
-        id: existing ? existing.id : `chk_${habit.id}_${date}`,
-        habitId: habit.id,
-        date,
-        count: targetCount,
-        completed: true,
-        updatedAt: now,
-        note: existing?.note,
-      };
-    });
+    const newOrUpdatedCheckins = buildBatchCheckinPayloadForCompletion(
+      pendingHabits,
+      checkins,
+      date,
+      dayjs().toISOString()
+    );
 
     // Save all checkins atomically within a single SQLite transaction
     await batchSaveCheckinRecords(newOrUpdatedCheckins);
@@ -706,6 +692,41 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     }
 
     return pendingHabits.length;
+  },
+
+  resetAllDueHabits: async (targetDate?: string) => {
+    const date = targetDate || get().selectedDate;
+    const { habits, checkins } = get();
+
+    const completedHabits = getCompletedDueHabitsForDate(habits, checkins, date);
+    if (completedHabits.length === 0) return 0;
+
+    const updatedCheckins = buildBatchCheckinPayloadForReset(
+      completedHabits,
+      checkins,
+      date,
+      dayjs().toISOString()
+    );
+
+    await batchSaveCheckinRecords(updatedCheckins);
+    updatedCheckins.forEach((c) => pushCheckinChangeAsync(c));
+
+    set((state) => {
+      const updatedMap = new Map(updatedCheckins.map((c) => [`${c.habitId}:${c.date}`, c]));
+      const nextCheckins = state.checkins.map((c) => {
+        const key = `${c.habitId}:${c.date}`;
+        return updatedMap.has(key) ? updatedMap.get(key)! : c;
+      });
+      return { checkins: nextCheckins };
+    });
+
+    if (get().hapticsEnabled) {
+      try {
+        Vibration.vibrate(15);
+      } catch (_) {}
+    }
+
+    return completedHabits.length;
   },
 
   incrementCheckin: async (habitId: string, targetDate?: string, step = 1) => {

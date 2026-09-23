@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -35,6 +35,11 @@ import {
   triggerMediumHaptic,
   triggerSuccessHaptic,
 } from '../utils/haptics';
+import {
+  getHabitDraft,
+  saveHabitDraft,
+  deleteHabitDraft,
+} from '../services/draftService';
 
 interface AddEditHabitScreenProps {
   route: any;
@@ -121,7 +126,115 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   );
   const [isIconModalVisible, setIsIconModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDraftRestored, setIsDraftRestored] = useState(false);
   const quickChipsScrollRef = useRef<ScrollView>(null);
+
+  // Restore draft if creating a new habit and unsaved draft exists
+  useEffect(() => {
+    let isMounted = true;
+    if (!isEditing && !isDuplicating && !initialTemplate && !route.params?.openTemplates) {
+      getHabitDraft('new').then((draft) => {
+        if (!isMounted || !draft) return;
+        if (draft.name?.trim() || draft.description?.trim()) {
+          setName(draft.name || '');
+          setDescription(draft.description || '');
+          if (draft.selectedIcon) setSelectedIcon(draft.selectedIcon);
+          if (draft.selectedColor) setSelectedColor(draft.selectedColor);
+          if (draft.freqTab) setFreqTab(draft.freqTab);
+          if (draft.weeklyMode) setWeeklyMode(draft.weeklyMode);
+          if (draft.monthlyMode) setMonthlyMode(draft.monthlyMode);
+          if (draft.weeklyTargetCount) setWeeklyTargetCount(draft.weeklyTargetCount);
+          if (draft.monthlyTargetCount) setMonthlyTargetCount(draft.monthlyTargetCount);
+          if (draft.monthlyDay) setMonthlyDay(draft.monthlyDay);
+          if (draft.frequency) setFrequency(draft.frequency);
+          if (draft.frequencyDays) setFrequencyDays(draft.frequencyDays);
+          if (draft.targetCount) setTargetCount(draft.targetCount);
+          if (draft.unit) setUnit(draft.unit);
+          if (draft.reminderTime) setReminderTime(draft.reminderTime);
+          if (draft.hasReminder !== undefined) setHasReminder(draft.hasReminder);
+          if (draft.isPinned !== undefined) setIsPinned(draft.isPinned);
+          setIsDraftRestored(true);
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Autosave draft when form fields change (debounced 800ms)
+  useEffect(() => {
+    if (isEditing || isDuplicating || isSaving) return;
+    if (!name.trim() && !description.trim()) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      saveHabitDraft(
+        {
+          name,
+          description,
+          selectedIcon,
+          selectedColor,
+          freqTab,
+          weeklyMode,
+          monthlyMode,
+          weeklyTargetCount,
+          monthlyTargetCount,
+          monthlyDay,
+          frequency,
+          frequencyDays,
+          targetCount,
+          unit,
+          reminderTime,
+          hasReminder,
+          isPinned,
+        },
+        'new'
+      );
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [
+    isEditing,
+    isDuplicating,
+    isSaving,
+    name,
+    description,
+    selectedIcon,
+    selectedColor,
+    freqTab,
+    weeklyMode,
+    monthlyMode,
+    weeklyTargetCount,
+    monthlyTargetCount,
+    monthlyDay,
+    frequency,
+    frequencyDays,
+    targetCount,
+    unit,
+    reminderTime,
+    hasReminder,
+    isPinned,
+  ]);
+
+  const handleDiscardDraft = async () => {
+    triggerLightHaptic();
+    await deleteHabitDraft('new');
+    setIsDraftRestored(false);
+    setName('');
+    setDescription('');
+    setSelectedIcon('fitness-outline');
+    setSelectedColor(HABIT_PALETTES[0].hex);
+    setFreqTab('daily');
+    setFrequency('daily');
+    setFrequencyDays([0, 1, 2, 3, 4, 5, 6]);
+    setTargetCount('1');
+    setUnit('مرة');
+    setReminderTime('08:00');
+    setHasReminder(false);
+    setIsPinned(false);
+  };
 
   const applyTemplate = (template: HabitTemplate) => {
     triggerSuccessHaptic();
@@ -235,6 +348,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           ...habitPayload,
           isActive: true,
         });
+        await deleteHabitDraft('new');
       }
       triggerSuccessHaptic();
       navigation.goBack();
@@ -289,6 +403,55 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           paddingBottom: insets.bottom + 100, // Extra space for sticky bottom bar
         }}
       >
+        {/* Restored Draft Banner */}
+        {isDraftRestored && !isEditing && !isDuplicating && (
+          <View
+            style={[
+              styles.draftBanner,
+              {
+                backgroundColor: theme.isDark ? `${theme.primary}18` : `${theme.primary}10`,
+                borderColor: theme.primary,
+                borderRadius: radius.md,
+                marginBottom: spacing.md,
+                padding: spacing.md,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', flex: 1 }}>
+                <Ionicons name="document-text-outline" size={18} color={theme.primary} style={{ marginLeft: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[typography.subMedium, { color: theme.text, textAlign: 'right', fontWeight: '700' }]}>
+                    تم استرجاع مسودة غير محفوظة
+                  </Text>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', fontSize: 11 }]}>
+                    يمكنك متابعة التعديل أو بدء عادة جديدة
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="مسح المسودة والبدء من جديد"
+                onPress={handleDiscardDraft}
+                style={({ pressed }) => [
+                  styles.discardDraftBtn,
+                  {
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.border,
+                    borderRadius: radius.sm,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[typography.caption, { color: '#EF4444', fontWeight: '600' }]}>
+                  مسح المسودة
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
         {/* Curated Habit Templates Quick Strip (When creating new habit) */}
         {!isEditing && !isDuplicating && (
           <View style={styles.templatesHeaderContainer}>
@@ -1469,5 +1632,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 50,
+  },
+  draftBanner: {
+    borderWidth: 1,
+  },
+  discardDraftBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    marginRight: 8,
   },
 });

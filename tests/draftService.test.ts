@@ -97,3 +97,55 @@ test('database: deletePreference removes keys from meta table and memory', async
   await deletePreference('test_key_to_delete');
   assert.equal(await getPreference('test_key_to_delete', 'default'), 'default');
 });
+
+test('draftService: saveHabitDraft, getHabitDraft, and deleteHabitDraft', async () => {
+  await initDatabase();
+  const {
+    saveHabitDraft,
+    getHabitDraft,
+    deleteHabitDraft,
+    hasHabitDraft,
+  } = await import('../src/services/draftService.ts');
+
+  // Initially no draft
+  await deleteHabitDraft('test_new');
+  assert.equal(await hasHabitDraft('test_new'), false);
+  assert.equal(await getHabitDraft('test_new'), null);
+
+  // Save partial draft
+  await saveHabitDraft(
+    {
+      name: 'ممارسة اليوغا',
+      description: 'جلسة يوغا وتمدد مسائية',
+      selectedIcon: 'fitness-outline',
+      selectedColor: '#0E7490',
+      frequency: 'daily',
+      targetCount: '20',
+      unit: 'دقيقة',
+      reminderTime: '19:30',
+      hasReminder: true,
+      isPinned: false,
+    },
+    'test_new'
+  );
+
+  assert.equal(await hasHabitDraft('test_new'), true);
+  const loaded = await getHabitDraft('test_new');
+  assert.ok(loaded);
+  assert.equal(loaded?.name, 'ممارسة اليوغا');
+  assert.equal(loaded?.unit, 'دقيقة');
+  assert.equal(loaded?.targetCount, '20');
+  assert.ok(loaded?.savedAt);
+
+  // Saving empty habit clears draft
+  await saveHabitDraft({ name: '', description: '' }, 'test_new');
+  assert.equal(await hasHabitDraft('test_new'), false);
+  assert.equal(await getHabitDraft('test_new'), null);
+
+  // Explicit delete
+  await saveHabitDraft({ name: 'عادة أخرى' }, 'test_new');
+  assert.equal(await hasHabitDraft('test_new'), true);
+  await deleteHabitDraft('test_new');
+  assert.equal(await hasHabitDraft('test_new'), false);
+});
+
