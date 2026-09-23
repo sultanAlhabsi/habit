@@ -8,28 +8,40 @@
  * Manage the secret with: `eas env:set --scope project --name DATABASE_URL --visibility secret`
  */
 
-import Constants from 'expo-constants';
+let _expoConstants: any = undefined;
+const getExpoConstants = () => {
+  if (_expoConstants !== undefined) return _expoConstants;
+  try {
+    const mod = require('expo-constants');
+    _expoConstants = mod?.default ?? mod;
+  } catch {
+    _expoConstants = null;
+  }
+  return _expoConstants;
+};
+
 import type { Habit, HabitCheckin } from '../types/habit';
 
 /**
  * Reads the Neon PostgreSQL connection string from EAS Secrets (injected at build time).
  * Returns null if not configured — cloud sync will be silently disabled.
  */
-export const NEON_CONNECTION_STRING: string | null =
-  (Constants.expoConfig?.extra?.databaseUrl as string | undefined) ?? null;
+export const getNeonConnectionString = (): string | null => {
+  const constants = getExpoConstants();
+  return (constants?.expoConfig?.extra?.databaseUrl as string | undefined) ?? null;
+};
 
-const _getHost = (): string | null => {
-  if (!NEON_CONNECTION_STRING) return null;
+export const NEON_CONNECTION_STRING: string | null = getNeonConnectionString();
+
+const _getHost = (connStr: string | null): string | null => {
+  if (!connStr) return null;
   try {
-    const url = new URL(NEON_CONNECTION_STRING);
+    const url = new URL(connStr);
     return url.hostname;
   } catch {
     return null;
   }
 };
-
-const NEON_HOST = _getHost();
-const NEON_SQL_ENDPOINT = NEON_HOST ? `https://${NEON_HOST}/sql` : null;
 
 export interface NeonQueryResult<T = any> {
   rows?: T[];
@@ -46,7 +58,11 @@ export const runNeonQuery = async <T = any>(
   query: string,
   params: any[] = []
 ): Promise<T[]> => {
-  if (!NEON_SQL_ENDPOINT || !NEON_CONNECTION_STRING) {
+  const connString = getNeonConnectionString() || NEON_CONNECTION_STRING;
+  const host = _getHost(connString);
+  const endpoint = host ? `https://${host}/sql` : null;
+
+  if (!endpoint || !connString) {
     throw new Error('[NeonService] DATABASE_URL is not configured. Cloud sync is unavailable.');
   }
 
@@ -54,11 +70,11 @@ export const runNeonQuery = async <T = any>(
   const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
-    const response = await fetch(NEON_SQL_ENDPOINT, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Neon-Connection-String': NEON_CONNECTION_STRING,
+        'Neon-Connection-String': connString,
       },
       body: JSON.stringify({ query, params }),
       signal: controller.signal,
@@ -81,7 +97,6 @@ export const runNeonQuery = async <T = any>(
     throw error;
   }
 };
-
 
 /**
  * Check if the remote Neon database is reachable.
@@ -107,10 +122,14 @@ const NEON_SCHEMA_STATEMENTS = [
     frequency VARCHAR(50) NOT NULL,
     frequency_days JSONB NOT NULL DEFAULT '[]'::jsonb,
     target_count INTEGER NOT NULL DEFAULT 1,
+    weekly_target_count INTEGER,
+    monthly_target_count INTEGER,
+    monthly_day INTEGER,
     unit VARCHAR(50) NOT NULL DEFAULT 'مرة',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     reminder_time VARCHAR(20),
     is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+    order_index INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     archived_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -139,6 +158,10 @@ const NEON_SCHEMA_STATEMENTS = [
   `ALTER TABLE habits ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;`,
   `ALTER TABLE habits ADD COLUMN IF NOT EXISTS frequency_days JSONB NOT NULL DEFAULT '[]'::jsonb;`,
   `ALTER TABLE habits ADD COLUMN IF NOT EXISTS target_count INTEGER NOT NULL DEFAULT 1;`,
+  `ALTER TABLE habits ADD COLUMN IF NOT EXISTS weekly_target_count INTEGER;`,
+  `ALTER TABLE habits ADD COLUMN IF NOT EXISTS monthly_target_count INTEGER;`,
+  `ALTER TABLE habits ADD COLUMN IF NOT EXISTS monthly_day INTEGER;`,
+  `ALTER TABLE habits ADD COLUMN IF NOT EXISTS order_index INTEGER DEFAULT 0;`,
   `ALTER TABLE habits ADD COLUMN IF NOT EXISTS unit VARCHAR(50) NOT NULL DEFAULT 'مرة';`,
   `ALTER TABLE habits ADD COLUMN IF NOT EXISTS reminder_time VARCHAR(20);`,
   `ALTER TABLE checkins ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`,
@@ -167,7 +190,7 @@ export const initNeonSchema = async (): Promise<void> => {
  */
 export const fetchNeonHabits = async (): Promise<Habit[]> => {
   const rows = await runNeonQuery<any>(
-    'SELECT * FROM habits ORDER BY created_at ASC;'
+    'SELECT * FROM habits ORDER BY order_index ASC, created_at ASC;'
   );
 
   return rows.map((r) => {
@@ -189,15 +212,71 @@ export const fetchNeonHabits = async (): Promise<Habit[]> => {
       frequency: r.frequency,
       frequencyDays,
       targetCount: Number(r.target_count || 1),
+      weeklyTargetCount:
+        r.weekly_target_count !== null && r.weekly_target_count !== undefined
+          ? Number(r.weekly_target_count)
+          : undefined,
+      monthlyTargetCount:
+        r.monthly_target_count !== null && r.monthly_target_count !== undefined
+          ? Number(r.monthly_target_count)
+          : undefined,
+      monthlyDay:
+        r.monthly_day !== null && r.monthly_day !== undefined
+          ? Number(r.monthly_day)
+          : undefined,
       unit: String(r.unit || 'مرة'),
       isActive: r.is_active === 1 || r.is_active === true || r.is_active === '1',
       reminderTime: r.reminder_time ? String(r.reminder_time) : undefined,
       isPinned: r.is_pinned === 1 || r.is_pinned === true || r.is_pinned === '1',
+      order:
+        r.order_index !== null && r.order_index !== undefined
+          ? Number(r.order_index)
+          : undefined,
       createdAt: new Date(r.created_at).toISOString(),
       archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : undefined,
+      updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : undefined,
     };
   });
 };
+
+/**
+ * Serialize a Habit object into strongly-typed parameters for Neon PostgreSQL.
+ * Ensures PostgreSQL boolean primitives (true/false) are used rather than integers (1/0).
+ */
+export const serializeNeonHabitParams = (habit: Habit): any[] => [
+  habit.id,
+  habit.name,
+  habit.description || null,
+  habit.icon,
+  habit.color,
+  habit.frequency,
+  JSON.stringify(habit.frequencyDays || []),
+  habit.targetCount,
+  habit.weeklyTargetCount ?? null,
+  habit.monthlyTargetCount ?? null,
+  habit.monthlyDay ?? null,
+  habit.unit,
+  Boolean(habit.isActive),
+  habit.reminderTime || null,
+  Boolean(habit.isPinned),
+  habit.order ?? 0,
+  habit.createdAt,
+  habit.archivedAt || null,
+];
+
+/**
+ * Serialize a HabitCheckin object into strongly-typed parameters for Neon PostgreSQL.
+ * Ensures PostgreSQL boolean primitives (true/false) are used rather than integers (1/0).
+ */
+export const serializeNeonCheckinParams = (checkin: HabitCheckin): any[] => [
+  checkin.id,
+  checkin.habitId,
+  checkin.date,
+  checkin.count,
+  Boolean(checkin.completed),
+  checkin.updatedAt || new Date().toISOString(),
+  checkin.note || null,
+];
 
 /**
  * Upsert a single habit into Neon.
@@ -206,8 +285,9 @@ export const upsertNeonHabit = async (habit: Habit): Promise<void> => {
   await runNeonQuery(
     `INSERT INTO habits (
       id, name, description, icon, color, frequency, frequency_days,
-      target_count, unit, is_active, reminder_time, is_pinned, created_at, archived_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+      target_count, weekly_target_count, monthly_target_count, monthly_day,
+      unit, is_active, reminder_time, is_pinned, order_index, created_at, archived_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
     ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
       description = EXCLUDED.description,
@@ -216,28 +296,17 @@ export const upsertNeonHabit = async (habit: Habit): Promise<void> => {
       frequency = EXCLUDED.frequency,
       frequency_days = EXCLUDED.frequency_days,
       target_count = EXCLUDED.target_count,
+      weekly_target_count = EXCLUDED.weekly_target_count,
+      monthly_target_count = EXCLUDED.monthly_target_count,
+      monthly_day = EXCLUDED.monthly_day,
       unit = EXCLUDED.unit,
       is_active = EXCLUDED.is_active,
       reminder_time = EXCLUDED.reminder_time,
       is_pinned = EXCLUDED.is_pinned,
+      order_index = EXCLUDED.order_index,
       archived_at = EXCLUDED.archived_at,
       updated_at = NOW();`,
-    [
-      habit.id,
-      habit.name,
-      habit.description || null,
-      habit.icon,
-      habit.color,
-      habit.frequency,
-      JSON.stringify(habit.frequencyDays || []),
-      habit.targetCount,
-      habit.unit,
-      habit.isActive ? 1 : 0,
-      habit.reminderTime || null,
-      habit.isPinned ? 1 : 0,
-      habit.createdAt,
-      habit.archivedAt || null,
-    ]
+    serializeNeonHabitParams(habit)
   );
 };
 
@@ -274,15 +343,7 @@ export const upsertNeonCheckin = async (checkin: HabitCheckin): Promise<void> =>
       completed = EXCLUDED.completed,
       updated_at = EXCLUDED.updated_at,
       note = EXCLUDED.note;`,
-    [
-      checkin.id,
-      checkin.habitId,
-      checkin.date,
-      checkin.count,
-      checkin.completed ? 1 : 0,
-      checkin.updatedAt || new Date().toISOString(),
-      checkin.note || null,
-    ]
+    serializeNeonCheckinParams(checkin)
   );
 };
 

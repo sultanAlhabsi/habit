@@ -19,6 +19,7 @@ export interface Habit {
   order?: number;
   createdAt: string;
   archivedAt?: string | null;
+  updatedAt?: string;
 }
 
 export interface HabitCheckin {

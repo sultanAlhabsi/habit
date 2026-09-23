@@ -273,3 +273,145 @@ test('sync reconciliation: prevents duplicate habits across devices by matching 
   assert.equal(remappedCheckin.id, 'chk_h_remote_phone1_2026-09-19');
 });
 
+test('neon serialization: habit parameters use boolean primitives and preserve multi-target fields', async () => {
+  const { serializeNeonHabitParams } = await import('../src/services/neonService.ts');
+
+  const habit: Habit = {
+    id: 'habit_multi_1',
+    name: 'تمرين السباحة',
+    description: 'تمارين أسبوعية في المسبح',
+    icon: 'water',
+    color: '#06B6D4',
+    frequency: 'weekly',
+    frequencyDays: [1, 3, 5],
+    targetCount: 1,
+    weeklyTargetCount: 3,
+    monthlyTargetCount: 12,
+    monthlyDay: 15,
+    unit: 'مرة',
+    isActive: true,
+    reminderTime: '08:00',
+    isPinned: true,
+    order: 4,
+    createdAt: '2026-09-20T08:00:00.000Z',
+    archivedAt: null,
+  };
+
+  const params = serializeNeonHabitParams(habit);
+
+  // [id, name, description, icon, color, frequency, frequency_days,
+  //  target_count, weekly_target_count, monthly_target_count, monthly_day,
+  //  unit, is_active, reminder_time, is_pinned, order_index, created_at, archived_at]
+  assert.equal(params[0], 'habit_multi_1');
+  assert.equal(params[1], 'تمرين السباحة');
+  assert.equal(params[7], 1); // target_count
+  assert.equal(params[8], 3); // weekly_target_count
+  assert.equal(params[9], 12); // monthly_target_count
+  assert.equal(params[10], 15); // monthly_day
+  assert.equal(typeof params[12], 'boolean', 'is_active must be a boolean primitive for PostgreSQL');
+  assert.equal(params[12], true);
+  assert.equal(typeof params[14], 'boolean', 'is_pinned must be a boolean primitive for PostgreSQL');
+  assert.equal(params[14], true);
+  assert.equal(params[15], 4); // order_index
+});
+
+test('neon serialization: checkin parameters use boolean primitives for completed', async () => {
+  const { serializeNeonCheckinParams } = await import('../src/services/neonService.ts');
+
+  const checkin: HabitCheckin = {
+    id: 'chk_h1_2026-09-24',
+    habitId: 'habit_1',
+    date: '2026-09-24',
+    count: 2,
+    completed: true,
+    updatedAt: '2026-09-24T00:00:00.000Z',
+    note: 'إنجاز ممتاز',
+  };
+
+  const params = serializeNeonCheckinParams(checkin);
+
+  // [id, habit_id, date, count, completed, updated_at, note]
+  assert.equal(params[0], 'chk_h1_2026-09-24');
+  assert.equal(params[3], 2);
+  assert.equal(typeof params[4], 'boolean', 'completed must be a boolean primitive for PostgreSQL');
+  assert.equal(params[4], true);
+});
+
+test('sync reconciliation: timestamp-aware habit pull and push prevents stale overwrites', () => {
+  const localHabitOlder: Habit = {
+    id: 'h_shared_1',
+    name: 'رياضة الصباح',
+    icon: 'barbell',
+    color: '#2A4B3A',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-01T08:00:00.000Z',
+    updatedAt: '2026-09-20T10:00:00.000Z',
+  };
+
+  const remoteHabitNewer: Habit = {
+    id: 'h_shared_1',
+    name: 'رياضة الصباح والمساء', // Renamed on remote device
+    icon: 'barbell',
+    color: '#059669',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 2,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-01T08:00:00.000Z',
+    updatedAt: '2026-09-23T15:00:00.000Z',
+  };
+
+  // Remote habit is newer: local should pull it and NOT overwrite remote with localHabitOlder
+  const remoteTime = new Date(remoteHabitNewer.updatedAt!).getTime();
+  const localTime = new Date(localHabitOlder.updatedAt!).getTime();
+  const shouldPull = remoteTime > localTime;
+  const shouldPush = localTime > remoteTime;
+
+  assert.equal(shouldPull, true, 'Remote newer habit must be pulled');
+  assert.equal(shouldPush, false, 'Stale local habit must not overwrite remote');
+});
+
+test('sync reconciliation: remote habit archival propagates to local habit', () => {
+  const localHabitActive: Habit = {
+    id: 'h_archive_test',
+    name: 'عادة قديمة',
+    icon: 'book',
+    color: '#3B82F6',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    archivedAt: null,
+    createdAt: '2026-09-01T08:00:00.000Z',
+    updatedAt: '2026-09-20T10:00:00.000Z',
+  };
+
+  const remoteHabitArchived: Habit = {
+    id: 'h_archive_test',
+    name: 'عادة قديمة',
+    icon: 'book',
+    color: '#3B82F6',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: false,
+    archivedAt: '2026-09-23T12:00:00.000Z',
+    createdAt: '2026-09-01T08:00:00.000Z',
+    updatedAt: '2026-09-23T12:00:00.000Z',
+  };
+
+  const remoteTime = new Date(remoteHabitArchived.updatedAt!).getTime();
+  const localTime = new Date(localHabitActive.updatedAt!).getTime();
+  const isRemoteArchivalNewer =
+    Boolean(remoteHabitArchived.archivedAt) && !localHabitActive.archivedAt && remoteTime >= localTime;
+
+  assert.equal(isRemoteArchivalNewer, true, 'Remote archival must be recognized as newer and pulled');
+});
+

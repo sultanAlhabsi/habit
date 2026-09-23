@@ -37,3 +37,6 @@ yarn-error.*
 # Local env
 .env*.local
 .env
+
+# Scratch and temporary tool files
+.scratch/

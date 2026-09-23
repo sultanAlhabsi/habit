@@ -133,7 +133,8 @@ export const initDatabase = async (): Promise<void> => {
                 is_pinned INTEGER NOT NULL DEFAULT 0,
                 order_index INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL,
-                archived_at TEXT
+                archived_at TEXT,
+                updated_at TEXT
               );
             `);
 
@@ -188,6 +189,10 @@ export const initDatabase = async (): Promise<void> => {
               await db.execAsync('ALTER TABLE habits ADD COLUMN monthly_day INTEGER;');
             } catch {}
 
+            try {
+              await db.execAsync('ALTER TABLE habits ADD COLUMN updated_at TEXT;');
+            } catch {}
+
             // Add indexes for frequently queried columns
             // These significantly speed up habit_id and date lookups
             try {
@@ -239,8 +244,8 @@ const saveHabitRecordInternal = async (
     `INSERT OR REPLACE INTO habits (
       id, name, description, icon, color, frequency, frequency_days,
       target_count, weekly_target_count, monthly_target_count, monthly_day,
-      unit, is_active, reminder_time, is_pinned, order_index, created_at, archived_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      unit, is_active, reminder_time, is_pinned, order_index, created_at, archived_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       habit.id,
       habit.name,
@@ -260,6 +265,7 @@ const saveHabitRecordInternal = async (
       habit.order ?? 0,
       habit.createdAt,
       habit.archivedAt || null,
+      habit.updatedAt || habit.createdAt || new Date().toISOString(),
     ]
   );
 };
@@ -364,6 +370,7 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
         order_index?: number | null;
         created_at: string;
         archived_at: string | null;
+        updated_at?: string | null;
       }>('SELECT * FROM habits ORDER BY order_index ASC, created_at ASC');
 
       return rows.map((r) => ({
@@ -385,6 +392,7 @@ export const fetchAllHabits = async (): Promise<Habit[]> => {
         order: r.order_index ?? 0,
         createdAt: r.created_at,
         archivedAt: r.archived_at,
+        updatedAt: r.updated_at || r.created_at,
       }));
     },
     () => [...memoryHabits]
@@ -413,17 +421,21 @@ export const updateHabitsOrder = async (orderedHabitIds: string[]): Promise<void
 };
 
 export const saveHabitRecord = async (habit: Habit): Promise<void> => {
+  const habitWithUpdated: Habit = {
+    ...habit,
+    updatedAt: habit.updatedAt || new Date().toISOString(),
+  };
   const index = memoryHabits.findIndex((h) => h.id === habit.id);
   if (index >= 0) {
-    memoryHabits[index] = habit;
+    memoryHabits[index] = habitWithUpdated;
   } else {
-    memoryHabits.push(habit);
+    memoryHabits.push(habitWithUpdated);
   }
   memoryDeletedHabitIds = memoryDeletedHabitIds.filter((id) => id !== habit.id);
 
   await runSerialized(
     async (db) => {
-      await saveHabitRecordInternal(db, habit);
+      await saveHabitRecordInternal(db, habitWithUpdated);
       await db.runAsync('DELETE FROM deleted_habits WHERE id = ?;', [habit.id]);
     },
     () => {}
@@ -699,7 +711,8 @@ export const deletePreference = async (key: string): Promise<void> => {
 };
 
 export const archiveHabitRecord = async (habitId: string, archive: boolean): Promise<void> => {
-  const archivedAt = archive ? dayjs().toISOString() : null;
+  const now = dayjs().toISOString();
+  const archivedAt = archive ? now : null;
   const isActive = archive ? 0 : 1;
 
   const idx = memoryHabits.findIndex((h) => h.id === habitId);
@@ -708,14 +721,15 @@ export const archiveHabitRecord = async (habitId: string, archive: boolean): Pro
       ...memoryHabits[idx],
       archivedAt,
       isActive: !archive,
+      updatedAt: now,
     };
   }
 
   await runSerialized(
     async (db) => {
       await db.runAsync(
-        'UPDATE habits SET archived_at = ?, is_active = ? WHERE id = ?',
-        [archivedAt, isActive, habitId]
+        'UPDATE habits SET archived_at = ?, is_active = ?, updated_at = ? WHERE id = ?',
+        [archivedAt, isActive, now, habitId]
       );
     },
     () => {}
@@ -841,7 +855,13 @@ export const batchInsertLoopData = async (
 };
 
 export const batchSaveHabits = async (habits: Habit[]): Promise<void> => {
-  habits.forEach((h) => {
+  const now = new Date().toISOString();
+  const normalizedHabits = habits.map((h) => ({
+    ...h,
+    updatedAt: h.updatedAt || now,
+  }));
+
+  normalizedHabits.forEach((h) => {
     const idx = memoryHabits.findIndex((x) => x.id === h.id);
     if (idx >= 0) memoryHabits[idx] = h;
     else memoryHabits.push(h);
@@ -850,7 +870,7 @@ export const batchSaveHabits = async (habits: Habit[]): Promise<void> => {
   await runSerialized(
     async (db) => {
       await db.withTransactionAsync(async () => {
-        for (const habit of habits) {
+        for (const habit of normalizedHabits) {
           await saveHabitRecordInternal(db, habit);
         }
       });

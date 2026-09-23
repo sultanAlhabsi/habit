@@ -166,13 +166,23 @@ export const syncWithNeon = async (): Promise<SyncResult> => {
         }
       }
 
-      // Merge remote habits to local in parallel
+      // Merge remote habits to local in parallel with timestamp-aware reconciliation
       const pullHabitPromises: Promise<void>[] = [];
       for (const [rId, rHabit] of remoteHabitsMap) {
         const lHabit = localHabitsMap.get(rId);
         if (!lHabit) {
           pulledHabitsCount++;
           pullHabitPromises.push(saveHabitRecord(rHabit));
+        } else {
+          const remoteTime = rHabit.updatedAt ? new Date(rHabit.updatedAt).getTime() : 0;
+          const localTime = lHabit.updatedAt ? new Date(lHabit.updatedAt).getTime() : 0;
+          const isRemoteNewer = remoteTime > localTime;
+          const isRemoteArchivalNewer =
+            Boolean(rHabit.archivedAt) && !lHabit.archivedAt && remoteTime >= localTime;
+          if (isRemoteNewer || isRemoteArchivalNewer) {
+            pulledHabitsCount++;
+            pullHabitPromises.push(saveHabitRecord(rHabit));
+          }
         }
       }
       await Promise.all(pullHabitPromises);
@@ -180,8 +190,17 @@ export const syncWithNeon = async (): Promise<SyncResult> => {
       // Push local habits to remote with cross-device duplicate name guard
       const pushHabitPromises: Promise<void>[] = [];
       for (const lHabit of localHabitsMap.values()) {
-        if (remoteHabitsMap.has(lHabit.id)) {
-          pushHabitPromises.push(upsertNeonHabit(lHabit));
+        const rHabit = remoteHabitsMap.get(lHabit.id);
+        if (rHabit) {
+          const remoteTime = rHabit.updatedAt ? new Date(rHabit.updatedAt).getTime() : 0;
+          const localTime = lHabit.updatedAt ? new Date(lHabit.updatedAt).getTime() : 0;
+          const isLocalNewer = localTime > remoteTime;
+          const isLocalArchivalNewer =
+            Boolean(lHabit.archivedAt) && !rHabit.archivedAt && localTime >= remoteTime;
+          if (isLocalNewer || isLocalArchivalNewer) {
+            pushedHabitsCount++;
+            pushHabitPromises.push(upsertNeonHabit(lHabit));
+          }
         } else {
           // Check if remote already has a habit with the same name under a different ID
           const nameKey = lHabit.name.trim().toLowerCase();

@@ -15,6 +15,7 @@ import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Button } from '../common/Button';
 import { formatArabicDate, normalizeArabicNumerals, toArabicNumerals } from '../../utils/habitUtils';
+import { triggerLightHaptic, triggerSuccessHaptic } from '../../utils/haptics';
 
 interface QuickQuantityModalProps {
   visible: boolean;
@@ -54,6 +55,11 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
   const habitColor = habit.color || theme.primary;
 
   const handleSave = () => {
+    if (isCompleted) {
+      triggerSuccessHaptic();
+    } else {
+      triggerLightHaptic();
+    }
     onClose();
     Promise.resolve(onSave(parsedCount)).catch(() => {});
   };
@@ -64,7 +70,13 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
   };
 
   const handleAddStep = (step: number) => {
-    handleSetCount(parsedCount + step);
+    const next = Math.max(0, parsedCount + step);
+    if (next >= targetCount && parsedCount < targetCount) {
+      triggerSuccessHaptic();
+    } else {
+      triggerLightHaptic();
+    }
+    handleSetCount(next);
   };
 
   const quickChips = [
@@ -165,7 +177,7 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
                   </Text>
                 </View>
                 <Text style={[typography.subMedium, { color: habit.color || theme.primary, fontWeight: '700' }]}>
-                  {targetCount} {habit.unit}
+                  {toArabicNumerals(targetCount)} {habit.unit}
                 </Text>
               </View>
             </View>
