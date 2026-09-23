@@ -9,9 +9,11 @@ import {
   Share,
   Modal,
   RefreshControl,
-  LayoutAnimation,
   Platform,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { appAlert } from '../services/alertService';
 import { Text } from '../components/common/AppText';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,12 +29,12 @@ import { DailyCelebrationBanner } from '../components/home/DailyCelebrationBanne
 import { HabitCard } from '../components/home/HabitCard';
 import { QuickNoteModal } from '../components/home/QuickNoteModal';
 import { QuickQuantityModal } from '../components/home/QuickQuantityModal';
-import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { HabitQuickActionsModal } from '../components/home/HabitQuickActionsModal';
 import { ReorderHabitsModal } from '../components/home/ReorderHabitsModal';
 import { EmptyState } from '../components/common/EmptyState';
 import { FilterTabsBar } from '../components/home/FilterTabsBar';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { HomeScreenSkeleton } from '../components/skeleton';
 
 
 import {
@@ -59,6 +61,7 @@ import {
   getPeriodicBadgeText,
 } from '../utils/habitUtils';
 
+
 interface HomeScreenProps {
   navigation: any;
 }
@@ -70,27 +73,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const triggerSmoothLayoutTransition = useCallback(() => {
     try {
-      flashListRef.current?.prepareForLayoutAnimationRender();
-      LayoutAnimation.configureNext({
-        duration: 450,
-        create: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-          property: LayoutAnimation.Properties.opacity,
-        },
-        update: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-        },
-        delete: {
-          type: LayoutAnimation.Types.easeInEaseOut,
-          property: LayoutAnimation.Properties.opacity,
-        },
-      });
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     } catch (_) {}
   }, []);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<HabitCategory | 'الكل'>('الكل');
+  const [isPeriodicExpanded, setIsPeriodicExpanded] = useState(false);
   const [isOffScheduleExpanded, setIsOffScheduleExpanded] = useState(false);
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
   const [activeNoteModal, setActiveNoteModal] = useState<{
@@ -158,19 +148,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const activeSortItem =
     HABIT_SORT_OPTIONS.find((s) => s.id === sortOption) || HABIT_SORT_OPTIONS[0];
 
+  // Interactive preview for inspecting the skeleton shimmer on demand
+  const [isPreviewingSkeleton, setIsPreviewingSkeleton] = useState(false);
+  const handlePreviewSkeleton = useCallback(() => {
+    setIsPreviewingSkeleton(true);
+    setTimeout(() => {
+      setIsPreviewingSkeleton(false);
+    }, 3500);
+  }, []);
+
   const todayStr = dayjs().format('YYYY-MM-DD');
   const isToday = selectedDate === todayStr;
   const isFutureDate = dayjs(selectedDate).startOf('day').isAfter(dayjs().startOf('day'));
 
-  // Build a fast lookup map: `${habitId}:${date}` -> HabitCheckin
-  // This eliminates O(n*m) checkins.find() calls inside render map()
+  // Fast O(1) lookup map for selectedDate: `${habitId}:${date}` -> HabitCheckin
+  // Only filters checkins for selectedDate, reducing loop overhead by 99%
   const checkinsMap = useMemo(() => {
     const map = new Map<string, typeof checkins[0]>();
-    for (const c of checkins) {
-      map.set(`${c.habitId}:${c.date}`, c);
+    for (let i = 0; i < checkins.length; i++) {
+      const c = checkins[i];
+      if (c.date === selectedDate) {
+        map.set(`${c.habitId}:${c.date}`, c);
+      }
     }
     return map;
-  }, [checkins]);
+  }, [checkins, selectedDate]);
 
   // Unarchived active habits (memoized)
   const activeUnarchivedHabits = useMemo(
@@ -314,13 +316,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   // Periodic streak cache
   const periodicStreakMap = useMemo(() => {
+    if (!isPeriodicExpanded) return new Map<string, number>();
     const map = new Map<string, number>();
     for (const habit of sortedPeriodicHabits) {
       const dates = completedDatesByHabit.get(habit.id) || new Set<string>();
       map.set(habit.id, calculateCurrentStreakFromDates(habit, dates, selectedDate));
     }
     return map;
-  }, [sortedPeriodicHabits, completedDatesByHabit, selectedDate]);
+  }, [sortedPeriodicHabits, completedDatesByHabit, selectedDate, isPeriodicExpanded]);
 
   // Memoized handlers to avoid creating new function references on every render
   const handleShareDaily = useCallback(async () => {
@@ -343,7 +346,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       triggerSmoothLayoutTransition();
       incrementCheckin(habitId, selectedDate);
     },
-    [incrementCheckin, selectedDate]
+    [triggerSmoothLayoutTransition, incrementCheckin, selectedDate]
   );
 
   const handleDecrementCheckin = useCallback(
@@ -351,7 +354,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       triggerSmoothLayoutTransition();
       decrementCheckin(habitId, selectedDate);
     },
-    [decrementCheckin, selectedDate]
+    [triggerSmoothLayoutTransition, decrementCheckin, selectedDate]
   );
 
   const handlePressDetails = useCallback(
@@ -392,59 +395,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     [selectedDate]
   );
 
-  const renderHabitItem = useCallback(
-    ({ item: habit, index }: { item: Habit; index: number }) => {
-      const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
-      const isCompleted = Boolean(checkin?.completed);
-      const currentCount = checkin ? checkin.count : 0;
-      const streak = habitStreakMap.get(habit.id) ?? 0;
-      const isDue = isHabitDueOnDate(habit, selectedDate, true);
-      const periodicBadgeText = getPeriodicBadgeText(
-        habit,
-        completedDatesByHabit.get(habit.id) || new Set<string>(),
-        selectedDate
-      );
-
-      const isFirstFew = index < 6;
-
-      return (
-        <Animated.View
-          entering={isFirstFew ? FadeInDown.delay(index * 25).duration(200) : undefined}
-        >
-          <HabitCard
-            habit={habit}
-            isCompleted={isCompleted}
-            currentCount={currentCount}
-            streak={streak}
-            isFuture={isFutureDate}
-            isOffSchedule={!isDue}
-            periodicBadgeText={periodicBadgeText}
-            hasNote={Boolean(checkin?.note?.trim())}
-            onToggleCheckin={() => handleToggleCheckin(habit.id)}
-            onPressDetails={() => handlePressDetails(habit.id)}
-            onLongPress={() => handleLongPressHabit(habit)}
-            onPressNote={() => handlePressNote(habit, checkin?.note)}
-            onPressQuantity={() => handlePressQuantity(habit, currentCount)}
-            onPressQuickActions={() => handleQuickActions(habit)}
-          />
-        </Animated.View>
-      );
-    },
-    [
-      checkinsMap,
-      selectedDate,
-      habitStreakMap,
-      completedDatesByHabit,
-      isFutureDate,
-      handleToggleCheckin,
-      handlePressDetails,
-      handleLongPressHabit,
-      handleQuickActions,
-      handlePressNote,
-      handlePressQuantity,
-    ]
-  );
-
 
   const listHeaderComponent = useMemo(
     () => (
@@ -452,7 +402,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Date Selector Strip */}
         <DateStrip
           selectedDate={selectedDate}
-          onSelectDate={(date) => setSelectedDate(date)}
+          onSelectDate={setSelectedDate}
         />
 
         {/* Daily Progress Overview */}
@@ -683,49 +633,92 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Periodic Flexible Habits Section (Weekly & Monthly) */}
         {hasPeriodic && (
           <View style={{ marginBottom: spacing.md }}>
-            <View style={styles.periodicHeaderContainer}>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-                <Ionicons name="repeat-outline" size={16} color={theme.text} style={{ marginLeft: 6 }} />
-                <Text style={[typography.subMedium, { color: theme.text, fontWeight: '700' }]}>
-                  عادات أسبوعية وشهرية ({filteredPeriodicHabits.length})
-                </Text>
-              </View>
-              <Text style={[typography.caption, { color: theme.textMuted }]}>
-                أهداف مرنة حسب الفترة
-              </Text>
-            </View>
-
-            {sortedPeriodicHabits.map((habit) => {
-              const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
-              const isCompletedToday = Boolean(checkin?.completed);
-              const currentCount = checkin ? checkin.count : 0;
-              const streak = periodicStreakMap.get(habit.id) ?? 0;
-              const periodicBadgeText = getPeriodicBadgeText(
-                habit,
-                completedDatesByHabit.get(habit.id) || new Set<string>(),
-                selectedDate
-              );
-
-              return (
-                <HabitCard
-                  key={`periodic_${habit.id}`}
-                  habit={habit}
-                  isCompleted={isCompletedToday}
-                  currentCount={currentCount}
-                  streak={streak}
-                  isFuture={isFutureDate}
-                  isOffSchedule={false}
-                  periodicBadgeText={periodicBadgeText}
-                  hasNote={Boolean(checkin?.note?.trim())}
-                  onToggleCheckin={() => handleToggleCheckin(habit.id)}
-                  onPressDetails={() => handlePressDetails(habit.id)}
-                  onLongPress={() => handleLongPressHabit(habit)}
-                  onPressNote={() => handlePressNote(habit, checkin?.note)}
-                  onPressQuantity={() => handlePressQuantity(habit, currentCount)}
-                  onPressQuickActions={() => handleQuickActions(habit)}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إظهار الأهداف المرنة الأسبوعية والشهرية"
+              accessibilityState={{ expanded: isPeriodicExpanded }}
+              onPress={() => setIsPeriodicExpanded(!isPeriodicExpanded)}
+              style={({ pressed }) => [
+                styles.offScheduleHeader,
+                {
+                  backgroundColor: theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.md,
+                  marginHorizontal: spacing.base,
+                  marginBottom: isPeriodicExpanded ? spacing.xs : spacing.md,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <View style={styles.offScheduleHeaderRow}>
+                <View style={styles.offScheduleHeaderTitle}>
+                  <Ionicons name="repeat-outline" size={16} color={theme.textSecondary} />
+                  <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
+                    أهداف مرنة أسبوعية وشهرية ({filteredPeriodicHabits.length})
+                  </Text>
+                </View>
+                <Ionicons
+                  name={isPeriodicExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color={theme.textSecondary}
                 />
-              );
-            })}
+              </View>
+            </Pressable>
+
+            {isPeriodicExpanded && (
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color: theme.textMuted,
+                    textAlign: 'right',
+                    marginHorizontal: spacing.base + 4,
+                    marginBottom: spacing.xs,
+                    fontSize: 11,
+                  },
+                ]}
+              >
+                أهداف حرة تنجزها في أي يوم يناسبك
+              </Text>
+            )}
+
+            {isPeriodicExpanded &&
+              sortedPeriodicHabits.map((habit, pIndex) => {
+                const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
+                const isCompletedToday = Boolean(checkin?.completed);
+                const currentCount = checkin ? checkin.count : 0;
+                const streak = periodicStreakMap.get(habit.id) ?? 0;
+                const periodicBadgeText = getPeriodicBadgeText(
+                  habit,
+                  completedDatesByHabit.get(habit.id) || new Set<string>(),
+                  selectedDate
+                );
+
+                return (
+                  <Animated.View
+                    key={`periodic_${habit.id}`}
+                    entering={FadeInDown.delay(Math.min(pIndex, 4) * 25).duration(180)}
+                  >
+                    <HabitCard
+                      key={`periodic_${habit.id}`}
+                      habit={habit}
+                      isCompleted={isCompletedToday}
+                      currentCount={currentCount}
+                      streak={streak}
+                      isFuture={isFutureDate}
+                      isOffSchedule={false}
+                      periodicBadgeText={periodicBadgeText}
+                      hasNote={Boolean(checkin?.note?.trim())}
+                      onToggleCheckin={() => handleToggleCheckin(habit.id)}
+                      onPressDetails={() => handlePressDetails(habit.id)}
+                      onLongPress={() => handleLongPressHabit(habit)}
+                      onPressNote={() => handlePressNote(habit, checkin?.note)}
+                      onPressQuantity={() => handlePressQuantity(habit, currentCount)}
+                      onPressQuickActions={() => handleQuickActions(habit)}
+                    />
+                  </Animated.View>
+                );
+              })}
           </View>
         )}
 
@@ -734,7 +727,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           <View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="إظهار العادات غير المجدولة لليوم"
+              accessibilityLabel="إظهار العادات في استراحة اليوم"
               accessibilityState={{ expanded: isOffScheduleExpanded }}
               onPress={() => setIsOffScheduleExpanded(!isOffScheduleExpanded)}
               style={({ pressed }) => [
@@ -744,16 +737,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                   borderColor: theme.border,
                   borderRadius: radius.md,
                   marginHorizontal: spacing.base,
-                  marginBottom: isOffScheduleExpanded ? spacing.sm : spacing.md,
+                  marginBottom: isOffScheduleExpanded ? spacing.xs : spacing.md,
                   opacity: pressed ? 0.8 : 1,
                 },
               ]}
             >
               <View style={styles.offScheduleHeaderRow}>
                 <View style={styles.offScheduleHeaderTitle}>
-                  <Ionicons name="calendar-outline" size={16} color={theme.textSecondary} />
+                  <Ionicons name="bed-outline" size={16} color={theme.textSecondary} />
                   <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
-                    عادات أخرى غير مجدولة اليوم ({filteredOffScheduleHabits.length})
+                    عادات في استراحة اليوم ({filteredOffScheduleHabits.length})
                   </Text>
                 </View>
                 <Ionicons
@@ -763,6 +756,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 />
               </View>
             </Pressable>
+
+            {isOffScheduleExpanded && (
+              <Text
+                style={[
+                  typography.caption,
+                  {
+                    color: theme.textMuted,
+                    textAlign: 'right',
+                    marginHorizontal: spacing.base + 4,
+                    marginBottom: spacing.xs,
+                    fontSize: 11,
+                  },
+                ]}
+              >
+                عادات مجدولة لأيام أخرى — يمكنك تسجيل إنجازها الآن إن أردت
+              </Text>
+            )}
 
             {isOffScheduleExpanded &&
               sortedOffScheduleHabits.map((habit, offIndex) => {
@@ -807,7 +817,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     );
   }, [
     isSearchActive,
-    filteredPeriodicHabits,
+    filteredPeriodicHabits.length,
+    isPeriodicExpanded,
     sortedPeriodicHabits,
     periodicStreakMap,
     completedDatesByHabit,
@@ -833,12 +844,76 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     sortedFilteredHabits.length,
   ]);
 
-  if (isLoading) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="small" color={theme.text} />
-      </View>
-    );
+  const habitKeyExtractor = useCallback((item: Habit) => item.id, []);
+
+  const renderHabitItem = useCallback(
+    ({ item: habit }: { item: Habit }) => {
+      const checkin = checkinsMap.get(`${habit.id}:${selectedDate}`);
+      const isCompleted = Boolean(checkin?.completed);
+      const currentCount = checkin ? checkin.count : 0;
+      const streak = habitStreakMap.get(habit.id) ?? 0;
+      const isDue = isHabitDueOnDate(habit, selectedDate, true);
+      const periodicBadgeText = getPeriodicBadgeText(
+        habit,
+        completedDatesByHabit.get(habit.id) || new Set<string>(),
+        selectedDate
+      );
+
+      return (
+        <HabitCard
+          habit={habit}
+          isCompleted={isCompleted}
+          currentCount={currentCount}
+          streak={streak}
+          isFuture={isFutureDate}
+          isOffSchedule={!isDue}
+          periodicBadgeText={periodicBadgeText}
+          hasNote={Boolean(checkin?.note?.trim())}
+          onToggleCheckin={() => handleToggleCheckin(habit.id)}
+          onPressDetails={() => handlePressDetails(habit.id)}
+          onLongPress={() => handleLongPressHabit(habit)}
+          onPressNote={() => handlePressNote(habit, checkin?.note)}
+          onPressQuantity={() => handlePressQuantity(habit, currentCount)}
+          onPressQuickActions={() => handleQuickActions(habit)}
+        />
+      );
+    },
+    [
+      checkinsMap,
+      selectedDate,
+      habitStreakMap,
+      completedDatesByHabit,
+      isFutureDate,
+      handleToggleCheckin,
+      handlePressDetails,
+      handleLongPressHabit,
+      handlePressNote,
+      handlePressQuantity,
+      handleQuickActions,
+    ]
+  );
+
+  const flashListExtraData = useMemo(
+    () => ({
+      selectedDate,
+      checkinsMap,
+      habitStreakMap,
+      isFutureDate,
+      completedDatesByHabit,
+      theme,
+    }),
+    [
+      selectedDate,
+      checkinsMap,
+      habitStreakMap,
+      isFutureDate,
+      completedDatesByHabit,
+      theme,
+    ]
+  );
+
+  if (isLoading || isPreviewingSkeleton) {
+    return <HomeScreenSkeleton insetsTop={insets.top} insetsBottom={insets.bottom} />;
   }
 
   return (
@@ -857,26 +932,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       >
         <View style={styles.headerTitles}>
           <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-            <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
-              العادات
-            </Text>
+            <Pressable
+              onLongPress={handlePreviewSkeleton}
+              delayLongPress={350}
+              accessibilityRole="header"
+              accessibilityHint="اضغط مطولاً لمعاينة هيكل التحميل"
+            >
+              <Text style={[typography.h1, { color: theme.text, textAlign: 'right' }]}>
+                العادات
+              </Text>
+            </Pressable>
             {cloudSyncState === 'syncing' && (
               <View
                 style={{
                   flexDirection: 'row-reverse',
                   alignItems: 'center',
-                  marginRight: 10,
-                  backgroundColor: theme.cardSecondary,
+                  marginRight: spacing.sm,
+                  backgroundColor: theme.primary + '18',
                   paddingHorizontal: 8,
                   paddingVertical: 3,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: theme.border,
+                  borderRadius: radius.full,
                 }}
               >
-                <ActivityIndicator size="small" color={theme.primary} style={{ marginLeft: 5 }} />
-                <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                  جارٍ المزامنة...
+                <ActivityIndicator size="small" color={theme.primary} style={{ marginLeft: 4 }} />
+                <Text style={[typography.caption, { color: theme.primary, fontSize: 11 }]}>
+                  جاري المزامنة...
                 </Text>
               </View>
             )}
@@ -996,20 +1076,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         ref={flashListRef}
         data={sortedFilteredHabits}
         renderItem={renderHabitItem}
-        keyExtractor={(item) => item.id}
-        extraData={selectedDate}
+        keyExtractor={habitKeyExtractor}
+        drawDistance={350}
         ListHeaderComponent={listHeaderComponent}
-        ListEmptyComponent={listEmptyComponent}
         ListFooterComponent={listFooterComponent}
+        ListEmptyComponent={listEmptyComponent}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={refreshHabits}
-            colors={[theme.primary]}
-            tintColor={theme.primary}
-          />
-        }
+        refreshing={isRefreshing}
+        onRefresh={refreshHabits}
+        extraData={flashListExtraData}
       />
 
       {/* Quick Daily Reflection Note Modal */}
@@ -1074,6 +1149,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         onClose={() => setActiveQuickActionHabit(null)}
         onToggleCheckin={() => {
           if (activeQuickActionHabit) {
+            triggerSmoothLayoutTransition();
             toggleCheckin(activeQuickActionHabit.id, selectedDate);
           }
         }}

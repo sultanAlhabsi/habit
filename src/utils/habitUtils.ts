@@ -314,7 +314,7 @@ export const getPeriodicBadgeText = (
   if (habit.frequency === 'weekly_target') {
     const prog = getWeeklyTargetProgress(habit, completedDates, referenceDate);
     if (prog.isCompleted) {
-      return `مكتمل للأسبوع (${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)}) 🎯`;
+      return undefined;
     }
     return `${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)} هذا الأسبوع`;
   }
@@ -322,7 +322,7 @@ export const getPeriodicBadgeText = (
   if (habit.frequency === 'monthly_target') {
     const prog = getMonthlyTargetProgress(habit, completedDates, referenceDate);
     if (prog.isCompleted) {
-      return `مكتمل للشهر (${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)}) 🎯`;
+      return undefined;
     }
     return `${toArabicNumerals(prog.completedCount)}/${toArabicNumerals(prog.targetCount)} هذا الشهر`;
   }
@@ -1727,7 +1727,36 @@ export const formatHabitStreakArabic = (count: number, frequency: HabitFrequency
     if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} أشهر متتالية`;
     return `${toArabicNumerals(safe)} شهراً متتالياً`;
   }
+  if (frequency === 'specific_days') {
+    if (safe === 0) return '٠ إنجاز';
+    if (safe === 1) return 'إنجاز واحد';
+    if (safe === 2) return 'إنجازان متتاليان';
+    if (safe >= 3 && safe <= 10) return `${toArabicNumerals(safe)} إنجازات متتالية`;
+    return `${toArabicNumerals(safe)} إنجازاً متتالياً`;
+  }
   return formatArabicStreakDays(safe);
+};
+
+/**
+ * Returns a short concise schedule badge label for habits with specific days or periodic targets.
+ */
+export const formatHabitScheduleShort = (habit: Habit): string | undefined => {
+  if (habit.frequency === 'specific_days') {
+    const days = Array.isArray(habit.frequencyDays) ? habit.frequencyDays : [];
+    if (days.length === 0 || days.length === 7) return undefined;
+    if (days.length <= 4) {
+      const sorted = [...days].sort((a, b) => a - b);
+      return sorted
+        .map((d) => DAYS_OF_WEEK_AR.find((item) => item.index === d)?.short || '')
+        .filter(Boolean)
+        .join(' • ');
+    }
+    return `${toArabicNumerals(days.length)} أيام/أسبوع`;
+  }
+  if (habit.frequency === 'monthly_day') {
+    return `يوم ${toArabicNumerals(habit.monthlyDay || 1)} شهرياً`;
+  }
+  return undefined;
 };
 
 /**

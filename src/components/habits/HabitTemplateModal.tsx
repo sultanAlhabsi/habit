@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -38,6 +38,8 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  const categoriesScrollRef = useRef<ScrollView>(null);
+
   const filteredTemplates = useMemo(() => {
     return searchHabitTemplates(searchQuery, selectedCategory);
   }, [searchQuery, selectedCategory]);
@@ -73,6 +75,15 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
           ]}
         >
           <View style={styles.headerRow}>
+            <View style={styles.headerTitleContainer}>
+              <Text style={[typography.h3, { color: theme.text, textAlign: 'right' }]}>
+                نماذج العادات الجاهزة
+              </Text>
+              <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right' }]}>
+                اختر نموذجًا متقنًا لبدء رحلة التزامك بضغطة واحدة
+              </Text>
+            </View>
+
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="إغلاق نافذة النماذج"
@@ -89,15 +100,6 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
             >
               <Ionicons name="close" size={20} color={theme.text} />
             </Pressable>
-
-            <View style={styles.headerTitleContainer}>
-              <Text style={[typography.h3, { color: theme.text, textAlign: 'right' }]}>
-                نماذج العادات الجاهزة
-              </Text>
-              <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right' }]}>
-                اختر نموذجًا متقنًا لبدء رحلة التزامك بضغطة واحدة
-              </Text>
-            </View>
           </View>
 
           {/* Search Bar */}
@@ -139,8 +141,12 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
 
           {/* Category Filter Chips */}
           <ScrollView
+            ref={categoriesScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
+            onContentSizeChange={() => {
+              categoriesScrollRef.current?.scrollToEnd({ animated: false });
+            }}
             contentContainerStyle={styles.categoriesScrollContent}
             style={{ marginTop: spacing.sm }}
           >
@@ -327,7 +333,7 @@ const styles = StyleSheet.create({
   },
   headerTitleContainer: {
     flex: 1,
-    paddingRight: 8,
+    paddingLeft: 8,
   },
   closeBtn: {
     width: 32,

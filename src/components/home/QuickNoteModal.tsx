@@ -15,6 +15,7 @@ import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Button } from '../common/Button';
 import { formatArabicDate } from '../../utils/habitUtils';
+import { getNoteDraft, saveNoteDraft, deleteNoteDraft } from '../../services/draftService';
 
 interface QuickNoteModalProps {
   visible: boolean;
@@ -40,21 +41,48 @@ export const QuickNoteModal: React.FC<QuickNoteModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (visible) {
-      setNoteText(initialNote);
+    let isMounted = true;
+    if (visible && habit) {
       setIsSaving(false);
+      getNoteDraft(habit.id, date).then((draft) => {
+        if (!isMounted) return;
+        if (draft !== null && draft !== initialNote) {
+          setNoteText(draft);
+        } else {
+          setNoteText(initialNote);
+        }
+      });
     }
-  }, [visible, initialNote]);
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, habit?.id, date, initialNote]);
 
   if (!habit) return null;
 
+  const handleTextChange = (text: string) => {
+    setNoteText(text);
+    if (!habit) return;
+    if (text.trim() === (initialNote || '').trim()) {
+      deleteNoteDraft(habit.id, date).catch(() => {});
+    } else {
+      saveNoteDraft(habit.id, date, text).catch(() => {});
+    }
+  };
+
   const handleSave = () => {
+    if (habit) {
+      deleteNoteDraft(habit.id, date).catch(() => {});
+    }
     onClose();
     Promise.resolve(onSave(noteText.trim())).catch(() => {});
   };
 
   const handleDelete = () => {
     if (!onDelete) return;
+    if (habit) {
+      deleteNoteDraft(habit.id, date).catch(() => {});
+    }
     onClose();
     Promise.resolve(onDelete()).catch(() => {});
   };
@@ -136,7 +164,7 @@ export const QuickNoteModal: React.FC<QuickNoteModalProps> = ({
             <View style={{ marginTop: spacing.md }}>
               <TextInput
                 value={noteText}
-                onChangeText={setNoteText}
+                onChangeText={handleTextChange}
                 placeholder="سجل خاطرتك، فكرة، أو تأملاً حول إنجاز اليوم..."
                 placeholderTextColor={theme.textMuted}
                 multiline

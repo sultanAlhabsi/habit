@@ -8,11 +8,7 @@ import dayjs from 'dayjs';
  * (replaces deprecated InteractionManager)
  */
 const runWhenIdle = (callback: () => void) => {
-  if (typeof (globalThis as any).requestIdleCallback === 'function') {
-    (globalThis as any).requestIdleCallback(callback);
-  } else {
-    setTimeout(callback, 50);
-  }
+  setTimeout(callback, 1500);
 };
 import { Habit, HabitCheckin, HabitSortOption } from '../types/habit';
 import {
@@ -40,6 +36,9 @@ import {
   fetchStorageMetrics,
   StorageMetrics,
   updateHabitsOrder,
+  deduplicateLocalHabits,
+  hasCompletedOnboarding as dbHasCompletedOnboarding,
+  setCompletedOnboarding as dbSetCompletedOnboarding,
 } from '../services/database';
 import type { ConvertedLoopData } from '../services/loopImportService';
 import {
@@ -123,9 +122,13 @@ interface HabitState {
   importLoopData: (data: ConvertedLoopData, habitsOnly?: boolean) => Promise<void>;
   compactDatabase: () => Promise<boolean>;
   cleanEmptyCheckins: () => Promise<number>;
+  deduplicateHabits: () => Promise<{ mergedHabitsCount: number; migratedCheckinsCount: number }>;
   getStorageMetrics: () => Promise<StorageMetrics>;
   loadAllCheckins: () => Promise<void>;
   deleteImportedLoopHabits: () => Promise<{ deletedHabitsCount: number; deletedCheckinsCount: number }>;
+  hasCompletedOnboarding: boolean;
+  completeOnboarding: (starterHabits?: Omit<Habit, 'id' | 'createdAt'>[]) => Promise<void>;
+  resetOnboarding: () => Promise<void>;
 }
 
 export const useHabitStore = create<HabitState>((set, get) => ({
@@ -144,6 +147,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   eveningReminderTime: '21:00',
   cloudSyncState: 'idle',
   lastCloudSyncTime: null,
+  hasCompletedOnboarding: false,
 
   init: async () => {
     try {
@@ -153,7 +157,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       // Parallelized data fetching with windowed checkins for lightning startup
       const [habits, checkins, allPrefs, lastSync] = await Promise.all([
         fetchAllHabits(),
-        fetchRecentCheckins(180),
+        fetchRecentCheckins(90),
         getAllPreferences(),
         getLastSyncTime().catch(() => null),
       ]);
@@ -196,44 +200,6 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         setPreference('loop_habits_purged_v1', 'true').catch(() => {});
       }
 
-      // User requested recreating all Loop habits freshly without past checkin history
-      const freshLoopCreated = allPrefs['fresh_loop_habits_created_v1'] === 'true';
-      if (!freshLoopCreated) {
-        try {
-          const preloaded = require('../services/loopBackupPreloaded.json');
-          const nowStr = new Date().toISOString();
-          const existingNames = new Set(activeHabits.map((h) => h.name.trim()));
-
-          const loopHabitsFresh: Habit[] = (preloaded.habits || [])
-            .filter((h: any) => !existingNames.has((h.name || '').trim()))
-            .map((h: any, idx: number) => ({
-              id: `h_fresh_${idx + 1}_${Date.now()}`,
-              name: h.name,
-              icon: h.icon || 'sparkles-outline',
-              color: h.color || '#0D9488',
-              frequency: h.frequency || 'daily',
-              frequencyDays: Array.isArray(h.frequencyDays) ? h.frequencyDays : [0, 1, 2, 3, 4, 5, 6],
-              targetCount: Math.max(1, h.targetCount || 1),
-              unit: (h.unit || '').trim() || 'مرة',
-              isActive: h.isActive !== false,
-              archivedAt: h.archivedAt ? nowStr : null,
-              reminderTime: h.reminderTime || null,
-              isPinned: false,
-              createdAt: nowStr,
-            }));
-
-          if (loopHabitsFresh.length > 0) {
-            activeHabits = [...activeHabits, ...loopHabitsFresh];
-            batchSaveHabits(loopHabitsFresh).catch((err) =>
-              console.warn('[Store] Background fresh habits batchSave error:', err)
-            );
-          }
-          setPreference('fresh_loop_habits_created_v1', 'true').catch(() => {});
-        } catch (err) {
-          console.warn('[Store] Error seeding fresh loop habits:', err);
-        }
-      }
-
       // Purge any stale demo checkins generated for today (from previous mock data versions)
       const todayStr = dayjs().format('YYYY-MM-DD');
       const isDemoTodayCheckin = (c: HabitCheckin) =>
@@ -247,6 +213,15 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         }
       }
 
+      // If user has existing habits, they are an existing user and should never be forced into onboarding
+      const hasExistingHabits = activeHabits.length > 0;
+      const onboardingPref = allPrefs['has_completed_onboarding'] === 'true' || hasExistingHabits;
+
+      if (hasExistingHabits && allPrefs['has_completed_onboarding'] !== 'true') {
+        dbSetCompletedOnboarding(true).catch(() => {});
+        pushMetaChangeAsync('has_completed_onboarding', 'true');
+      }
+
       // Update state and dismiss loading spinner immediately so the UI is interactive
       set({
         habits: activeHabits,
@@ -257,14 +232,19 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         eveningReminderEnabled,
         eveningReminderTime,
         sortOption,
+        hasCompletedOnboarding: onboardingPref,
         isLoading: false,
         lastCloudSyncTime: lastSync,
       });
 
       // Defer non-critical background jobs until after initial animations/interactions finish
       runWhenIdle(() => {
+        // Run background deduplication without blocking startup
+        deduplicateLocalHabits().catch(() => {});
+
         // Preload sound player ahead of time
         initSound().catch(() => {});
+
         // Synchronize notifications with system schedule in background
         rescheduleAllHabitReminders(
           activeHabits,
@@ -272,19 +252,6 @@ export const useHabitStore = create<HabitState>((set, get) => ({
           eveningReminderEnabled,
           eveningReminderTime
         ).catch((err) => console.warn('[Store] Deferred notification reschedule error:', err));
-
-        // Load full historical checkins in the background without blocking the UI
-        fetchAllCheckins()
-          .then((full) => {
-            let filteredFull = allPrefs['loop_habits_purged_v1'] === 'true' || !loopPurgedOnce
-              ? full.filter((c) => !c.habitId.startsWith('loop_'))
-              : full;
-            filteredFull = filteredFull.filter((c) => !isDemoTodayCheckin(c));
-            if (filteredFull.length > activeCheckins.length) {
-              set({ checkins: filteredFull });
-            }
-          })
-          .catch(() => {});
 
         // Trigger automatic background sync with Cloud
         get().syncWithCloud().catch(() => {});
@@ -320,7 +287,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const res = await syncWithNeon();
     if (res.success) {
       const habits = await fetchAllHabits();
-      const checkins = await fetchAllCheckins();
+      const checkins = await fetchRecentCheckins(90);
       set({
         habits,
         checkins,
@@ -344,7 +311,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       // 1. Fetch latest local SQLite records in parallel immediately
       const [habits, checkins] = await Promise.all([
         fetchAllHabits(),
-        fetchAllCheckins(),
+        fetchRecentCheckins(90),
       ]);
       set({ habits, checkins, isRefreshing: false });
 
@@ -1119,5 +1086,35 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const result = await deleteImportedLoopHabitsRecord();
     return result;
   },
+
+  deduplicateHabits: async () => {
+    const result = await deduplicateLocalHabits();
+    await get().syncWithCloud();
+    const habits = await fetchAllHabits();
+    const checkins = await fetchAllCheckins();
+    set({ habits, checkins });
+    return result;
+  },
+
+  completeOnboarding: async (starterHabits) => {
+    set({ hasCompletedOnboarding: true });
+    dbSetCompletedOnboarding(true).catch((err) =>
+      console.warn('[Store] Background dbSetCompletedOnboarding error:', err)
+    );
+    pushMetaChangeAsync('has_completed_onboarding', 'true');
+
+    if (starterHabits && starterHabits.length > 0) {
+      for (const h of starterHabits) {
+        await get().addHabit(h);
+      }
+    }
+  },
+
+  resetOnboarding: async () => {
+    await dbSetCompletedOnboarding(false);
+    set({ hasCompletedOnboarding: false });
+    pushMetaChangeAsync('has_completed_onboarding', 'false');
+  },
 }));
+
 

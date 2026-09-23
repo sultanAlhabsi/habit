@@ -21,6 +21,7 @@ interface ButtonProps extends Omit<PressableProps, 'style'> {
   size?: ButtonSize;
   iconName?: keyof typeof Ionicons.glyphMap;
   iconPosition?: 'left' | 'right';
+  iconColor?: string;
   loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
@@ -32,6 +33,7 @@ export const Button: React.FC<ButtonProps> = ({
   size = 'md',
   iconName,
   iconPosition = 'left',
+  iconColor,
   loading = false,
   disabled = false,
   style,
@@ -107,6 +109,10 @@ export const Button: React.FC<ButtonProps> = ({
 
   const variantStyle = getVariantStyles();
   const sizeStyle = getSizeStyles();
+  const resolvedIconColor =
+    iconColor ??
+    (textStyle ? (StyleSheet.flatten(textStyle).color as string | undefined) : undefined) ??
+    variantStyle.iconColor;
 
   return (
     <Pressable
@@ -128,15 +134,14 @@ export const Button: React.FC<ButtonProps> = ({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={variantStyle.text.color} size="small" />
+        <ActivityIndicator color={resolvedIconColor} size="small" />
       ) : (
         <View style={styles.content}>
           {iconName && iconPosition === 'left' && (
             <Ionicons
               name={iconName}
               size={sizeStyle.fontSize + 3}
-              color={variantStyle.iconColor}
-              style={{ marginRight: 6 }}
+              color={resolvedIconColor}
             />
           )}
           <Text
@@ -156,8 +161,7 @@ export const Button: React.FC<ButtonProps> = ({
             <Ionicons
               name={iconName}
               size={sizeStyle.fontSize + 3}
-              color={variantStyle.iconColor}
-              style={{ marginLeft: 6 }}
+              color={resolvedIconColor}
             />
           )}
         </View>
@@ -174,8 +178,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   content: {
-    flexDirection: 'row',
+    flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
   },
 });

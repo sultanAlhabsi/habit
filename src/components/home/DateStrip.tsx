@@ -22,7 +22,7 @@ interface DateStripProps {
   onSelectDate: (date: string) => void;
 }
 
-export const DateStrip: React.FC<DateStripProps> = ({
+const DateStripComponent: React.FC<DateStripProps> = ({
   selectedDate,
   onSelectDate,
 }) => {
@@ -363,3 +363,4 @@ const styles = StyleSheet.create({
   },
 });
 
+export const DateStrip = React.memo(DateStripComponent);

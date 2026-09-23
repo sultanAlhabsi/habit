@@ -43,8 +43,8 @@ export const LIGHT_THEME = {
   cardSecondary: '#F4F3EF',
   cardHover: '#EBEAE5',
   text: '#1C1917', // Stone-900 (deep warm charcoal)
-  textSecondary: '#78716C', // Stone-500
-  textMuted: '#A8A29E', // Stone-400
+  textSecondary: '#57534E', // Stone-600 (WCAG AA pass on light backgrounds)
+  textMuted: '#78716C', // Stone-500 (crisp legible muted text)
   border: '#EBEAE5', // Crisp hairline border
   borderSubtle: '#F4F3EF',
   primary: '#2A4B3A', // Single serene accent (deep forest sage)
@@ -59,35 +59,41 @@ export const LIGHT_THEME = {
   tabBar: '#FAF9F6',
   tabBarBorder: '#EBEAE5',
   tabActive: '#1C1917',
-  tabInactive: '#A8A29E',
+  tabInactive: '#78716C',
+  tabPill: '#EBF2EE', // Identical to Settings icon containers (primaryLight)
+  tabPillActiveIcon: '#2A4B3A', // Deep forest green icon (primary)
+  tabActiveLabel: '#1C1917', // High-contrast active label text
   shadow: 'rgba(0, 0, 0, 0.02)', // Ultra subtle, almost flat
 };
 
 export const DARK_THEME = {
   isDark: true,
-  background: '#141413', // Deep matte dark
-  card: '#1C1C1A',
-  cardSecondary: '#242422',
-  cardHover: '#2E2E2B',
-  text: '#F5F5F4', // Stone-100
-  textSecondary: '#A8A29E', // Stone-400
-  textMuted: '#78716C', // Stone-500
-  border: '#282825',
-  borderSubtle: '#20201E',
-  primary: '#528268', // Muted sage for dark mode
-  primaryLight: '#1C2922',
+  background: '#0D0E10', // Deep obsidian slate (pure, neutral, OLED-friendly)
+  card: '#16181B', // Elevated charcoal card
+  cardSecondary: '#202327', // Crisp secondary surface for chips/badges
+  cardHover: '#282C31',
+  text: '#F8FAFC', // Slate-50 clean crisp text
+  textSecondary: '#CBD5E1', // Slate-300 clear neutral text
+  textMuted: '#94A3B8', // Slate-400 balanced legible muted text
+  border: '#262A30', // Crisp hairline border for card definition
+  borderSubtle: '#1C1F24',
+  primary: '#10B981', // Luminous, elegant emerald green
+  primaryLight: 'rgba(16, 185, 129, 0.15)',
   primaryForeground: '#FFFFFF',
-  accent: '#528268',
-  accentLight: '#1C2922',
-  destructive: '#DC2626',
+  accent: '#10B981',
+  accentLight: 'rgba(16, 185, 129, 0.15)',
+  destructive: '#EF4444',
   destructiveLight: '#3B1212',
-  success: '#528268',
-  successLight: '#1C2922',
-  tabBar: '#141413',
-  tabBarBorder: '#242422',
-  tabActive: '#F5F5F4',
-  tabInactive: '#78716C',
-  shadow: 'rgba(0, 0, 0, 0.2)',
+  success: '#10B981',
+  successLight: 'rgba(16, 185, 129, 0.15)',
+  tabBar: '#0D0E10',
+  tabBarBorder: '#1F2227',
+  tabActive: '#F8FAFC',
+  tabInactive: '#94A3B8',
+  tabPill: 'rgba(16, 185, 129, 0.15)', // Identical to primaryLight in Dark mode
+  tabPillActiveIcon: '#10B981', // Luminous emerald green icon (primary)
+  tabActiveLabel: '#F8FAFC', // Slate-50 clean active label text
+  shadow: 'rgba(0, 0, 0, 0.5)',
 };
 
 export type ThemeColors = typeof LIGHT_THEME;

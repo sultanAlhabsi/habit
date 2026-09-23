@@ -1622,17 +1622,17 @@ test('getPeriodicBadgeText: formats weekly and monthly target progress badges ac
   const weeklyDates1 = new Set(['2026-09-15']);
   assert.equal(getPeriodicBadgeText(weeklyHabit, weeklyDates1, refDate), '١/٣ هذا الأسبوع');
 
-  // 2. Weekly habit: 3 of 3 (completed)
+  // 2. Weekly habit: 3 of 3 (completed) - hidden to keep cards clean
   const weeklyDates3 = new Set(['2026-09-13', '2026-09-14', '2026-09-15']);
-  assert.equal(getPeriodicBadgeText(weeklyHabit, weeklyDates3, refDate), 'مكتمل للأسبوع (٣/٣) 🎯');
+  assert.equal(getPeriodicBadgeText(weeklyHabit, weeklyDates3, refDate), undefined);
 
   // 3. Monthly habit: 2 of 4
   const monthlyDates2 = new Set(['2026-09-02', '2026-09-10']);
   assert.equal(getPeriodicBadgeText(monthlyHabit, monthlyDates2, refDate), '٢/٤ هذا الشهر');
 
-  // 4. Monthly habit: 4 of 4 (completed)
+  // 4. Monthly habit: 4 of 4 (completed) - hidden to keep cards clean
   const monthlyDates4 = new Set(['2026-09-01', '2026-09-05', '2026-09-10', '2026-09-15']);
-  assert.equal(getPeriodicBadgeText(monthlyHabit, monthlyDates4, refDate), 'مكتمل للشهر (٤/٤) 🎯');
+  assert.equal(getPeriodicBadgeText(monthlyHabit, monthlyDates4, refDate), undefined);
 
   // 5. Daily habit returns undefined (no periodic badge clutter)
   assert.equal(getPeriodicBadgeText(dailyHabit, weeklyDates1, refDate), undefined);

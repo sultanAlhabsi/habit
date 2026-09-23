@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { useHabitStore } from '../../store/useHabitStore';
-import { reorderArray, sortHabits, isQuantitativeHabit } from '../../utils/habitUtils';
+import { reorderArray, sortHabits, isQuantitativeHabit, formatHabitFrequencyLabel } from '../../utils/habitUtils';
 
 interface ReorderHabitsModalProps {
   visible: boolean;
@@ -308,7 +308,7 @@ export const ReorderHabitsModal: React.FC<ReorderHabitsModalProps> = ({
           >
             {isQuantitativeHabit(habit)
               ? `الهدف: ${habit.targetCount} ${habit.unit} يومياً`
-              : habit.unit}
+              : formatHabitFrequencyLabel(habit)}
           </Text>
         </View>
 

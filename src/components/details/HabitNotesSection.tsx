@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -14,6 +14,7 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import type { Habit, HabitCheckin } from '../../types/habit';
 import { formatArabicDate, formatHabitNotesForShare } from '../../utils/habitUtils';
+import { getNoteDraft, saveNoteDraft, deleteNoteDraft } from '../../services/draftService';
 
 interface HabitNotesSectionProps {
   habit: Habit;
@@ -39,13 +40,29 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = React.memo(({
   const [noteText, setNoteText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [composingOriginalText, setComposingOriginalText] = useState('');
 
   const activeNote = currentCheckin?.note?.trim();
 
-  const startEditing = (date: string, initialText = '') => {
+  const startEditing = async (date: string, initialText = '') => {
     setComposingDate(date);
-    setNoteText(initialText);
+    setComposingOriginalText(initialText);
+    const draft = await getNoteDraft(habit.id, date);
+    if (draft !== null && draft.trim() !== initialText.trim()) {
+      setNoteText(draft);
+    } else {
+      setNoteText(initialText);
+    }
     setIsComposing(true);
+  };
+
+  const handleTextChange = (text: string) => {
+    setNoteText(text);
+    if (text.trim() === composingOriginalText.trim()) {
+      deleteNoteDraft(habit.id, composingDate).catch(() => {});
+    } else {
+      saveNoteDraft(habit.id, composingDate, text).catch(() => {});
+    }
   };
 
   const handleCancel = () => {
@@ -57,6 +74,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = React.memo(({
     if (isSaving) return;
     try {
       setIsSaving(true);
+      await deleteNoteDraft(habit.id, composingDate);
       await onSaveNote(composingDate, noteText);
       setIsComposing(false);
       setNoteText('');
@@ -75,6 +93,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = React.memo(({
           text: 'حذف',
           style: 'destructive',
           onPress: async () => {
+            await deleteNoteDraft(habit.id, date);
             await onDeleteNote(date);
           },
         },
@@ -179,7 +198,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = React.memo(({
               placeholder="ما الذي ساعدك على الإنجاز اليوم؟ أو أي فكرة تود تذكرها..."
               placeholderTextColor={theme.textMuted}
               value={noteText}
-              onChangeText={setNoteText}
+              onChangeText={handleTextChange}
               style={[
                 styles.textInput,
                 {

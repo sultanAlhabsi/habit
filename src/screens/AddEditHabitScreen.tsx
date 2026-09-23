@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   TextInput,
   Pressable,
+  Platform,
 } from 'react-native';
 import { appAlert } from '../services/alertService';
 import { Text } from '../components/common/AppText';
@@ -13,23 +14,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
 import { Header } from '../components/common/Header';
-import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
+import { ClockTimePicker } from '../components/common/ClockTimePicker';
+import { AppSwitch } from '../components/common/AppSwitch';
 import {
-  AVAILABLE_ICONS,
   DAYS_OF_WEEK_AR,
-  HABIT_CATEGORIES,
   HabitFrequency,
 } from '../types/habit';
 import { HABIT_PALETTES } from '../theme/colors';
 import { isValidReminderTime } from '../utils/notificationUtils';
 import { normalizeArabicNumerals, toArabicNumerals } from '../utils/habitUtils';
 import { HabitTemplateModal } from '../components/habits/HabitTemplateModal';
+import { HabitIconPickerModal } from '../components/habits/HabitIconPickerModal';
 import {
   HabitTemplate,
   getHabitTemplateById,
 } from '../utils/habitTemplates';
-
+import {
+  triggerLightHaptic,
+  triggerMediumHaptic,
+  triggerSuccessHaptic,
+} from '../utils/haptics';
 
 interface AddEditHabitScreenProps {
   route: any;
@@ -41,7 +46,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   navigation,
 }) => {
   const insets = useSafeAreaInsets();
-  const { theme, spacing, radius, typography, touchTarget } = useTheme();
+  const { theme, isDark, spacing, radius, typography, touchTarget } = useTheme();
   const { habits, addHabit, updateHabit, deleteHabit } = useHabitStore();
 
   const habitId = route.params?.habitId;
@@ -67,22 +72,20 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [selectedIcon, setSelectedIcon] = useState(
     templateHabit?.icon || initialTemplate?.icon || 'fitness-outline'
   );
-  const [iconCategoryFilter, setIconCategoryFilter] = useState<string>('الكل');
   const [selectedColor, setSelectedColor] = useState(
     templateHabit?.color || initialTemplate?.color || HABIT_PALETTES[0].hex
   );
+
   const initialFreq = templateHabit?.frequency || initialTemplate?.frequency || 'daily';
   const getInitialTab = (): 'daily' | 'weekly' | 'monthly' => {
-    if (initialFreq === 'weekly_target') return 'weekly';
+    if (initialFreq === 'weekly_target' || initialFreq === 'specific_days') return 'weekly';
     if (initialFreq === 'monthly_day' || initialFreq === 'monthly_target') return 'monthly';
     return 'daily';
   };
 
   const [freqTab, setFreqTab] = useState<'daily' | 'weekly' | 'monthly'>(getInitialTab());
-  const [weeklyMode, setWeeklyMode] = useState<'target' | 'specific_day'>(
-    initialFreq === 'specific_days' && (templateHabit?.frequencyDays?.length === 1)
-      ? 'specific_day'
-      : 'target'
+  const [weeklyMode, setWeeklyMode] = useState<'target' | 'specific_days'>(
+    initialFreq === 'weekly_target' ? 'target' : 'specific_days'
   );
   const [monthlyMode, setMonthlyMode] = useState<'day' | 'target'>(
     initialFreq === 'monthly_target' ? 'target' : 'day'
@@ -116,15 +119,24 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(
     Boolean(route.params?.openTemplates)
   );
+  const [isIconModalVisible, setIsIconModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const quickChipsScrollRef = useRef<ScrollView>(null);
 
   const applyTemplate = (template: HabitTemplate) => {
+    triggerSuccessHaptic();
     setName(template.name);
     setDescription(template.description);
     setSelectedIcon(template.icon);
     setSelectedColor(template.color);
     setFrequency(template.frequency);
     setFrequencyDays(template.frequencyDays);
+    if (template.frequency === 'specific_days') {
+      setFreqTab('weekly');
+      setWeeklyMode('specific_days');
+    } else {
+      setFreqTab('daily');
+    }
     setTargetCount(String(template.targetCount));
     setUnit(template.unit);
     if (template.reminderTime) {
@@ -141,54 +153,47 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
       getHabitTemplateById('template_quran'),
       getHabitTemplateById('template_reading'),
       getHabitTemplateById('template_exercise'),
+      getHabitTemplateById('template_walk'),
     ].filter(Boolean) as HabitTemplate[];
   }, []);
 
-  const commonUnits = ['مرة', 'دقيقة', 'لتر', 'صفحة', 'خطوة', 'كوب'];
-
-  const quickReminderTimes = [
-    { time: '06:30', label: '٠٦:٣٠ ص' },
-    { time: '08:00', label: '٠٨:٠٠ ص' },
-    { time: '13:30', label: '٠١:٣٠ م' },
-    { time: '18:00', label: '٠٦:٠٠ م' },
-    { time: '21:30', label: '٠٩:٣٠ م' },
-  ];
+  const commonUnits = ['مرة', 'دقيقة', 'صفحة', 'لتر', 'خطوة', 'كوب'];
 
   const toggleDay = (dayIndex: number) => {
+    triggerLightHaptic();
     if (frequencyDays.includes(dayIndex)) {
-      if (frequencyDays.length === 1) {
-        appAlert('تنبيه', 'يجب اختيار يوم واحد على الأقل للعادة');
-        return;
-      }
+      if (frequencyDays.length === 1) return; // Maintain at least one day
       setFrequencyDays(frequencyDays.filter((d) => d !== dayIndex));
     } else {
       setFrequencyDays([...frequencyDays, dayIndex].sort());
     }
   };
 
-  const handleSave = async () => {
-    if (isSaving) return;
+  const handleStepperChange = (delta: number) => {
+    triggerLightHaptic();
+    const current = parseInt(normalizeArabicNumerals(targetCount), 10) || 1;
+    const next = Math.max(1, current + delta);
+    setTargetCount(String(next));
+  };
 
+  const handleSave = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      appAlert('تنبيه', 'يرجى إدخال اسم العادة');
+      appAlert('تنبيه', 'يرجى إدخال اسم العادة.');
       return;
     }
 
     const normalizedReminderTime = normalizeArabicNumerals(reminderTime);
-    if (hasReminder) {
-      if (!isValidReminderTime(normalizedReminderTime)) {
-        appAlert(
-          'تنبيه',
-          'يرجى إدخال وقت صحيح للتنبيه بصيغة 24 ساعة (مثال: 08:30 أو 20:00)'
-        );
-        return;
-      }
+    if (hasReminder && !isValidReminderTime(normalizedReminderTime)) {
+      appAlert(
+        'تنبيه',
+        'يرجى تحديد وقت تذكير صحيح بتنسيق 24 ساعة (مثلاً 08:00 أو 20:30).'
+      );
+      return;
     }
 
-    const normalizedTargetStr = normalizeArabicNumerals(targetCount);
-    const parsedTarget = parseInt(normalizedTargetStr, 10);
-    const validTarget = isNaN(parsedTarget) || parsedTarget < 1 ? 1 : parsedTarget;
+    const parsedTarget = parseInt(normalizeArabicNumerals(targetCount), 10);
+    const validTarget = isNaN(parsedTarget) || parsedTarget < 1 ? 1 : Math.min(99999, parsedTarget);
 
     const parsedWeeklyTarget = parseInt(normalizeArabicNumerals(weeklyTargetCount), 10);
     const validWeeklyTarget = isNaN(parsedWeeklyTarget) || parsedWeeklyTarget < 1 ? 3 : Math.min(7, parsedWeeklyTarget);
@@ -216,8 +221,10 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
       reminderTime: finalReminder,
       isPinned,
     };
+
     try {
       setIsSaving(true);
+      triggerMediumHaptic();
       if (isEditing && existingHabit) {
         await updateHabit({
           ...existingHabit,
@@ -229,6 +236,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           isActive: true,
         });
       }
+      triggerSuccessHaptic();
       navigation.goBack();
     } catch (err) {
       setIsSaving(false);
@@ -247,6 +255,7 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
           text: 'حذف نهائي',
           style: 'destructive',
           onPress: async () => {
+            triggerMediumHaptic();
             navigation.goBack();
             await deleteHabit(existingHabit.id);
           },
@@ -254,6 +263,10 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
       ]
     );
   };
+
+  const currentPal = HABIT_PALETTES.find(
+    (p) => p.hex.toLowerCase() === selectedColor.toLowerCase()
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -267,48 +280,35 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
             : undefined
         }
         onBackPress={() => navigation.goBack()}
-        rightAction={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="حفظ"
-            disabled={isSaving}
-            onPress={handleSave}
-            style={({ pressed }) => [
-              styles.headerSaveBtn,
-              { opacity: isSaving ? 0.4 : pressed ? 0.6 : 1 },
-            ]}
-          >
-            <Text style={[typography.subMedium, { color: theme.text, fontWeight: '600' }]}>
-              {isSaving ? 'جارٍ الحفظ...' : 'حفظ'}
-            </Text>
-          </Pressable>
-        }
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
           padding: spacing.base,
-          paddingBottom: insets.bottom + 40,
+          paddingBottom: insets.bottom + 100, // Extra space for sticky bottom bar
         }}
       >
-        {/* Curated Habit Templates Quick Picker */}
+        {/* Curated Habit Templates Quick Strip (When creating new habit) */}
         {!isEditing && !isDuplicating && (
-          <Card
-            style={[
-              styles.sectionCard,
-              {
-                backgroundColor: theme.cardSecondary,
-                borderColor: theme.border,
-                marginBottom: spacing.base,
-              },
-            ]}
-          >
-            <View style={styles.templateCardHeaderRow}>
+          <View style={styles.templatesHeaderContainer}>
+            <View style={styles.templatesTitleRow}>
+              <View style={styles.templatesTextGroup}>
+                <Text style={[typography.subMedium, { color: theme.text, textAlign: 'right', fontWeight: '700' }]}>
+                  نماذج جاهزة سريعة ✨
+                </Text>
+                <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', fontSize: 11 }]}>
+                  اختر نموذجًا لتعبئة الإعدادات فوراً
+                </Text>
+              </View>
+
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="تصفح جميع نماذج العادات الجاهزة"
-                onPress={() => setIsTemplateModalVisible(true)}
+                onPress={() => {
+                  triggerLightHaptic();
+                  setIsTemplateModalVisible(true);
+                }}
                 style={({ pressed }) => [
                   styles.browseTemplatesBtn,
                   {
@@ -324,200 +324,299 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                   تصفح الكل (24)
                 </Text>
               </Pressable>
-
-              <View style={styles.templateCardTitleGroup}>
-                <Text style={[typography.subMedium, { color: theme.text, textAlign: 'right', fontWeight: '700' }]}>
-                  نماذج عادات جاهزة ✨
-                </Text>
-                <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', fontSize: 11 }]}>
-                  اختر نموذجًا لتعبئة الإعدادات تلقائيًا
-                </Text>
-              </View>
             </View>
 
-            {/* Quick Chips of popular habits */}
             <ScrollView
+              ref={quickChipsScrollRef}
               horizontal
               showsHorizontalScrollIndicator={false}
+              onContentSizeChange={() => {
+                quickChipsScrollRef.current?.scrollToEnd({ animated: false });
+              }}
               contentContainerStyle={styles.quickChipsContent}
-              style={{ marginTop: 10 }}
+              style={{ marginTop: 8 }}
             >
-              {featuredTemplates.map((template) => {
-                return (
-                  <Pressable
-                    key={template.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`استخدام نموذج ${template.name}`}
-                    onPress={() => applyTemplate(template)}
-                    style={({ pressed }) => [
-                      styles.quickTemplateChip,
+              {featuredTemplates.map((template) => (
+                <Pressable
+                  key={template.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`استخدام نموذج ${template.name}`}
+                  onPress={() => applyTemplate(template)}
+                  style={({ pressed }) => [
+                    styles.quickTemplateChip,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      borderRadius: radius.full,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.quickChipIcon,
                       {
-                        backgroundColor: theme.card,
-                        borderColor: theme.border,
-                        borderRadius: radius.md,
-                        opacity: pressed ? 0.7 : 1,
+                        backgroundColor: `${template.color}20`,
+                        borderRadius: radius.full,
                       },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.quickChipIcon,
-                        {
-                          backgroundColor: `${template.color}15`,
-                          borderRadius: radius.sm,
-                        },
-                      ]}
-                    >
-                      <Ionicons name={template.icon as any} size={15} color={template.color} />
-                    </View>
-                    <Text style={[typography.caption, { color: theme.text, fontWeight: '600', marginRight: 6 }]}>
-                      {template.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                    <Ionicons name={template.icon as any} size={14} color={template.color} />
+                  </View>
+                  <Text style={[typography.caption, { color: theme.text, fontWeight: '600' }]}>
+                    {template.name}
+                  </Text>
+                </Pressable>
+              ))}
             </ScrollView>
-          </Card>
+          </View>
         )}
 
-        {/* Basic Info */}
-        <Card style={styles.sectionCard}>
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
-            اسم العادة
-          </Text>
-          <TextInput
-            placeholder="قراءة كتاب، شرب ماء، مشي..."
-            placeholderTextColor={theme.textMuted}
-            value={name}
-            onChangeText={setName}
-            style={[
-              styles.input,
-              typography.body,
-              {
-                color: theme.text,
-                borderColor: theme.border,
-                borderRadius: radius.sm,
-                backgroundColor: theme.background,
-                minHeight: touchTarget,
-              },
-            ]}
-          />
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {/* المجموعة 1: الهوية والمظهر (Unified Identity Section)               */}
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        <Card style={styles.insetGroupCard}>
+          <View style={styles.identityRow}>
+            {/* Interactive Icon Button */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="تغيير أيقونة العادة"
+              onPress={() => {
+                triggerLightHaptic();
+                setIsIconModalVisible(true);
+              }}
+              style={({ pressed }) => [
+                styles.iconAvatarBtn,
+                {
+                  backgroundColor: selectedColor,
+                  borderRadius: radius.lg,
+                  opacity: pressed ? 0.8 : 1,
+                  shadowColor: selectedColor,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: isDark ? 0.35 : 0.25,
+                  shadowRadius: 8,
+                  elevation: 4,
+                },
+              ]}
+            >
+              <Ionicons name={selectedIcon as any} size={28} color="#FFFFFF" />
+              <View
+                style={[
+                  styles.iconEditBadge,
+                  {
+                    backgroundColor: theme.card,
+                    borderColor: theme.border,
+                    borderRadius: radius.full,
+                  },
+                ]}
+              >
+                <Ionicons name="pencil" size={10} color={theme.text} />
+              </View>
+            </Pressable>
 
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginTop: 14, marginBottom: 6 }]}>
-            ملاحظات أو الدافع (اختياري)
-          </Text>
-          <TextInput
-            placeholder="ملاحظة تذكيرية..."
-            placeholderTextColor={theme.textMuted}
-            value={description}
-            onChangeText={setDescription}
-            style={[
-              styles.input,
-              typography.body,
-              {
-                color: theme.text,
-                borderColor: theme.border,
-                borderRadius: radius.sm,
-                backgroundColor: theme.background,
-                minHeight: touchTarget,
-              },
-            ]}
-          />
-        </Card>
+            {/* Habit Name and Motivation Inputs */}
+            <View style={styles.identityInputsColumn}>
+              <TextInput
+                placeholder="اسم العادة (مثلاً: قراءة، مشي...)"
+                placeholderTextColor={theme.textMuted}
+                value={name}
+                onChangeText={setName}
+                style={[
+                  styles.nameInput,
+                  typography.subMedium,
+                  {
+                    color: theme.text,
+                    fontWeight: '700',
+                  },
+                ]}
+              />
 
-        {/* Color Palette (Subtle & Earthy) */}
-        <Card style={styles.sectionCard}>
-          <View
-            style={{
-              flexDirection: 'row-reverse',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 10,
-            }}
-          >
-            <Text style={[typography.caption, { color: theme.textSecondary }]}>
-              اللون
-            </Text>
-            {(() => {
-              const currentPal = HABIT_PALETTES.find(
-                (p) => p.hex.toLowerCase() === selectedColor.toLowerCase()
-              );
-              return currentPal ? (
-                <Text style={[typography.caption, { color: theme.primary, fontWeight: '600' }]}>
-                  {currentPal.label}
-                </Text>
-              ) : null;
-            })()}
+              <View style={[styles.inlineDivider, { backgroundColor: theme.borderSubtle }]} />
+
+              <TextInput
+                placeholder="ملاحظة أو الدافع (اختياري)..."
+                placeholderTextColor={theme.textMuted}
+                value={description}
+                onChangeText={setDescription}
+                style={[
+                  styles.descInput,
+                  typography.caption,
+                  {
+                    color: theme.textSecondary,
+                  },
+                ]}
+              />
+            </View>
           </View>
-          <View style={styles.colorRow}>
+
+          {/* Color Palette Selector */}
+          <View style={[styles.sectionDivider, { backgroundColor: theme.borderSubtle }]} />
+
+          <View style={styles.paletteHeaderRow}>
+            <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600' }]}>
+              لون العادة
+            </Text>
+            {currentPal && (
+              <Text style={[typography.caption, { color: selectedColor, fontWeight: '700' }]}>
+                {currentPal.label}
+              </Text>
+            )}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.colorPaletteScroll}
+            style={{ marginTop: 8 }}
+          >
             {HABIT_PALETTES.map((colorItem) => {
-              const isSelected = selectedColor === colorItem.hex;
+              const isSelected = selectedColor.toLowerCase() === colorItem.hex.toLowerCase();
               return (
                 <Pressable
                   key={colorItem.id}
                   accessibilityRole="button"
                   accessibilityLabel={colorItem.label}
-                  onPress={() => setSelectedColor(colorItem.hex)}
-                  style={[
-                    styles.colorCircle,
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setSelectedColor(colorItem.hex);
+                  }}
+                  style={({ pressed }) => [
+                    styles.colorCircleWrapper,
                     {
-                      backgroundColor: colorItem.hex,
-                      borderColor: isSelected ? theme.text : 'transparent',
-                      borderWidth: isSelected ? 2.5 : 0,
+                      borderColor: isSelected ? colorItem.hex : 'transparent',
+                      transform: [{ scale: pressed ? 0.92 : 1 }],
                     },
                   ]}
                 >
-                  {isSelected && (
-                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                  )}
+                  <View
+                    style={[
+                      styles.colorCircle,
+                      {
+                        backgroundColor: colorItem.hex,
+                      },
+                    ]}
+                  >
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Card>
+
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {/* المجموعة 2: نظام التكرار والهدف (Schedule & Target Stepper)        */}
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        <Card style={styles.insetGroupCard}>
+          <View style={styles.groupHeaderRow}>
+            <View style={[styles.groupHeaderIcon, { backgroundColor: `${selectedColor}18`, borderRadius: radius.sm }]}>
+              <Ionicons name="calendar" size={16} color={selectedColor} />
+            </View>
+            <Text style={[typography.subMedium, { color: theme.text, fontWeight: '700', marginRight: 8 }]}>
+              الجدول والتكرار
+            </Text>
+          </View>
+
+          {/* Smooth iOS Segmented Control */}
+          <View
+            style={[
+              styles.segmentedContainer,
+              {
+                backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary,
+                borderColor: theme.border,
+                borderRadius: radius.md,
+              },
+            ]}
+          >
+            {(['daily', 'weekly', 'monthly'] as const).map((tab) => {
+              const isSelected = freqTab === tab;
+              const label = tab === 'daily' ? 'يومية' : tab === 'weekly' ? 'أسبوعية' : 'شهرية';
+              return (
+                <Pressable
+                  key={tab}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isSelected }}
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setFreqTab(tab);
+                    if (tab === 'daily') setFrequency('daily');
+                    if (tab === 'weekly') setFrequency(weeklyMode === 'target' ? 'weekly_target' : 'specific_days');
+                    if (tab === 'monthly') setFrequency(monthlyMode === 'day' ? 'monthly_day' : 'monthly_target');
+                  }}
+                  style={[
+                    styles.segmentButton,
+                    {
+                      backgroundColor: isSelected
+                        ? isDark ? '#2D323B' : '#FFFFFF'
+                        : 'transparent',
+                      borderRadius: radius.sm,
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 1 },
+                      shadowOpacity: isSelected ? (isDark ? 0.3 : 0.08) : 0,
+                      shadowRadius: 2,
+                      elevation: isSelected ? 2 : 0,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: isSelected ? theme.text : theme.textMuted,
+                        fontWeight: isSelected ? '700' : '500',
+                        fontSize: 13,
+                      },
+                    ]}
+                  >
+                    {label}
+                  </Text>
                 </Pressable>
               );
             })}
           </View>
-        </Card>
 
-        {/* Icons Grid */}
-        <Card style={styles.sectionCard}>
-          <View
-            style={{
-              flexDirection: 'row-reverse',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: 10,
-            }}
-          >
-            <Text style={[typography.caption, { color: theme.textSecondary }]}>
-              الأيقونة
-            </Text>
-            {(() => {
-              const currentOpt = AVAILABLE_ICONS.find((i) => i.name === selectedIcon);
-              return currentOpt ? (
-                <Text style={[typography.caption, { color: theme.primary, fontWeight: '600' }]}>
-                  {currentOpt.label} • {currentOpt.category}
+          {/* Daily Sub-Options */}
+          {freqTab === 'daily' && (
+            <View style={{ marginTop: 14 }}>
+              <View
+                style={{
+                  backgroundColor: `${selectedColor}12`,
+                  borderColor: `${selectedColor}30`,
+                  borderWidth: 1,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                }}
+              >
+                <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 4 }}>
+                  <Ionicons name="sunny-outline" size={16} color={selectedColor} style={{ marginLeft: 6 }} />
+                  <Text style={[typography.subMedium, { color: theme.text, fontWeight: '700' }]}>
+                    عادة يومية مستمرة
+                  </Text>
+                </View>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', fontSize: 12, lineHeight: 18 }]}>
+                  تتكرر هذه العادة يومياً طوال أيام الأسبوع.
                 </Text>
-              ) : null;
-            })()}
-          </View>
-          {/* Category Filter Chips for Icons */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryChipsContainer}
-            style={{ marginBottom: 12 }}
-          >
-            {HABIT_CATEGORIES.map((cat) => {
-              const isCatSelected = iconCategoryFilter === cat;
-              return (
+              </View>
+            </View>
+          )}
+
+          {/* Weekly Sub-Options */}
+          {freqTab === 'weekly' && (
+            <View style={{ marginTop: 14 }}>
+              <View style={styles.subPillsRow}>
                 <Pressable
-                  key={cat}
-                  accessibilityRole="button"
-                  accessibilityLabel={`تصنيف ${cat}`}
-                  onPress={() => setIconCategoryFilter(cat)}
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setWeeklyMode('specific_days');
+                    setFrequency('specific_days');
+                  }}
                   style={[
-                    styles.categoryChip,
+                    styles.subPill,
                     {
-                      backgroundColor: isCatSelected ? theme.primary : theme.cardSecondary,
-                      borderColor: isCatSelected ? theme.primary : theme.border,
+                      backgroundColor: weeklyMode === 'specific_days' ? `${selectedColor}18` : theme.cardSecondary,
+                      borderColor: weeklyMode === 'specific_days' ? selectedColor : theme.border,
                       borderRadius: radius.full,
                     },
                   ]}
@@ -526,257 +625,27 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                     style={[
                       typography.caption,
                       {
-                        color: isCatSelected ? '#FFFFFF' : theme.textSecondary,
-                        fontWeight: isCatSelected ? '600' : '400',
+                        color: weeklyMode === 'specific_days' ? selectedColor : theme.textSecondary,
+                        fontWeight: weeklyMode === 'specific_days' ? '700' : '500',
                       },
                     ]}
                   >
-                    {cat}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-
-          <View style={styles.iconGrid}>
-            {(iconCategoryFilter === 'الكل'
-              ? AVAILABLE_ICONS
-              : AVAILABLE_ICONS.filter((item) => item.category === iconCategoryFilter)
-            ).map((item) => {
-              const isSelected = selectedIcon === item.name;
-              return (
-                <Pressable
-                  key={item.name}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.label}
-                  onPress={() => setSelectedIcon(item.name)}
-                  style={[
-                    styles.iconBox,
-                    {
-                      borderRadius: radius.sm,
-                      backgroundColor: isSelected ? theme.text : 'transparent',
-                      borderColor: theme.border,
-                      borderWidth: isSelected ? 0 : 1,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={item.name as any}
-                    size={20}
-                    color={isSelected ? theme.background : theme.textSecondary}
-                  />
-                </Pressable>
-              );
-            })}
-          </View>
-        </Card>
-
-        {/* Frequency & Schedule */}
-        <Card style={styles.sectionCard}>
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 10 }]}>
-            نظام تكرار العادة
-          </Text>
-
-          {/* 3 Main Tabs: Daily / Weekly / Monthly */}
-          <View style={styles.mainTabRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="عادة يومية"
-              onPress={() => {
-                setFreqTab('daily');
-                setFrequency('daily');
-              }}
-              style={[
-                styles.mainTabBtn,
-                {
-                  backgroundColor: freqTab === 'daily' ? theme.text : theme.background,
-                  borderColor: theme.border,
-                  borderRadius: radius.sm,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  typography.caption,
-                  {
-                    color: freqTab === 'daily' ? theme.background : theme.text,
-                    fontWeight: freqTab === 'daily' ? '700' : '500',
-                  },
-                ]}
-              >
-                يومية
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="عادة أسبوعية"
-              onPress={() => {
-                setFreqTab('weekly');
-                setFrequency(weeklyMode === 'target' ? 'weekly_target' : 'specific_days');
-              }}
-              style={[
-                styles.mainTabBtn,
-                {
-                  backgroundColor: freqTab === 'weekly' ? theme.text : theme.background,
-                  borderColor: theme.border,
-                  borderRadius: radius.sm,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  typography.caption,
-                  {
-                    color: freqTab === 'weekly' ? theme.background : theme.text,
-                    fontWeight: freqTab === 'weekly' ? '700' : '500',
-                  },
-                ]}
-              >
-                أسبوعية
-              </Text>
-            </Pressable>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="عادة شهرية"
-              onPress={() => {
-                setFreqTab('monthly');
-                setFrequency(monthlyMode === 'day' ? 'monthly_day' : 'monthly_target');
-              }}
-              style={[
-                styles.mainTabBtn,
-                {
-                  backgroundColor: freqTab === 'monthly' ? theme.text : theme.background,
-                  borderColor: theme.border,
-                  borderRadius: radius.sm,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  typography.caption,
-                  {
-                    color: freqTab === 'monthly' ? theme.background : theme.text,
-                    fontWeight: freqTab === 'monthly' ? '700' : '500',
-                  },
-                ]}
-              >
-                شهرية
-              </Text>
-            </Pressable>
-          </View>
-
-          {/* Sub-options for DAILY */}
-          {freqTab === 'daily' && (
-            <View style={{ marginTop: 8 }}>
-              <View style={styles.frequencyTypeRow}>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setFrequency('daily')}
-                  style={[
-                    styles.freqBtn,
-                    {
-                      backgroundColor: frequency === 'daily' ? theme.cardSecondary : theme.background,
-                      borderColor: frequency === 'daily' ? theme.primary : theme.border,
-                      borderRadius: radius.sm,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      typography.caption,
-                      {
-                        color: frequency === 'daily' ? theme.primary : theme.textSecondary,
-                        fontWeight: frequency === 'daily' ? '600' : '400',
-                      },
-                    ]}
-                  >
-                    كل يوم
+                    أيام محددة في الأسبوع
                   </Text>
                 </Pressable>
 
                 <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setFrequency('specific_days')}
-                  style={[
-                    styles.freqBtn,
-                    {
-                      backgroundColor: frequency === 'specific_days' ? theme.cardSecondary : theme.background,
-                      borderColor: frequency === 'specific_days' ? theme.primary : theme.border,
-                      borderRadius: radius.sm,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      typography.caption,
-                      {
-                        color: frequency === 'specific_days' ? theme.primary : theme.textSecondary,
-                        fontWeight: frequency === 'specific_days' ? '600' : '400',
-                      },
-                    ]}
-                  >
-                    أيام محددة
-                  </Text>
-                </Pressable>
-              </View>
-
-              {frequency === 'specific_days' && (
-                <View style={styles.daysSelectorRow}>
-                  {DAYS_OF_WEEK_AR.map((day) => {
-                    const isDaySelected = frequencyDays.includes(day.index);
-                    return (
-                      <Pressable
-                        key={day.index}
-                        accessibilityRole="button"
-                        accessibilityLabel={day.name}
-                        onPress={() => toggleDay(day.index)}
-                        style={[
-                          styles.daySelectPill,
-                          {
-                            borderRadius: radius.sm,
-                            backgroundColor: isDaySelected ? theme.text : theme.background,
-                            borderColor: theme.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            typography.caption,
-                            {
-                              color: isDaySelected ? theme.background : theme.textSecondary,
-                              fontWeight: isDaySelected ? '600' : '400',
-                              fontSize: 11,
-                            },
-                          ]}
-                        >
-                          {day.short}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Sub-options for WEEKLY */}
-          {freqTab === 'weekly' && (
-            <View style={{ marginTop: 8 }}>
-              <View style={styles.frequencyTypeRow}>
-                <Pressable
-                  accessibilityRole="button"
                   onPress={() => {
+                    triggerLightHaptic();
                     setWeeklyMode('target');
                     setFrequency('weekly_target');
                   }}
                   style={[
-                    styles.freqBtn,
+                    styles.subPill,
                     {
-                      backgroundColor: weeklyMode === 'target' ? theme.cardSecondary : theme.background,
-                      borderColor: weeklyMode === 'target' ? theme.primary : theme.border,
-                      borderRadius: radius.sm,
+                      backgroundColor: weeklyMode === 'target' ? `${selectedColor}18` : theme.cardSecondary,
+                      borderColor: weeklyMode === 'target' ? selectedColor : theme.border,
+                      borderRadius: radius.full,
                     },
                   ]}
                 >
@@ -784,66 +653,36 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                     style={[
                       typography.caption,
                       {
-                        color: weeklyMode === 'target' ? theme.primary : theme.textSecondary,
-                        fontWeight: weeklyMode === 'target' ? '600' : '400',
+                        color: weeklyMode === 'target' ? selectedColor : theme.textSecondary,
+                        fontWeight: weeklyMode === 'target' ? '700' : '500',
                       },
                     ]}
                   >
                     هدف مرن (مرات في الأسبوع)
                   </Text>
                 </Pressable>
-
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    setWeeklyMode('specific_day');
-                    setFrequency('specific_days');
-                    if (frequencyDays.length !== 1) {
-                      setFrequencyDays([5]); // الجمعة كافتراضي
-                    }
-                  }}
-                  style={[
-                    styles.freqBtn,
-                    {
-                      backgroundColor: weeklyMode === 'specific_day' ? theme.cardSecondary : theme.background,
-                      borderColor: weeklyMode === 'specific_day' ? theme.primary : theme.border,
-                      borderRadius: radius.sm,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      typography.caption,
-                      {
-                        color: weeklyMode === 'specific_day' ? theme.primary : theme.textSecondary,
-                        fontWeight: weeklyMode === 'specific_day' ? '600' : '400',
-                      },
-                    ]}
-                  >
-                    يوم محدد في الأسبوع
-                  </Text>
-                </Pressable>
               </View>
 
-              {weeklyMode === 'target' && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
-                    عدد المرات المطلوبة أسبوعيًا
+              {weeklyMode === 'specific_days' && (
+                <View style={styles.daysContainer}>
+                  <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginBottom: 8, fontSize: 11 }]}>
+                    اختر أيام التكرار:
                   </Text>
-                  <View style={styles.numberRow}>
-                    {[1, 2, 3, 4, 5, 6].map((num) => {
-                      const isSel = weeklyTargetCount === String(num);
+                  <View style={styles.daysRow}>
+                    {DAYS_OF_WEEK_AR.map((day) => {
+                      const isSelected = frequencyDays.includes(day.index);
                       return (
                         <Pressable
-                          key={num}
+                          key={day.index}
                           accessibilityRole="button"
-                          onPress={() => setWeeklyTargetCount(String(num))}
+                          accessibilityLabel={day.name}
+                          onPress={() => toggleDay(day.index)}
                           style={[
-                            styles.numPill,
+                            styles.dayCircle,
                             {
-                              backgroundColor: isSel ? theme.text : theme.background,
-                              borderColor: theme.border,
-                              borderRadius: radius.sm,
+                              backgroundColor: isSelected ? selectedColor : theme.cardSecondary,
+                              borderColor: isSelected ? selectedColor : theme.border,
+                              borderRadius: radius.full,
                             },
                           ]}
                         >
@@ -851,8 +690,55 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                             style={[
                               typography.caption,
                               {
-                                color: isSel ? theme.background : theme.text,
+                                color: isSelected ? '#FFFFFF' : theme.textSecondary,
+                                fontWeight: isSelected ? '700' : '500',
+                                fontSize: 12,
+                              },
+                            ]}
+                          >
+                            {day.short}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 8, fontSize: 11 }]}>
+                    تكون العادة مستحقة في الأيام المحددة فقط.
+                  </Text>
+                </View>
+              )}
+
+              {weeklyMode === 'target' && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 8 }]}>
+                    كم مرة في الأسبوع؟
+                  </Text>
+                  <View style={styles.numberRow}>
+                    {[1, 2, 3, 4, 5, 6].map((num) => {
+                      const isSel = weeklyTargetCount === String(num);
+                      return (
+                        <Pressable
+                          key={num}
+                          onPress={() => {
+                            triggerLightHaptic();
+                            setWeeklyTargetCount(String(num));
+                          }}
+                          style={[
+                            styles.numberPill,
+                            {
+                              backgroundColor: isSel ? selectedColor : theme.cardSecondary,
+                              borderColor: isSel ? selectedColor : theme.border,
+                              borderRadius: radius.md,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              typography.caption,
+                              {
+                                color: isSel ? '#FFFFFF' : theme.text,
                                 fontWeight: isSel ? '700' : '500',
+                                fontSize: 13,
                               },
                             ]}
                           >
@@ -862,107 +748,27 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                       );
                     })}
                   </View>
-
-                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginTop: 10, marginBottom: 6 }]}>
-                    أيام التنبيه المقترحة (اختياري)
-                  </Text>
-                  <View style={styles.daysSelectorRow}>
-                    {DAYS_OF_WEEK_AR.map((day) => {
-                      const isDaySelected = frequencyDays.includes(day.index);
-                      return (
-                        <Pressable
-                          key={day.index}
-                          accessibilityRole="button"
-                          accessibilityLabel={day.name}
-                          onPress={() => toggleDay(day.index)}
-                          style={[
-                            styles.daySelectPill,
-                            {
-                              borderRadius: radius.sm,
-                              backgroundColor: isDaySelected ? theme.text : theme.background,
-                              borderColor: theme.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              typography.caption,
-                              {
-                                color: isDaySelected ? theme.background : theme.textSecondary,
-                                fontWeight: isDaySelected ? '600' : '400',
-                                fontSize: 11,
-                              },
-                            ]}
-                          >
-                            {day.short}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-
-              {weeklyMode === 'specific_day' && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
-                    اختر يوم الأسبوع للعادة
-                  </Text>
-                  <View style={styles.daysSelectorRow}>
-                    {DAYS_OF_WEEK_AR.map((day) => {
-                      const isDaySelected = frequencyDays.length === 1 && frequencyDays[0] === day.index;
-                      return (
-                        <Pressable
-                          key={day.index}
-                          accessibilityRole="button"
-                          accessibilityLabel={day.name}
-                          onPress={() => setFrequencyDays([day.index])}
-                          style={[
-                            styles.daySelectPill,
-                            {
-                              borderRadius: radius.sm,
-                              backgroundColor: isDaySelected ? theme.text : theme.background,
-                              borderColor: theme.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              typography.caption,
-                              {
-                                color: isDaySelected ? theme.background : theme.textSecondary,
-                                fontWeight: isDaySelected ? '600' : '400',
-                                fontSize: 11,
-                              },
-                            ]}
-                          >
-                            {day.short}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
                 </View>
               )}
             </View>
           )}
 
-          {/* Sub-options for MONTHLY */}
+          {/* Monthly Sub-Options */}
           {freqTab === 'monthly' && (
-            <View style={{ marginTop: 8 }}>
-              <View style={styles.frequencyTypeRow}>
+            <View style={{ marginTop: 14 }}>
+              <View style={styles.subPillsRow}>
                 <Pressable
-                  accessibilityRole="button"
                   onPress={() => {
+                    triggerLightHaptic();
                     setMonthlyMode('day');
                     setFrequency('monthly_day');
                   }}
                   style={[
-                    styles.freqBtn,
+                    styles.subPill,
                     {
-                      backgroundColor: monthlyMode === 'day' ? theme.cardSecondary : theme.background,
-                      borderColor: monthlyMode === 'day' ? theme.primary : theme.border,
-                      borderRadius: radius.sm,
+                      backgroundColor: monthlyMode === 'day' ? `${selectedColor}18` : theme.cardSecondary,
+                      borderColor: monthlyMode === 'day' ? selectedColor : theme.border,
+                      borderRadius: radius.full,
                     },
                   ]}
                 >
@@ -970,8 +776,8 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                     style={[
                       typography.caption,
                       {
-                        color: monthlyMode === 'day' ? theme.primary : theme.textSecondary,
-                        fontWeight: monthlyMode === 'day' ? '600' : '400',
+                        color: monthlyMode === 'day' ? selectedColor : theme.textSecondary,
+                        fontWeight: monthlyMode === 'day' ? '700' : '500',
                       },
                     ]}
                   >
@@ -980,17 +786,17 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                 </Pressable>
 
                 <Pressable
-                  accessibilityRole="button"
                   onPress={() => {
+                    triggerLightHaptic();
                     setMonthlyMode('target');
                     setFrequency('monthly_target');
                   }}
                   style={[
-                    styles.freqBtn,
+                    styles.subPill,
                     {
-                      backgroundColor: monthlyMode === 'target' ? theme.cardSecondary : theme.background,
-                      borderColor: monthlyMode === 'target' ? theme.primary : theme.border,
-                      borderRadius: radius.sm,
+                      backgroundColor: monthlyMode === 'target' ? `${selectedColor}18` : theme.cardSecondary,
+                      borderColor: monthlyMode === 'target' ? selectedColor : theme.border,
+                      borderRadius: radius.full,
                     },
                   ]}
                 >
@@ -998,8 +804,8 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                     style={[
                       typography.caption,
                       {
-                        color: monthlyMode === 'target' ? theme.primary : theme.textSecondary,
-                        fontWeight: monthlyMode === 'target' ? '600' : '400',
+                        color: monthlyMode === 'target' ? selectedColor : theme.textSecondary,
+                        fontWeight: monthlyMode === 'target' ? '700' : '500',
                       },
                     ]}
                   >
@@ -1009,9 +815,9 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
               </View>
 
               {monthlyMode === 'day' && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
-                    اختر يوم الشهر (مثلاً: 1 أو 25)
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 8 }]}>
+                    اختر يوم الشهر (مثلاً: 1 أو 25):
                   </Text>
                   <View style={styles.numberRow}>
                     {[1, 5, 10, 15, 20, 25, 28].map((num) => {
@@ -1019,14 +825,16 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                       return (
                         <Pressable
                           key={num}
-                          accessibilityRole="button"
-                          onPress={() => setMonthlyDay(String(num))}
+                          onPress={() => {
+                            triggerLightHaptic();
+                            setMonthlyDay(String(num));
+                          }}
                           style={[
-                            styles.numPill,
+                            styles.numberPill,
                             {
-                              backgroundColor: isSel ? theme.text : theme.background,
-                              borderColor: theme.border,
-                              borderRadius: radius.sm,
+                              backgroundColor: isSel ? selectedColor : theme.cardSecondary,
+                              borderColor: isSel ? selectedColor : theme.border,
+                              borderRadius: radius.md,
                             },
                           ]}
                         >
@@ -1034,8 +842,9 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                             style={[
                               typography.caption,
                               {
-                                color: isSel ? theme.background : theme.text,
+                                color: isSel ? '#FFFFFF' : theme.text,
                                 fontWeight: isSel ? '700' : '500',
+                                fontSize: 13,
                               },
                             ]}
                           >
@@ -1045,33 +854,13 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                       );
                     })}
                   </View>
-                  <View style={[styles.customInputRow, { marginTop: 8 }]}>
-                    <Text style={[typography.caption, { color: theme.textMuted }]}>
-                      يوم محدد آخر (1 - 31):
-                    </Text>
-                    <TextInput
-                      value={monthlyDay}
-                      onChangeText={(v) => setMonthlyDay(toArabicNumerals(v))}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                      style={[
-                        styles.inlineInput,
-                        {
-                          borderColor: theme.border,
-                          backgroundColor: theme.background,
-                          color: theme.text,
-                          borderRadius: radius.sm,
-                        },
-                      ]}
-                    />
-                  </View>
                 </View>
               )}
 
               {monthlyMode === 'target' && (
-                <View style={{ marginTop: 10 }}>
-                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
-                    عدد المرات المطلوبة خلال الشهر
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 8 }]}>
+                    عدد المرات شهرياً:
                   </Text>
                   <View style={styles.numberRow}>
                     {[2, 4, 8, 12, 15, 20].map((num) => {
@@ -1079,14 +868,16 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                       return (
                         <Pressable
                           key={num}
-                          accessibilityRole="button"
-                          onPress={() => setMonthlyTargetCount(String(num))}
+                          onPress={() => {
+                            triggerLightHaptic();
+                            setMonthlyTargetCount(String(num));
+                          }}
                           style={[
-                            styles.numPill,
+                            styles.numberPill,
                             {
-                              backgroundColor: isSel ? theme.text : theme.background,
-                              borderColor: theme.border,
-                              borderRadius: radius.sm,
+                              backgroundColor: isSel ? selectedColor : theme.cardSecondary,
+                              borderColor: isSel ? selectedColor : theme.border,
+                              borderRadius: radius.md,
                             },
                           ]}
                         >
@@ -1094,8 +885,9 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                             style={[
                               typography.caption,
                               {
-                                color: isSel ? theme.background : theme.text,
+                                color: isSel ? '#FFFFFF' : theme.text,
                                 fontWeight: isSel ? '700' : '500',
+                                fontSize: 13,
                               },
                             ]}
                           >
@@ -1105,280 +897,304 @@ export const AddEditHabitScreen: React.FC<AddEditHabitScreenProps> = ({
                       );
                     })}
                   </View>
-                  <View style={[styles.customInputRow, { marginTop: 8 }]}>
-                    <Text style={[typography.caption, { color: theme.textMuted }]}>
-                      عدد مرات مخصص:
-                    </Text>
-                    <TextInput
-                      value={monthlyTargetCount}
-                      onChangeText={(v) => setMonthlyTargetCount(toArabicNumerals(v))}
-                      keyboardType="number-pad"
-                      maxLength={2}
-                      style={[
-                        styles.inlineInput,
-                        {
-                          borderColor: theme.border,
-                          backgroundColor: theme.background,
-                          color: theme.text,
-                          borderRadius: radius.sm,
-                        },
-                      ]}
-                    />
-                  </View>
                 </View>
               )}
             </View>
           )}
-        </Card>
 
-        {/* Target and Unit */}
-        <Card style={styles.sectionCard}>
-          <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', marginBottom: 6 }]}>
-            الحد الأدنى اليومي للإنجاز
-          </Text>
-          <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginBottom: 10, fontSize: 11 }]}>
-            إذا حددت كمية (مثل: 10 صفحات)، يمكنك تسجيل أي عدد يومياً ولن تُعتبر العادة مكتملة إلا عند بلوغ الحد الأدنى.
-          </Text>
+          {/* Interactive Stepper & Unit (Apple Fitness Style) */}
+          <View style={[styles.sectionDivider, { backgroundColor: theme.borderSubtle }]} />
 
-          <View style={styles.targetRow}>
-            {/* Number on right in RTL */}
-            <View style={{ width: 80 }}>
+          <View style={styles.groupHeaderRow}>
+            <View style={[styles.groupHeaderIcon, { backgroundColor: `${selectedColor}18`, borderRadius: radius.sm }]}>
+              <Ionicons name="flag" size={16} color={selectedColor} />
+            </View>
+            <View style={{ marginRight: 8, flex: 1 }}>
+              <Text style={[typography.subMedium, { color: theme.text, fontWeight: '700', textAlign: 'right' }]}>
+                الهدف اليومي والوحدة
+              </Text>
+              <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11, textAlign: 'right' }]}>
+                الحد الأدنى المطلوب لإتمام العادة
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.stepperContainer}>
+            {/* Stepper Controls */}
+            <View
+              style={[
+                styles.stepperCard,
+                {
+                  backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary,
+                  borderColor: theme.border,
+                  borderRadius: radius.md,
+                },
+              ]}
+            >
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إنقاص الهدف"
+                onPress={() => handleStepperChange(-1)}
+                style={({ pressed }) => [
+                  styles.stepperBtn,
+                  {
+                    backgroundColor: theme.card,
+                    borderRadius: radius.sm,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="remove" size={18} color={theme.text} />
+              </Pressable>
+
               <TextInput
                 value={targetCount}
                 onChangeText={(v) => setTargetCount(toArabicNumerals(v))}
-                keyboardType="numeric"
+                keyboardType="number-pad"
                 style={[
-                  styles.input,
-                  typography.body,
+                  styles.stepperInput,
+                  typography.h3,
                   {
                     color: theme.text,
-                    borderColor: theme.border,
-                    borderRadius: radius.sm,
-                    backgroundColor: theme.background,
-                    textAlign: 'center',
-                    minHeight: touchTarget,
+                    fontWeight: '800',
                   },
                 ]}
               />
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="زيادة الهدف"
+                onPress={() => handleStepperChange(1)}
+                style={({ pressed }) => [
+                  styles.stepperBtn,
+                  {
+                    backgroundColor: theme.card,
+                    borderRadius: radius.sm,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="add" size={18} color={theme.text} />
+              </Pressable>
             </View>
 
-            {/* Unit on left in RTL */}
+            {/* Unit Input */}
             <View style={{ flex: 1 }}>
               <TextInput
                 value={unit}
                 onChangeText={setUnit}
-                placeholder="الوحدة (مرة، دقيقة...)"
+                placeholder="الوحدة (مرة...)"
                 placeholderTextColor={theme.textMuted}
                 style={[
-                  styles.input,
-                  typography.body,
+                  styles.unitInput,
+                  typography.subMedium,
                   {
-                    color: theme.text,
+                    backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary,
                     borderColor: theme.border,
-                    borderRadius: radius.sm,
-                    backgroundColor: theme.background,
-                    textAlign: 'right',
+                    borderRadius: radius.md,
+                    color: theme.text,
                     minHeight: touchTarget,
+                    textAlign: 'right',
                   },
                 ]}
               />
             </View>
           </View>
 
+          {/* Quick Unit Pills */}
           <View style={styles.quickUnitsRow}>
-            {commonUnits.map((u) => (
-              <Pressable
-                key={u}
-                onPress={() => setUnit(u)}
-                style={[
-                  styles.unitPill,
-                  {
-                    backgroundColor: unit === u ? theme.text : theme.background,
-                    borderColor: theme.border,
-                    borderRadius: radius.sm,
-                  },
-                ]}
-              >
-                <Text
+            {commonUnits.map((u) => {
+              const isSelected = unit === u;
+              return (
+                <Pressable
+                  key={u}
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setUnit(u);
+                  }}
                   style={[
-                    typography.caption,
+                    styles.quickUnitPill,
                     {
-                      color: unit === u ? theme.background : theme.textSecondary,
-                      fontSize: 11,
+                      backgroundColor: isSelected ? selectedColor : theme.cardSecondary,
+                      borderColor: isSelected ? selectedColor : theme.border,
+                      borderRadius: radius.full,
                     },
                   ]}
                 >
-                  {u}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={[
+                      typography.caption,
+                      {
+                        color: isSelected ? '#FFFFFF' : theme.textSecondary,
+                        fontWeight: isSelected ? '700' : '500',
+                        fontSize: 11,
+                        textAlign: 'center',
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {u}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
         </Card>
 
-        {/* Reminder */}
-        <Card style={styles.sectionCard}>
-          <View style={styles.reminderHeader}>
-            <Pressable
-              onPress={() => setHasReminder(!hasReminder)}
-              style={[
-                styles.togglePill,
-                {
-                  backgroundColor: hasReminder ? theme.text : theme.cardSecondary,
-                  borderRadius: radius.sm,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  typography.caption,
-                  { color: hasReminder ? theme.background : theme.textSecondary, fontWeight: '500' },
-                ]}
-              >
-                {hasReminder ? 'مفعّل' : 'معطل'}
-              </Text>
-            </Pressable>
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        {/* المجموعة 3: التذكيرات والتفضيلات (iOS Inset Grouped Rows)          */}
+        {/* ═════════════════════════════════════════════════════════════════ */}
+        <Card style={styles.insetGroupCard}>
+          {/* Row 1: Reminder */}
+          <View style={styles.preferenceRow}>
+            <View style={styles.preferenceRightGroup}>
+              <View style={[styles.prefIconBox, { backgroundColor: `${selectedColor}18`, borderRadius: radius.sm }]}>
+                <Ionicons name="notifications" size={16} color={selectedColor} />
+              </View>
+              <View style={{ marginRight: 10, flex: 1 }}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '600', textAlign: 'right' }]}>
+                  تذكير يومي
+                </Text>
+                <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11, textAlign: 'right' }]}>
+                  إشعار ينبهك في الوقت المناسب
+                </Text>
+              </View>
+            </View>
 
-            <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right' }]}>
-              تذكير يومي
-            </Text>
+            <View style={styles.preferenceLeftGroup}>
+              <AppSwitch
+                value={hasReminder}
+                onValueChange={(val) => setHasReminder(val)}
+                activeColor={selectedColor}
+                accessibilityLabel="تفعيل التذكير اليومي"
+              />
+            </View>
           </View>
 
           {hasReminder && (
-            <View style={{ marginTop: 10 }}>
-              <TextInput
+            <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.borderSubtle }}>
+              <ClockTimePicker
                 value={reminderTime}
-                onChangeText={(v) => setReminderTime(toArabicNumerals(v))}
-                placeholder="08:00"
-                placeholderTextColor={theme.textMuted}
-                style={[
-                  styles.input,
-                  typography.body,
-                  {
-                    color: theme.text,
-                    borderColor: theme.border,
-                    borderRadius: radius.sm,
-                    backgroundColor: theme.background,
-                    textAlign: 'center',
-                    minHeight: touchTarget,
-                  },
-                ]}
+                color={selectedColor}
+                onChange={(newTime) => {
+                  triggerLightHaptic();
+                  setReminderTime(newTime);
+                }}
               />
-
-              <View style={styles.quickReminderRow}>
-                {quickReminderTimes.map((item) => (
-                  <Pressable
-                    key={item.time}
-                    onPress={() => setReminderTime(item.time)}
-                    style={[
-                      styles.unitPill,
-                      {
-                        backgroundColor:
-                          reminderTime === item.time ? theme.text : theme.background,
-                        borderColor: theme.border,
-                        borderRadius: radius.sm,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        typography.caption,
-                        {
-                          color:
-                            reminderTime === item.time
-                              ? theme.background
-                              : theme.textSecondary,
-                          fontSize: 11,
-                        },
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
             </View>
           )}
-        </Card>
 
-        {/* Cornerstone Habit / Pin to Top */}
-        <Card style={styles.sectionCard}>
-          <Pressable
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: isPinned }}
-            accessibilityLabel="تثبيت العادة في أعلى القائمة"
-            onPress={() => setIsPinned(!isPinned)}
-            style={styles.pinToggleRow}
-          >
-            <View
-              style={[
-                styles.togglePill,
-                {
-                  backgroundColor: isPinned ? theme.text : theme.cardSecondary,
-                  borderRadius: radius.sm,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  typography.caption,
-                  { color: isPinned ? theme.background : theme.textSecondary, fontWeight: '500' },
-                ]}
-              >
-                {isPinned ? 'مثبتة' : 'عادية'}
-              </Text>
-            </View>
+          <View style={[styles.sectionDivider, { backgroundColor: theme.borderSubtle }]} />
 
-            <View style={styles.pinTextSide}>
-              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
-                <Ionicons
-                  name="pin"
-                  size={15}
-                  color={isPinned ? theme.primary : theme.textSecondary}
-                  style={{ marginLeft: 6 }}
-                />
-                <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right' }]}>
+          {/* Row 2: Pin to Top */}
+          <View style={styles.preferenceRow}>
+            <View style={styles.preferenceRightGroup}>
+              <View style={[styles.prefIconBox, { backgroundColor: `${selectedColor}18`, borderRadius: radius.sm }]}>
+                <Ionicons name="pin" size={16} color={selectedColor} />
+              </View>
+              <View style={{ marginRight: 10, flex: 1 }}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '600', textAlign: 'right' }]}>
                   تثبيت في أعلى القائمة
                 </Text>
+                <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11, textAlign: 'right' }]}>
+                  تظهر في مقدمة عاداتك اليومية دائماً
+                </Text>
               </View>
-              <Text
-                style={[
-                  typography.caption,
-                  { color: theme.textSecondary, textAlign: 'right', marginTop: 2 },
-                ]}
-              >
-                عادة أساسية تظهر دائمًا في مقدمة قائمة عاداتك اليومية
-              </Text>
             </View>
-          </Pressable>
+
+            <View style={styles.preferenceLeftGroup}>
+              <AppSwitch
+                value={isPinned}
+                onValueChange={(val) => setIsPinned(val)}
+                activeColor={selectedColor}
+                accessibilityLabel="تثبيت في أعلى القائمة"
+              />
+            </View>
+          </View>
         </Card>
 
-        {/* Save Button */}
-        <View style={{ marginTop: spacing.md }}>
-          <Button
-            title={isEditing ? 'تحديث العادة' : 'إنشاء العادة'}
-            onPress={handleSave}
-            loading={isSaving}
-            disabled={isSaving}
-            variant="primary"
-            size="md"
-          />
-        </View>
-
-        {/* Delete Habit Button (When Editing) */}
+        {/* Delete Habit (Only in Edit mode) */}
         {isEditing && (
-          <View style={{ marginTop: spacing.sm, marginBottom: spacing.sm }}>
-            <Button
-              title="حذف العادة نهائيًا"
-              onPress={handleDelete}
-              variant="destructive"
-              iconName="trash-outline"
-              size="md"
-            />
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="حذف العادة نهائيًا"
+            onPress={handleDelete}
+            style={({ pressed }) => [
+              styles.deleteCard,
+              {
+                backgroundColor: isDark ? '#2C1517' : '#FEF2F2',
+                borderColor: isDark ? '#5C2226' : '#FEE2E2',
+                borderRadius: radius.md,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Ionicons name="trash-outline" size={18} color="#EF4444" style={{ marginLeft: 8 }} />
+            <Text style={[typography.caption, { color: '#EF4444', fontWeight: '700' }]}>
+              حذف العادة نهائيًا
+            </Text>
+          </Pressable>
         )}
       </ScrollView>
 
-      {/* Curated Habit Templates Modal */}
+      {/* ═════════════════════════════════════════════════════════════════ */}
+      {/* الشريط السفلي الثابت (Floating Sticky Action CTA)                  */}
+      {/* ═════════════════════════════════════════════════════════════════ */}
+      <View
+        style={[
+          styles.stickyBottomBar,
+          {
+            backgroundColor: isDark ? '#16181B' : '#FFFFFF',
+            borderTopColor: theme.border,
+            paddingBottom: Math.max(insets.bottom, 14),
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: -3 },
+            shadowOpacity: isDark ? 0.4 : 0.06,
+            shadowRadius: 8,
+            elevation: 8,
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={isEditing ? 'تحديث العادة' : 'إنشاء العادة'}
+          disabled={isSaving}
+          onPress={handleSave}
+          style={({ pressed }) => [
+            styles.primarySaveCta,
+            {
+              backgroundColor: selectedColor,
+              borderRadius: radius.md,
+              opacity: isSaving ? 0.6 : pressed ? 0.85 : 1,
+              shadowColor: selectedColor,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.3,
+              shadowRadius: 6,
+              elevation: 4,
+            },
+          ]}
+        >
+          <Ionicons
+            name={isSaving ? 'sync' : isEditing ? 'checkmark-circle' : 'add-circle'}
+            size={20}
+            color="#FFFFFF"
+            style={{ marginLeft: 8 }}
+          />
+          <Text style={[typography.subMedium, { color: '#FFFFFF', fontWeight: '800' }]}>
+            {isSaving ? 'جارٍ الحفظ...' : isEditing ? 'تحديث العادة' : 'إنشاء العادة'}
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Modals */}
+      <HabitIconPickerModal
+        visible={isIconModalVisible}
+        selectedIcon={selectedIcon}
+        selectedColor={selectedColor}
+        onSelectIcon={(iconName) => setSelectedIcon(iconName)}
+        onClose={() => setIsIconModalVisible(false)}
+      />
+
       <HabitTemplateModal
         visible={isTemplateModalVisible}
         onClose={() => setIsTemplateModalVisible(false)}
@@ -1392,193 +1208,266 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  headerSaveBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+  templatesHeaderContainer: {
+    marginBottom: 14,
   },
-  sectionCard: {
-    marginBottom: 12,
-    padding: 14,
-  },
-  input: {
-    borderWidth: 1,
-    textAlign: 'right',
-    paddingHorizontal: 12,
-  },
-  colorRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  colorCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconGrid: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  categoryChipsContainer: {
-    flexDirection: 'row-reverse',
-    gap: 6,
-    paddingVertical: 2,
-  },
-  categoryChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderWidth: 1,
-  },
-  iconBox: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mainTabRow: {
-    flexDirection: 'row-reverse',
-    gap: 8,
-    marginBottom: 10,
-  },
-  mainTabBtn: {
-    flex: 1,
-    minHeight: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  numberRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 6,
-  },
-  numPill: {
-    minWidth: 40,
-    height: 34,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  customInputRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    gap: 8,
-  },
-  inlineInput: {
-    width: 64,
-    height: 34,
-    borderWidth: 1,
-    textAlign: 'center',
-    paddingHorizontal: 6,
-    fontSize: 14,
-  },
-  frequencyTypeRow: {
-    flexDirection: 'row-reverse',
-    gap: 8,
-    marginBottom: 8,
-  },
-  freqBtn: {
-    flex: 1,
-    minHeight: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  daysSelectorRow: {
+  templatesTitleRow: {
     flexDirection: 'row-reverse',
     justifyContent: 'space-between',
-    marginTop: 6,
-  },
-  daySelectPill: {
-    width: 38,
-    height: 34,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
+    marginBottom: 4,
   },
-  targetRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-  },
-  quickUnitsRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 10,
-  },
-  quickReminderRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-  },
-  unitPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-  },
-  reminderHeader: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  togglePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  pinToggleRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  pinTextSide: {
+  templatesTextGroup: {
     flex: 1,
-    paddingLeft: 12,
-  },
-  templateCardHeaderRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  templateCardTitleGroup: {
-    flex: 1,
-    paddingRight: 6,
   },
   browseTemplatesBtn: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderWidth: 1,
   },
   quickChipsContent: {
     flexDirection: 'row-reverse',
-    alignItems: 'center',
-    paddingVertical: 2,
     gap: 8,
+    paddingVertical: 4,
   },
   quickTemplateChip: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingVertical: 6,
     paddingHorizontal: 10,
+    paddingVertical: 6,
     borderWidth: 1,
   },
   quickChipIcon: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 6,
   },
+  insetGroupCard: {
+    marginBottom: 14,
+    padding: 16,
+    borderRadius: 18,
+  },
+  identityRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  iconAvatarBtn: {
+    width: 58,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginLeft: 14,
+  },
+  iconEditBadge: {
+    position: 'absolute',
+    bottom: -3,
+    left: -3,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  identityInputsColumn: {
+    flex: 1,
+  },
+  nameInput: {
+    textAlign: 'right',
+    paddingVertical: 4,
+    fontSize: 16,
+  },
+  inlineDivider: {
+    height: 1,
+    marginVertical: 4,
+  },
+  descInput: {
+    textAlign: 'right',
+    paddingVertical: 4,
+    fontSize: 12,
+  },
+  sectionDivider: {
+    height: 1,
+    marginVertical: 14,
+  },
+  paletteHeaderRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  colorPaletteScroll: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  colorCircleWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 2,
+  },
+  colorCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupHeaderRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  groupHeaderIcon: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedContainer: {
+    flexDirection: 'row-reverse',
+    padding: 3,
+    borderWidth: 1,
+  },
+  segmentButton: {
+    flex: 1,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subPillsRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  subPill: {
+    flex: 1,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+  },
+  daysContainer: {
+    marginTop: 12,
+  },
+  daysRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  dayCircle: {
+    flex: 1,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    maxWidth: 44,
+  },
+  numberRow: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  numberPill: {
+    flex: 1,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  stepperContainer: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  stepperCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    height: 48,
+    borderWidth: 1,
+    width: 140,
+    justifyContent: 'space-between',
+  },
+  stepperBtn: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperInput: {
+    textAlign: 'center',
+    fontSize: 18,
+    minWidth: 40,
+  },
+  unitInput: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  quickUnitsRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  quickUnitPill: {
+    flex: 1,
+    paddingVertical: 7,
+    paddingHorizontal: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  preferenceRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  preferenceRightGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    flex: 1,
+  },
+  preferenceLeftGroup: {
+    marginLeft: 10,
+  },
+  prefIconBox: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  stickyBottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+  },
+  primarySaveCta: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 50,
+  },
 });
-

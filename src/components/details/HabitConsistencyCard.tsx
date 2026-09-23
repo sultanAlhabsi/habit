@@ -20,6 +20,18 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
 
   const { days, bestDay, insightMessage } = consistencyPattern;
 
+  const badgeBg = habitColor
+    ? theme.isDark
+      ? `${habitColor}22`
+      : `${habitColor}14`
+    : `${theme.primary}15`;
+
+  const badgeBorder = habitColor
+    ? theme.isDark
+      ? `${habitColor}45`
+      : `${habitColor}35`
+    : `${theme.primary}40`;
+
   return (
     <Card style={[styles.container, { marginBottom: spacing.base }]}>
       {/* Header */}
@@ -38,14 +50,14 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
             style={[
               styles.bestDayBadge,
               {
-                backgroundColor: `${theme.success}15`,
-                borderColor: `${theme.success}40`,
+                backgroundColor: badgeBg,
+                borderColor: badgeBorder,
                 borderRadius: radius.full,
               },
             ]}
           >
-            <Ionicons name="ribbon-outline" size={12} color={theme.success} style={{ marginLeft: 3 }} />
-            <Text style={[typography.caption, { color: theme.success, fontWeight: '700', fontSize: 11 }]}>
+            <Ionicons name="ribbon-outline" size={12} color={accentColor} style={{ marginLeft: 3 }} />
+            <Text style={[typography.caption, { color: accentColor, fontWeight: '700', fontSize: 11 }]}>
               {bestDay.dayName} {bestDay.rate}%
             </Text>
           </View>
@@ -58,7 +70,7 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
           const isBest = bestDay && bestDay.dayIndex === d.dayIndex && d.rate > 0;
           const hasData = d.dueCount > 0;
           const barHeightPercent = hasData ? Math.max(8, d.rate) : 0;
-          const barColor = isBest ? theme.success : accentColor;
+          const barColor = accentColor;
 
           return (
             <View key={d.dayIndex} style={styles.dayColumn}>
@@ -67,7 +79,7 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
                 style={[
                   typography.caption,
                   {
-                    color: hasData ? (isBest ? theme.success : theme.text) : theme.textMuted,
+                    color: hasData ? (isBest ? accentColor : theme.text) : theme.textMuted,
                     fontSize: 10,
                     fontWeight: isBest ? '700' : '500',
                     marginBottom: 4,
@@ -135,7 +147,7 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
           <Ionicons
             name="bulb-outline"
             size={16}
-            color={theme.primary}
+            color={accentColor}
             style={{ marginLeft: 8, marginTop: 1 }}
           />
           <Text

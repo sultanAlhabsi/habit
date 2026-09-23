@@ -1,4 +1,4 @@
-import React, { forwardRef, useImperativeHandle, useRef } from 'react';
+import React, { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -7,6 +7,7 @@ import Animated, {
   interpolate,
   Easing,
   SharedValue,
+  runOnJS,
 } from 'react-native-reanimated';
 
 export interface MicroParticleBurstRef {
@@ -87,6 +88,7 @@ const ParticleItem: React.FC<{
 
 export const MicroParticleBurst = forwardRef<MicroParticleBurstRef, MicroParticleBurstProps>(
   ({ color = '#2A4B3A' }, ref) => {
+    const [isActive, setIsActive] = useState(false);
     const progress = useSharedValue(0);
     const lastTriggerRef = useRef(0);
 
@@ -97,6 +99,7 @@ export const MicroParticleBurst = forwardRef<MicroParticleBurstRef, MicroParticl
         if (now - lastTriggerRef.current < 250) return;
         lastTriggerRef.current = now;
 
+        setIsActive(true);
         progress.value = 0;
         progress.value = withTiming(
           1,
@@ -105,13 +108,17 @@ export const MicroParticleBurst = forwardRef<MicroParticleBurstRef, MicroParticl
             easing: Easing.out(Easing.cubic),
           },
           (finished) => {
+            'worklet';
             if (finished) {
               progress.value = 0;
+              runOnJS(setIsActive)(false);
             }
           }
         );
       },
     }));
+
+    if (!isActive) return null;
 
     return (
       <View pointerEvents="none" style={styles.container}>

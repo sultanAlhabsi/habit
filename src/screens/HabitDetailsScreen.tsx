@@ -219,6 +219,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     );
   };
 
+  const habitColor = habit.color || theme.primary;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Header
@@ -454,7 +456,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                     style={[
                       typography.caption,
                       {
-                        color: isCompletedOnDate ? theme.primary : theme.textSecondary,
+                        color: isCompletedOnDate ? (habit.color || theme.primary) : theme.textSecondary,
                         fontWeight: isCompletedOnDate ? '700' : '500',
                       },
                     ]}
@@ -468,7 +470,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   <ProgressBar
                     progress={Math.min(100, Math.round((activeCount / habit.targetCount) * 100))}
                     height={5}
-                    color={isCompletedOnDate ? theme.primary : theme.text}
+                    color={habit.color || theme.primary}
                   />
                 </View>
 
@@ -484,6 +486,22 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                       }
                       iconName="create-outline"
                       variant={isCompletedOnDate ? 'outline' : 'primary'}
+                      style={
+                        isCompletedOnDate
+                          ? {
+                              borderColor: habitColor,
+                              backgroundColor: theme.isDark ? `${habitColor}22` : `${habitColor}14`,
+                            }
+                          : {
+                              backgroundColor: habitColor,
+                              borderColor: habitColor,
+                            }
+                      }
+                      textStyle={{
+                        color: isCompletedOnDate ? habitColor : '#FFFFFF',
+                        fontWeight: '600',
+                      }}
+                      iconColor={isCompletedOnDate ? habitColor : '#FFFFFF'}
                       onPress={() => setIsQuantityModalVisible(true)}
                     />
                   </View>
@@ -545,6 +563,22 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   }
                   iconName={isCompletedOnDate ? 'checkmark-circle' : 'checkmark-outline'}
                   variant={isCompletedOnDate ? 'outline' : 'primary'}
+                  style={
+                    isCompletedOnDate
+                      ? {
+                          borderColor: habitColor,
+                          backgroundColor: theme.isDark ? `${habitColor}22` : `${habitColor}14`,
+                        }
+                      : {
+                          backgroundColor: habitColor,
+                          borderColor: habitColor,
+                        }
+                  }
+                  textStyle={{
+                    color: isCompletedOnDate ? habitColor : '#FFFFFF',
+                    fontWeight: '600',
+                  }}
+                  iconColor={isCompletedOnDate ? habitColor : '#FFFFFF'}
                   onPress={() => toggleCheckin(habit.id, selectedDate)}
                 />
               </View>
@@ -558,11 +592,19 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                 {
                   backgroundColor:
                     streakStatus.status === 'completed'
-                      ? theme.primaryLight
+                      ? habit.color
+                        ? theme.isDark
+                          ? `${habit.color}22`
+                          : `${habit.color}14`
+                        : theme.primaryLight
                       : theme.cardSecondary,
                   borderColor:
                     streakStatus.status === 'completed'
-                      ? theme.primary
+                      ? habit.color
+                        ? theme.isDark
+                          ? `${habit.color}45`
+                          : `${habit.color}35`
+                        : theme.primary
                       : theme.border,
                   borderRadius: radius.md,
                   marginTop: spacing.md,
@@ -574,7 +616,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                 size={18}
                 color={
                   streakStatus.status === 'completed'
-                    ? theme.primary
+                    ? (habit.color || theme.primary)
                     : theme.textSecondary
                 }
                 style={{ marginLeft: 8 }}
@@ -585,7 +627,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
                   {
                     color:
                       streakStatus.status === 'completed'
-                        ? theme.primary
+                        ? (habit.color || theme.primary)
                         : theme.textSecondary,
                     fontWeight: '600',
                     flex: 1,
@@ -637,6 +679,8 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
         {/* Heatmap Calendar */}
         <HabitHeatmap
+          habit={habit}
+          checkins={checkins}
           completedDates={completedDates}
           habitColor={habit.color}
           createdAt={habit.createdAt}

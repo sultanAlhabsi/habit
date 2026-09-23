@@ -13,10 +13,19 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   withSpring,
+  runOnJS,
+  interpolate,
+  Extrapolation,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
-import { formatArabicStreakDays, formatHabitStreakArabic, isQuantitativeHabit } from '../../utils/habitUtils';
+import {
+  formatArabicStreakDays,
+  formatHabitStreakArabic,
+  formatHabitScheduleShort,
+  isQuantitativeHabit,
+} from '../../utils/habitUtils';
 import { MicroParticleBurst, MicroParticleBurstRef } from '../common/MicroParticleBurst';
 import { ProgressBar } from '../common/ProgressBar';
 
@@ -79,12 +88,64 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
   const effectiveCompleted = isLocallyChecked !== null ? isLocallyChecked : isCompleted;
   const isTargetMet = effectiveCompleted || (isMultiTarget && safeCount >= habit.targetCount);
   const progressRatio = habit.targetCount > 0 ? safeCount / habit.targetCount : 0;
+  const scheduleBadgeText = formatHabitScheduleShort(habit);
 
-  // Subtle tactile press scale (0.98) for card body press
+  // Subtle tactile press scale (0.98) for card body press + horizontal swipe gesture
   const cardScale = useSharedValue(1);
-  const animatedCardPressStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: cardScale.value }],
+  const translateX = useSharedValue(0);
+
+  const animatedCardMotionStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { scale: cardScale.value },
+    ],
   }));
+
+  const animatedCheckBgStyle = useAnimatedStyle(() => ({
+    opacity: translateX.value > 0 ? 1 : 0,
+  }));
+
+  const animatedNoteBgStyle = useAnimatedStyle(() => ({
+    opacity: translateX.value < 0 ? 1 : 0,
+  }));
+
+  const animatedCheckIconStyle = useAnimatedStyle(() => {
+    const scale = interpolate(
+      translateX.value,
+      [0, 25, 75],
+      [0.5, 0.85, 1.15],
+      Extrapolation.CLAMP
+    );
+    const opacity = interpolate(
+      translateX.value,
+      [0, 15, 50],
+      [0, 0.7, 1],
+      Extrapolation.CLAMP
+    );
+    return {
+      transform: [{ scale }],
+      opacity,
+    };
+  });
+
+  const animatedNoteIconStyle = useAnimatedStyle(() => {
+    const scale = interpolate(
+      -translateX.value,
+      [0, 25, 75],
+      [0.5, 0.85, 1.15],
+      Extrapolation.CLAMP
+    );
+    const opacity = interpolate(
+      -translateX.value,
+      [0, 15, 50],
+      [0, 0.7, 1],
+      Extrapolation.CLAMP
+    );
+    return {
+      transform: [{ scale }],
+      opacity,
+    };
+  });
 
   const handlePressCircle = () => {
     if (isMultiTarget) {
@@ -116,39 +177,124 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
     }
   };
 
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-15, 15])
+    .failOffsetY([-15, 15])
+    .onUpdate((e) => {
+      'worklet';
+      if (isFuture && e.translationX > 0) {
+        translateX.value = 0;
+        return;
+      }
+      if (e.translationX > 0) {
+        translateX.value = Math.min(115, e.translationX * 0.85);
+      } else {
+        translateX.value = Math.max(-115, e.translationX * 0.85);
+      }
+    })
+    .onEnd(() => {
+      'worklet';
+      const THRESHOLD = 70;
+      if (translateX.value > THRESHOLD && !isFuture) {
+        runOnJS(handlePressCircle)();
+      } else if (translateX.value < -THRESHOLD) {
+        if (onPressNote) {
+          runOnJS(onPressNote)();
+        }
+      }
+      translateX.value = withSpring(0, {
+        damping: 22,
+        stiffness: 260,
+        mass: 0.9,
+      });
+    });
+
   return (
-    <Animated.View
-      layout={LinearTransition.springify().damping(22).stiffness(85)}
-      style={animatedCardPressStyle}
+    <View
+      style={[
+        styles.swipeRoot,
+        {
+          marginHorizontal: spacing.base,
+          marginBottom: 8,
+          borderRadius: radius.md,
+        },
+      ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`تفاصيل عادة ${habit.name}`}
-        accessibilityHint="اضغط مطولاً لتغيير ترتيب العادة ونقل مكانها"
-        onPress={onPressDetails}
-        onPressIn={() => {
-          cardScale.value = withTiming(0.98, { duration: 90 });
-        }}
-        onPressOut={() => {
-          cardScale.value = withSpring(1, { damping: 16, stiffness: 300 });
-        }}
-        onLongPress={onLongPress}
-        delayLongPress={300}
-        style={({ pressed }) => [
-          styles.cardContainer,
+      {/* Background action: Check Action (revealed on Swipe Right) */}
+      <Animated.View
+        style={[
+          styles.swipeActionBackground,
+          styles.checkActionBg,
           {
-            backgroundColor: theme.card,
-            borderColor: theme.border,
+            backgroundColor: effectiveCompleted
+              ? theme.textMuted
+              : (habit.color || theme.primary),
             borderRadius: radius.md,
-            marginHorizontal: spacing.base,
-            marginBottom: 8,
-            paddingVertical: 12,
-            paddingHorizontal: spacing.base,
-            opacity: pressed ? 0.88 : habit.isActive ? 1 : 0.5,
           },
+          animatedCheckBgStyle,
         ]}
       >
-        <View style={styles.cardContent}>
+        <Animated.View style={[styles.actionContent, animatedCheckIconStyle]}>
+          <Ionicons
+            name={effectiveCompleted ? 'close-circle' : 'checkmark-circle'}
+            size={22}
+            color="#FFFFFF"
+          />
+          <Text style={[typography.caption, styles.actionText]}>
+            {effectiveCompleted ? 'إلغاء' : 'إتمام'}
+          </Text>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Background action: Note Action (revealed on Swipe Left) */}
+      <Animated.View
+        style={[
+          styles.swipeActionBackground,
+          styles.noteActionBg,
+          {
+            backgroundColor: habit.color || theme.primary,
+            borderRadius: radius.md,
+          },
+          animatedNoteBgStyle,
+        ]}
+      >
+        <Animated.View style={[styles.actionContent, animatedNoteIconStyle]}>
+          <Ionicons name="document-text" size={22} color="#FFFFFF" />
+          <Text style={[typography.caption, styles.actionText]}>
+            ملاحظة
+          </Text>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Foreground Swipeable Card */}
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={animatedCardMotionStyle}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`تفاصيل عادة ${habit.name}`}
+            accessibilityHint="اضغط مطولاً لتغيير ترتيب العادة، أو اسحب يميناً للإتمام ويساراً للملاحظة"
+            onPress={onPressDetails}
+            onPressIn={() => {
+              cardScale.value = withTiming(0.98, { duration: 90 });
+            }}
+            onPressOut={() => {
+              cardScale.value = withSpring(1, { damping: 16, stiffness: 300 });
+            }}
+            onLongPress={onLongPress}
+            delayLongPress={300}
+            style={({ pressed }) => [
+              styles.cardContainer,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                borderRadius: radius.md,
+                paddingVertical: 12,
+                paddingHorizontal: spacing.base,
+                opacity: pressed ? 0.88 : habit.isActive ? 1 : 0.5,
+              },
+            ]}
+          >
+            <View style={styles.cardContent}>
           {/* Right side in RTL: Unified Check / Quantity Target Circle */}
           <Pressable
             disabled={isFuture}
@@ -188,19 +334,21 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                     ? (habit.color || theme.primary)
                     : isFuture
                     ? theme.border
+                    : theme.isDark
+                    ? '#3E444E'
                     : theme.textMuted,
                   backgroundColor: isTargetMet
                     ? (habit.color || theme.primary)
                     : isMultiTarget && safeCount > 0
                     ? `${habit.color || theme.primary}18`
+                    : theme.isDark
+                    ? 'rgba(255, 255, 255, 0.03)'
                     : 'transparent',
                 },
               ]}
             >
               {isTargetMet ? (
-                <Animated.View entering={ZoomIn.duration(200).springify().damping(18)}>
-                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                </Animated.View>
+                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
               ) : isMultiTarget ? (
                 safeCount > 0 ? (
                   <Ionicons name="add" size={14} color={habit.color || theme.primary} />
@@ -251,17 +399,13 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
             <ProgressBar
               progress={Math.min(100, Math.round(progressRatio * 100))}
               height={3}
-              color={
-                isTargetMet
-                  ? (habit.color || theme.primary)
-                  : habit.color || theme.text
-              }
+              color={habit.color || theme.primary}
               style={{ marginTop: 4 }}
             />
           )}
 
           <View style={styles.metaRow}>
-            {streak > 0 && (
+            {streak > 0 ? (
               <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginLeft: 8 }}>
                 <Ionicons name="flame" size={12} color={habit.color || theme.primary} style={{ marginLeft: 3 }} />
                 <Text
@@ -274,6 +418,25 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                   ]}
                 >
                   {formatHabitStreakArabic(streak, habit.frequency)}
+                </Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center', marginLeft: 8, opacity: 0.5 }}>
+                <Ionicons name="flame" size={12} color={theme.textMuted} style={{ marginLeft: 3 }} />
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: theme.textMuted,
+                      textAlign: 'right',
+                    },
+                  ]}
+                >
+                  {habit.frequency === 'weekly_target'
+                    ? '٠ أسابيع متتالية'
+                    : habit.frequency === 'monthly_target'
+                    ? '٠ أشهر متتالية'
+                    : '٠ أيام متتالية'}
                 </Text>
               </View>
             )}
@@ -305,33 +468,60 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
               </View>
             )}
 
-            <Pressable
-              disabled={isFuture || !onPressQuantity}
-              accessibilityRole={isMultiTarget ? 'button' : undefined}
-              accessibilityLabel={isMultiTarget ? 'تعديل الكمية المسجلة' : undefined}
-              onPress={onPressQuantity}
-              hitSlop={4}
-              style={({ pressed }) => [{ opacity: pressed && isMultiTarget ? 0.6 : 1 }]}
-            >
-              <Text
+            {scheduleBadgeText && !periodicBadgeText && (
+              <View
                 style={[
-                  typography.caption,
+                  styles.periodicBadge,
                   {
-                    color: isTargetMet
-                      ? theme.primary
-                      : isMultiTarget && safeCount > 0
-                      ? (habit.color || theme.primary)
-                      : theme.textMuted,
-                    fontWeight: isMultiTarget && safeCount > 0 ? '600' : '400',
-                    textAlign: 'right',
+                    backgroundColor: theme.cardSecondary,
+                    borderColor: theme.border,
+                    borderRadius: radius.xs,
                   },
                 ]}
               >
-                {isMultiTarget
-                  ? `${safeCount} من ${habit.targetCount} ${habit.unit}${safeCount >= habit.targetCount ? ' ✓' : ''}`
-                  : habit.unit}
-              </Text>
-            </Pressable>
+                <Ionicons name="calendar-outline" size={10} color={theme.textSecondary} style={{ marginLeft: 3 }} />
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: theme.textSecondary,
+                      fontWeight: '600',
+                      fontSize: 10,
+                    },
+                  ]}
+                >
+                  {scheduleBadgeText}
+                </Text>
+              </View>
+            )}
+
+            {isMultiTarget && (
+              <Pressable
+                disabled={isFuture || !onPressQuantity}
+                accessibilityRole="button"
+                accessibilityLabel="تعديل الكمية المسجلة"
+                onPress={onPressQuantity}
+                hitSlop={4}
+                style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text
+                  style={[
+                    typography.caption,
+                    {
+                      color: isTargetMet
+                        ? (habit.color || theme.primary)
+                        : safeCount > 0
+                        ? (habit.color || theme.primary)
+                        : theme.textMuted,
+                      fontWeight: isTargetMet || safeCount > 0 ? '600' : '400',
+                      textAlign: 'right',
+                    },
+                  ]}
+                >
+                  {`${safeCount} من ${habit.targetCount} ${habit.unit}${safeCount >= habit.targetCount ? ' ✓' : ''}`}
+                </Text>
+              </Pressable>
+            )}
 
             {!habit.isActive && (
               <Text
@@ -360,11 +550,11 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                   },
                 ]}
               >
-                • غير مجدولة اليوم
+                • استراحة اليوم
               </Text>
             )}
 
-            {hasNote ? (
+            {hasNote && (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="عرض أو تعديل ملاحظة اليوم"
@@ -373,18 +563,24 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                 style={({ pressed }) => [
                   styles.noteBadgePressable,
                   {
-                    backgroundColor: theme.primaryLight,
+                    backgroundColor: habit.color
+                      ? theme.isDark
+                        ? `${habit.color}2A`
+                        : `${habit.color}1E`
+                      : theme.primaryLight,
+                    borderWidth: theme.isDark ? 1 : 0,
+                    borderColor: habit.color ? `${habit.color}40` : theme.border,
                     borderRadius: radius.sm,
                     opacity: pressed ? 0.6 : 1,
                   },
                 ]}
               >
-                <Ionicons name="document-text" size={11} color={theme.primary} />
+                <Ionicons name="document-text" size={11} color={habit.color || theme.primary} />
                 <Text
                   style={[
                     typography.caption,
                     {
-                      color: theme.primary,
+                      color: habit.color || theme.primary,
                       fontSize: 10,
                       marginRight: 3,
                       fontWeight: '600',
@@ -394,22 +590,7 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                   ملاحظة
                 </Text>
               </Pressable>
-            ) : onPressNote && !isFuture ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="إضافة ملاحظة سريعة لليوم"
-                onPress={onPressNote}
-                hitSlop={6}
-                style={({ pressed }) => [
-                  styles.quickAddNoteBtn,
-                  {
-                    opacity: pressed ? 0.6 : 1,
-                  },
-                ]}
-              >
-                <Ionicons name="create-outline" size={12} color={theme.textMuted} />
-              </Pressable>
-            ) : null}
+            )}
           </View>
         </View>
 
@@ -439,7 +620,9 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                 backgroundColor: isTargetMet
                   ? theme.cardSecondary
                   : habit.color
-                  ? `${habit.color}15`
+                  ? theme.isDark
+                    ? `${habit.color}2C`
+                    : `${habit.color}15`
                   : theme.cardSecondary,
                 borderRadius: radius.sm,
               },
@@ -457,12 +640,44 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
           </View>
         </View>
       </View>
-      </Pressable>
-    </Animated.View>
+          </Pressable>
+        </Animated.View>
+      </GestureDetector>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  swipeRoot: {
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  swipeActionBackground: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    justifyContent: 'center',
+  },
+  checkActionBg: {
+    alignItems: 'flex-start',
+    paddingLeft: 20,
+  },
+  noteActionBg: {
+    alignItems: 'flex-end',
+    paddingRight: 20,
+  },
+  actionContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 10,
+    marginTop: 2,
+  },
   cardContainer: {
     borderWidth: 1,
   },
@@ -527,13 +742,6 @@ const styles = StyleSheet.create({
     marginRight: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
-  },
-  quickAddNoteBtn: {
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    marginRight: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   periodicBadge: {
     flexDirection: 'row-reverse',

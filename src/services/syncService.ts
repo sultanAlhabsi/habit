@@ -29,6 +29,7 @@ import {
   getPreference,
   fetchDeletedHabitIds,
   markHabitDeletedLocally,
+  deduplicateLocalHabits,
 } from './database';
 import type { Habit, HabitCheckin } from '../types/habit';
 
@@ -88,6 +89,9 @@ export const syncWithNeon = async (): Promise<SyncResult> => {
 
       // Ensure remote tables exist
       await initNeonSchema();
+
+      // Ensure local data has no lingering internal duplicates before syncing
+      await deduplicateLocalHabits();
 
       // 1 & 2. Fetch Remote and Local Data concurrently
       const [
@@ -153,6 +157,15 @@ export const syncWithNeon = async (): Promise<SyncResult> => {
         localHabits.filter((h) => !allDeletedHabitIds.has(h.id)).map((h) => [h.id, h])
       );
 
+      // Index remote habits by normalized name to guard against duplicate generation
+      const remoteHabitsByName = new Map<string, Habit>();
+      for (const rh of remoteHabitsMap.values()) {
+        const nameKey = rh.name.trim().toLowerCase();
+        if (!remoteHabitsByName.has(nameKey)) {
+          remoteHabitsByName.set(nameKey, rh);
+        }
+      }
+
       // Merge remote habits to local in parallel
       const pullHabitPromises: Promise<void>[] = [];
       for (const [rId, rHabit] of remoteHabitsMap) {
@@ -164,13 +177,34 @@ export const syncWithNeon = async (): Promise<SyncResult> => {
       }
       await Promise.all(pullHabitPromises);
 
-      // Push local habits to remote in parallel
-      const pushHabitPromises = Array.from(localHabitsMap.values()).map((lHabit) => {
-        if (!remoteHabitsMap.has(lHabit.id)) {
-          pushedHabitsCount++;
+      // Push local habits to remote with cross-device duplicate name guard
+      const pushHabitPromises: Promise<void>[] = [];
+      for (const lHabit of localHabitsMap.values()) {
+        if (remoteHabitsMap.has(lHabit.id)) {
+          pushHabitPromises.push(upsertNeonHabit(lHabit));
+        } else {
+          // Check if remote already has a habit with the same name under a different ID
+          const nameKey = lHabit.name.trim().toLowerCase();
+          const existingRemote = remoteHabitsByName.get(nameKey);
+          if (existingRemote) {
+            // Re-point any local checkins to the remote canonical habit
+            const localCheckinsForDup = localCheckins.filter((c) => c.habitId === lHabit.id);
+            for (const c of localCheckinsForDup) {
+              const remapped: HabitCheckin = {
+                ...c,
+                id: `chk_${existingRemote.id}_${c.date}`,
+                habitId: existingRemote.id,
+              };
+              await saveCheckinRecord(remapped);
+            }
+            await markHabitDeletedLocally(lHabit.id);
+          } else {
+            pushedHabitsCount++;
+            pushHabitPromises.push(upsertNeonHabit(lHabit));
+            remoteHabitsByName.set(nameKey, lHabit);
+          }
         }
-        return upsertNeonHabit(lHabit);
-      });
+      }
       await Promise.all(pushHabitPromises);
 
       // 4. Reconcile Checkins (skipping checkins belonging to deleted habits)

@@ -26,7 +26,21 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
   const { theme, radius, spacing, typography } = useTheme();
 
   return (
-    <View style={[styles.container, { marginHorizontal: spacing.base, marginBottom: spacing.base }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          marginHorizontal: spacing.base,
+          marginBottom: spacing.base,
+          backgroundColor: theme.isDark ? theme.card : 'transparent',
+          borderColor: theme.isDark ? theme.border : 'transparent',
+          borderWidth: theme.isDark ? 1 : 0,
+          borderRadius: radius.md,
+          paddingHorizontal: theme.isDark ? spacing.base : 0,
+          paddingVertical: theme.isDark ? 12 : 4,
+        },
+      ]}
+    >
       <View style={styles.infoRow}>
         {/* Right side in RTL: Date and Back to Today option */}
         <View style={styles.dateSide}>

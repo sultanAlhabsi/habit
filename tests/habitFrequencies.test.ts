@@ -10,6 +10,7 @@ import {
   calculateHabitStats,
   formatHabitStreakArabic,
   formatHabitFrequencyLabel,
+  formatHabitScheduleShort,
   formatHabitStatsForShare,
   calculateStreakMilestone,
 } from '../src/utils/habitUtils.ts';
@@ -295,4 +296,36 @@ test('formatHabitStatsForShare: correctly outputs weeks and months for periodic 
   const monthlyShareText = formatHabitStatsForShare(monthlyHabit, monthlyStats, milestone);
   assert.ok(monthlyShareText.includes('السلسلة الحالية: شهران متتاليان'));
   assert.ok(monthlyShareText.includes('أطول سلسلة: ٣ أشهر متتالية'));
+});
+
+test('formatHabitStreakArabic: formats specific_days as consecutive completions without confusing daily calendar wording', () => {
+  assert.equal(formatHabitStreakArabic(0, 'specific_days'), '٠ إنجاز');
+  assert.equal(formatHabitStreakArabic(1, 'specific_days'), 'إنجاز واحد');
+  assert.equal(formatHabitStreakArabic(2, 'specific_days'), 'إنجازان متتاليان');
+  assert.equal(formatHabitStreakArabic(3, 'specific_days'), '٣ إنجازات متتالية');
+  assert.equal(formatHabitStreakArabic(5, 'specific_days'), '٥ إنجازات متتالية');
+  assert.equal(formatHabitStreakArabic(12, 'specific_days'), '١٢ إنجازاً متتالياً');
+});
+
+test('formatHabitScheduleShort: produces concise badges for specific days and monthly day', () => {
+  assert.equal(
+    formatHabitScheduleShort(createMockHabit({ frequency: 'specific_days', frequencyDays: [1, 4] })),
+    'إثن • خمي'
+  );
+  assert.equal(
+    formatHabitScheduleShort(createMockHabit({ frequency: 'specific_days', frequencyDays: [5] })),
+    'جمع'
+  );
+  assert.equal(
+    formatHabitScheduleShort(createMockHabit({ frequency: 'specific_days', frequencyDays: [0, 2, 4] })),
+    'أحد • ثلا • خمي'
+  );
+  assert.equal(
+    formatHabitScheduleShort(createMockHabit({ frequency: 'daily' })),
+    undefined
+  );
+  assert.equal(
+    formatHabitScheduleShort(createMockHabit({ frequency: 'monthly_day', monthlyDay: 1 })),
+    'يوم ١ شهرياً'
+  );
 });

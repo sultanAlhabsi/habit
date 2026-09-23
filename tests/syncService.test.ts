@@ -212,3 +212,64 @@ test('sync reconciliation: checkin with completed: false does not count as compl
   const isCompleted = checkins.some((c) => c.habitId === 'habit_1' && c.completed);
   assert.equal(isCompleted, false, 'Checkin with completed: false must not register as completed');
 });
+
+test('sync reconciliation: prevents duplicate habits across devices by matching normalized name', () => {
+  const remoteHabit: Habit = {
+    id: 'h_remote_phone1',
+    name: 'القراءة 📚',
+    icon: 'book',
+    color: '#0D9488',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-18T10:00:00.000Z',
+  };
+
+  const localHabitOnPhone2: Habit = {
+    id: 'h_local_phone2',
+    name: ' القراءة 📚 ', // Note whitespace difference
+    icon: 'book',
+    color: '#0D9488',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-19T12:00:00.000Z',
+  };
+
+  const remoteHabitsMap = new Map<string, Habit>([[remoteHabit.id, remoteHabit]]);
+  const remoteHabitsByName = new Map<string, Habit>();
+  for (const rh of remoteHabitsMap.values()) {
+    remoteHabitsByName.set(rh.name.trim().toLowerCase(), rh);
+  }
+
+  // Check whether Phone 2 should push a new habit or merge into Phone 1's habit
+  const nameKey = localHabitOnPhone2.name.trim().toLowerCase();
+  const existingRemote = remoteHabitsByName.get(nameKey);
+
+  assert.ok(existingRemote !== undefined, 'Should detect existing remote habit with same name');
+  assert.equal(existingRemote!.id, 'h_remote_phone1', 'Should resolve to Phone 1 canonical ID');
+
+  // Checkin remapping simulation
+  const localCheckin: HabitCheckin = {
+    id: `chk_${localHabitOnPhone2.id}_2026-09-19`,
+    habitId: localHabitOnPhone2.id,
+    date: '2026-09-19',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-19T14:00:00.000Z',
+  };
+
+  const remappedCheckin: HabitCheckin = {
+    ...localCheckin,
+    id: `chk_${existingRemote!.id}_${localCheckin.date}`,
+    habitId: existingRemote!.id,
+  };
+
+  assert.equal(remappedCheckin.habitId, 'h_remote_phone1');
+  assert.equal(remappedCheckin.id, 'chk_h_remote_phone1_2026-09-19');
+});
+

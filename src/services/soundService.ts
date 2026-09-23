@@ -22,9 +22,14 @@ export const initSound = async (): Promise<void> => {
   try {
     if (!isAudioSupported()) return;
 
-    const { createAudioPlayer } = require('expo-audio');
+    const { AudioModule } = require('expo-audio');
+    const { resolveSource } = require('expo-audio/build/utils/resolveSource');
     const soundAsset = require('../../assets/sounds/complete.wav');
-    player = createAudioPlayer(soundAsset);
+
+    if (AudioModule?.AudioPlayer) {
+      const resolved = resolveSource ? resolveSource(soundAsset) : soundAsset;
+      player = new AudioModule.AudioPlayer(resolved, 500, false, 0);
+    }
   } catch (_err) {
     // Non-fatal fallback
     player = null;
@@ -45,10 +50,17 @@ export const playCompletionSound = async (): Promise<void> => {
       await initSound();
     }
     if (player) {
-      if (player.currentTime > 0) {
-        await player.seekTo(0);
+      try {
+        if (typeof player.seekTo === 'function') {
+          player.seekTo(0);
+        }
+        if (typeof player.play === 'function') {
+          player.play();
+        }
+      } catch (_playErr) {
+        // Fallback: try recreating on next interaction
+        player = null;
       }
-      player.play();
     }
   } catch (_err) {
     // Non-blocking fail-safe

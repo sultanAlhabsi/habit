@@ -21,6 +21,7 @@ import {
   deleteImportedLoopHabitsRecord,
   batchSaveHabits,
   batchSaveCheckinRecords,
+  deduplicateLocalHabits,
 } from '../src/services/database.ts';
 import type { Habit, HabitCheckin } from '../src/types/habit.ts';
 
@@ -599,6 +600,78 @@ test('database: importDatabaseRecords atomic batch import with checkins', async 
   assert.equal(checkinsAfterMerge.length, 3);
   assert.ok(checkinsAfterMerge.some((c) => c.id === 'c_gamma_1'));
 });
+
+test('database: deduplicateLocalHabits consolidates duplicate habits and reassigns checkins', async () => {
+  await resetDatabase();
+
+  const habitA: Habit = {
+    id: 'h_dup_1',
+    name: 'القراءة 📚',
+    icon: 'book-outline',
+    color: '#0D9488',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+
+  const habitB: Habit = {
+    id: 'h_dup_2',
+    name: 'القراءة 📚',
+    icon: 'book-outline',
+    color: '#0D9488',
+    frequency: 'daily',
+    frequencyDays: [0, 1, 2, 3, 4, 5, 6],
+    targetCount: 1,
+    unit: 'مرة',
+    isActive: true,
+    createdAt: '2026-09-05T00:00:00.000Z',
+  };
+
+  await saveHabitRecord(habitA);
+  await saveHabitRecord(habitB);
+
+  const checkinA: HabitCheckin = {
+    id: 'chk_dup_1_day1',
+    habitId: 'h_dup_1',
+    date: '2026-09-18',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-18T10:00:00.000Z',
+    note: 'قراءة ممتازة',
+  };
+
+  const checkinB: HabitCheckin = {
+    id: 'chk_dup_2_day2',
+    habitId: 'h_dup_2',
+    date: '2026-09-19',
+    count: 1,
+    completed: true,
+    updatedAt: '2026-09-19T10:00:00.000Z',
+    note: 'فصل جديد',
+  };
+
+  await saveCheckinRecord(checkinA);
+  await saveCheckinRecord(checkinB);
+
+  const habitsBefore = await fetchAllHabits();
+  assert.equal(habitsBefore.length, 2);
+
+  const res = await deduplicateLocalHabits();
+  assert.equal(res.mergedHabitsCount, 1);
+
+  const habitsAfter = await fetchAllHabits();
+  assert.equal(habitsAfter.length, 1);
+  assert.equal(habitsAfter[0].id, 'h_dup_1');
+
+  const checkinsAfter = await fetchAllCheckins();
+  assert.equal(checkinsAfter.length, 2);
+  // Both checkins should now point to canonical habit 'h_dup_1'
+  assert.ok(checkinsAfter.every((c) => c.habitId === 'h_dup_1'));
+});
+
 
 
 

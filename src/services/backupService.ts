@@ -81,4 +81,51 @@ export const exportCsvViaShare = async (
   }
 };
 
+/**
+ * Opens system document picker to select a backup JSON file, reads it and validates its format.
+ */
+export const pickAndReadBackupFile = async (): Promise<{
+  canceled?: boolean;
+  valid?: boolean;
+  data?: any;
+  error?: string;
+  fileName?: string;
+}> => {
+  try {
+    let DocumentPicker: any = null;
+    try {
+      DocumentPicker = require('expo-document-picker');
+    } catch {
+      DocumentPicker = null;
+    }
+
+    if (!DocumentPicker || typeof DocumentPicker.getDocumentAsync !== 'function') {
+      return { valid: false, error: 'أداة اختيار الملفات غير متوفرة في النظام الحالي.' };
+    }
+
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ['application/json', '*/*'],
+      copyToCacheDirectory: true,
+    });
+
+    if (res.canceled || !res.assets || res.assets.length === 0) {
+      return { canceled: true };
+    }
+
+    const asset = res.assets[0];
+    const fileContent = await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+
+    const validation = validateBackupJson(fileContent);
+    if (!validation.valid) {
+      return { valid: false, error: validation.error, fileName: asset.name };
+    }
+
+    return { valid: true, data: validation.data, fileName: asset.name };
+  } catch (err: any) {
+    return { valid: false, error: err?.message || 'حدث خطأ أثناء قراءة ملف النسخة الاحتياطية.' };
+  }
+};
+
 

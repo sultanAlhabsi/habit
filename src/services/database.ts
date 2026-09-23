@@ -9,9 +9,9 @@ let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
 // Fallback in-memory store in case native SQLite is unavailable or encounters errors
-let memoryHabits: Habit[] = [...INITIAL_HABITS];
-let memoryCheckins: HabitCheckin[] = generateDemoCheckins();
-let memoryDeletedHabitIds: string[] = ['habit-5'];
+let memoryHabits: Habit[] = [];
+let memoryCheckins: HabitCheckin[] = [];
+let memoryDeletedHabitIds: string[] = [];
 let memoryMeta: Record<string, string> = {
   theme_mode: 'system',
   haptics_enabled: 'true',
@@ -20,6 +20,7 @@ let memoryMeta: Record<string, string> = {
   evening_reminder_time: '21:00',
   habit_sort_preference: 'default',
   notifications_enabled: 'true',
+  has_completed_onboarding: 'false',
 };
 
 // Sequential query queue to eliminate concurrent execution race conditions on Android
@@ -204,12 +205,8 @@ export const initDatabase = async (): Promise<void> => {
               );
             } catch {}
 
-            const countResult = await db.getFirstAsync<{ count: number }>(
-              'SELECT COUNT(*) as count FROM habits'
-            );
-            if (!countResult || countResult.count === 0) {
-              await seedDatabaseInternal(db);
-            }
+            // Schema initialized cleanly without inserting unprompted demo records.
+            // Explicit seeding is handled on-demand via seedDatabase() in Settings.
           } catch (error) {
             handleDatabaseError(error);
             console.warn('[Database] Error in schema initialization:', error);
@@ -333,6 +330,7 @@ const seedDatabaseInternal = async (db: SQLite.SQLiteDatabase) => {
     ['habit_sort_preference', 'default'],
     ['evening_reminder_enabled', 'false'],
     ['evening_reminder_time', '21:00'],
+    ['has_completed_onboarding', 'false'],
   ];
   for (const [key, val] of defaultMetaEntries) {
     try {
@@ -689,6 +687,17 @@ export const setPreference = async (key: string, value: string): Promise<void> =
   );
 };
 
+export const deletePreference = async (key: string): Promise<void> => {
+  delete memoryMeta[key];
+
+  await runSerialized(
+    async (db) => {
+      await db.runAsync('DELETE FROM meta WHERE key = ?', [key]);
+    },
+    () => {}
+  );
+};
+
 export const archiveHabitRecord = async (habitId: string, archive: boolean): Promise<void> => {
   const archivedAt = archive ? dayjs().toISOString() : null;
   const isActive = archive ? 0 : 1;
@@ -727,6 +736,15 @@ export const getAllPreferences = async (): Promise<Record<string, string>> => {
     },
     () => ({ ...memoryMeta })
   );
+};
+
+export const hasCompletedOnboarding = async (): Promise<boolean> => {
+  const val = await getPreference('has_completed_onboarding', 'false');
+  return val === 'true';
+};
+
+export const setCompletedOnboarding = async (completed: boolean): Promise<void> => {
+  await setPreference('has_completed_onboarding', completed ? 'true' : 'false');
 };
 
 export const importDatabaseRecords = async (
@@ -964,7 +982,7 @@ export const compactDatabase = async (): Promise<{ success: boolean }> => {
   return runSerialized(
     async (db) => {
       try {
-        await db.execAsync('PRAGMA optimize; VACUUM;');
+        await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE); PRAGMA optimize; VACUUM;');
         return { success: true };
       } catch (err) {
         console.warn('[Database] VACUUM error:', err);
@@ -998,4 +1016,159 @@ export const cleanEmptyCheckins = async (): Promise<number> => {
     () => memoryCleaned
   );
 };
+
+export interface DeduplicateResult {
+  mergedHabitsCount: number;
+  migratedCheckinsCount: number;
+}
+
+/**
+ * Deduplicate local habits with identical names.
+ * Consolidates duplicate records into the canonical habit (the one with checkins or oldest),
+ * re-assigns checkins without loss, merges note/counts on conflicting dates,
+ * registers tombstones in deleted_habits, and purges the duplicate records.
+ */
+export const deduplicateLocalHabits = async (): Promise<DeduplicateResult> => {
+  return runSerialized(
+    async (db) => {
+      let mergedHabitsCount = 0;
+      let migratedCheckinsCount = 0;
+
+      const habitRows = await db.getAllAsync<{
+        id: string;
+        name: string;
+        created_at: string;
+      }>('SELECT id, name, created_at FROM habits ORDER BY created_at ASC;');
+
+      const byName = new Map<string, { id: string; name: string; created_at: string }[]>();
+      for (const h of habitRows) {
+        const key = h.name.trim().toLowerCase();
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key)!.push(h);
+      }
+
+      await db.withTransactionAsync(async () => {
+        for (const [, group] of byName.entries()) {
+          if (group.length <= 1) continue;
+
+          // Find checkin counts for each habit in group
+          const checkinCounts = new Map<string, number>();
+          for (const h of group) {
+            const row = await db.getFirstAsync<{ count: number }>(
+              'SELECT count(*) as count FROM checkins WHERE habit_id = ?;',
+              [h.id]
+            );
+            checkinCounts.set(h.id, row?.count || 0);
+          }
+
+          group.sort((a, b) => {
+            const ca = checkinCounts.get(a.id) || 0;
+            const cb = checkinCounts.get(b.id) || 0;
+            if (cb !== ca) return cb - ca;
+            return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          });
+
+          const canonical = group[0];
+          const duplicates = group.slice(1);
+
+          for (const dup of duplicates) {
+            const dupCheckins = await db.getAllAsync<{
+              id: string;
+              date: string;
+              count: number;
+              completed: number;
+              note: string | null;
+              updated_at: string;
+            }>('SELECT * FROM checkins WHERE habit_id = ?;', [dup.id]);
+
+            for (const dc of dupCheckins) {
+              const canonicalCheckin = await db.getFirstAsync<{
+                id: string;
+                count: number;
+                completed: number;
+                note: string | null;
+                updated_at: string;
+              }>('SELECT * FROM checkins WHERE habit_id = ? AND date = ?;', [
+                canonical.id,
+                dc.date,
+              ]);
+
+              if (canonicalCheckin) {
+                const mergedCompleted = canonicalCheckin.completed === 1 || dc.completed === 1 ? 1 : 0;
+                const mergedCount = Math.max(canonicalCheckin.count, dc.count);
+                let mergedNote = canonicalCheckin.note;
+                if (!mergedNote && dc.note) {
+                  mergedNote = dc.note;
+                } else if (mergedNote && dc.note && mergedNote !== dc.note) {
+                  mergedNote = `${mergedNote} | ${dc.note}`;
+                }
+                await db.runAsync(
+                  'UPDATE checkins SET completed = ?, count = ?, note = ? WHERE id = ?;',
+                  [mergedCompleted, mergedCount, mergedNote, canonicalCheckin.id]
+                );
+                await db.runAsync('DELETE FROM checkins WHERE id = ?;', [dc.id]);
+              } else {
+                await db.runAsync(
+                  'UPDATE checkins SET habit_id = ? WHERE id = ?;',
+                  [canonical.id, dc.id]
+                );
+                migratedCheckinsCount++;
+              }
+            }
+
+            // Record tombstone so sync propagates deletion
+            await db.runAsync(
+              'INSERT OR REPLACE INTO deleted_habits (id, deleted_at) VALUES (?, ?);',
+              [dup.id, new Date().toISOString()]
+            );
+
+            // Delete duplicate habit
+            await db.runAsync('DELETE FROM habits WHERE id = ?;', [dup.id]);
+            mergedHabitsCount++;
+          }
+        }
+      });
+
+      if (mergedHabitsCount > 0) {
+        const remainingHabits = await fetchAllHabits();
+        const remainingCheckins = await fetchAllCheckins();
+        memoryHabits = remainingHabits;
+        memoryCheckins = remainingCheckins;
+      }
+
+      return { mergedHabitsCount, migratedCheckinsCount };
+    },
+    () => {
+      let mergedHabitsCount = 0;
+      let migratedCheckinsCount = 0;
+      const byName = new Map<string, Habit[]>();
+      for (const h of memoryHabits) {
+        const key = h.name.trim().toLowerCase();
+        if (!byName.has(key)) byName.set(key, []);
+        byName.get(key)!.push(h);
+      }
+
+      for (const [, group] of byName.entries()) {
+        if (group.length <= 1) continue;
+        const canonical = group[0];
+        const duplicates = group.slice(1);
+        for (const dup of duplicates) {
+          memoryCheckins.forEach((c) => {
+            if (c.habitId === dup.id) {
+              c.habitId = canonical.id;
+              migratedCheckinsCount++;
+            }
+          });
+          memoryHabits = memoryHabits.filter((h) => h.id !== dup.id);
+          if (!memoryDeletedHabitIds.includes(dup.id)) {
+            memoryDeletedHabitIds.push(dup.id);
+          }
+          mergedHabitsCount++;
+        }
+      }
+      return { mergedHabitsCount, migratedCheckinsCount };
+    }
+  );
+};
+
 

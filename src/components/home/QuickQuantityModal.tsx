@@ -51,6 +51,7 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
   const parsedCount = Math.max(0, parseInt(normalizedStr, 10) || 0);
   const isCompleted = parsedCount >= targetCount;
   const progressPercent = Math.round((parsedCount / targetCount) * 100);
+  const habitColor = habit.color || theme.primary;
 
   const handleSave = () => {
     onClose();
@@ -203,9 +204,9 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
                     styles.quantityInput,
                     typography.h1,
                     {
-                      color: isCompleted ? theme.primary : theme.text,
+                      color: isCompleted ? habitColor : theme.text,
                       backgroundColor: theme.background,
-                      borderColor: isCompleted ? theme.primary : theme.border,
+                      borderColor: isCompleted ? habitColor : theme.border,
                       borderRadius: radius.md,
                       minHeight: touchTarget,
                     },
@@ -311,8 +312,8 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
               style={[
                 styles.statusBox,
                 {
-                  backgroundColor: isCompleted ? `${theme.primary}12` : theme.cardSecondary,
-                  borderColor: isCompleted ? `${theme.primary}40` : theme.border,
+                  backgroundColor: isCompleted ? `${habitColor}15` : theme.cardSecondary,
+                  borderColor: isCompleted ? `${habitColor}40` : theme.border,
                   borderRadius: radius.md,
                   marginTop: spacing.md,
                 },
@@ -323,14 +324,14 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
                   <Ionicons
                     name={isCompleted ? 'checkmark-circle' : 'time-outline'}
                     size={16}
-                    color={isCompleted ? theme.primary : theme.textSecondary}
+                    color={isCompleted ? habitColor : theme.textSecondary}
                     style={{ marginLeft: 6 }}
                   />
                   <Text
                     style={[
                       typography.subMedium,
                       {
-                        color: isCompleted ? theme.primary : theme.text,
+                        color: isCompleted ? habitColor : theme.text,
                         fontWeight: '700',
                       },
                     ]}
@@ -343,7 +344,7 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
                   style={[
                     typography.caption,
                     {
-                      color: isCompleted ? theme.primary : theme.textSecondary,
+                      color: isCompleted ? habitColor : theme.textSecondary,
                       fontWeight: '700',
                     },
                   ]}
@@ -368,7 +369,7 @@ export const QuickQuantityModal: React.FC<QuickQuantityModalProps> = ({
                     styles.progressBarFill,
                     {
                       width: `${Math.min(100, progressPercent)}%`,
-                      backgroundColor: isCompleted ? theme.primary : habit.color || theme.text,
+                      backgroundColor: habitColor,
                       borderRadius: radius.full,
                     },
                   ]}
