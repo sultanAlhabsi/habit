@@ -15,6 +15,8 @@ import {
   initDatabase,
   fetchAllHabits,
   fetchAllCheckins,
+  fetchCheckinsForHabit,
+  countAllCompletedCheckins,
   fetchRecentCheckins,
   saveHabitRecord,
   deleteHabitRecord,
@@ -61,6 +63,8 @@ import {
   getCompletedDueHabitsForDate,
   buildBatchCheckinPayloadForCompletion,
   buildBatchCheckinPayloadForReset,
+  exportFullReportToCsv,
+  exportSingleHabitToCsv,
 } from '../utils/habitUtils.ts';
 import {
   syncWithNeon,
@@ -125,6 +129,8 @@ interface HabitState {
   seedData: () => Promise<void>;
   resetAllData: () => Promise<void>;
   exportBackup: () => Promise<BackupPayload>;
+  exportFullReportCsv: () => Promise<string>;
+  exportSingleHabitCsv: (habit: Habit) => Promise<string>;
   importBackup: (backup: BackupPayload, mode: 'replace' | 'merge') => Promise<void>;
   importLoopData: (data: ConvertedLoopData, habitsOnly?: boolean) => Promise<void>;
   compactDatabase: () => Promise<boolean>;
@@ -987,8 +993,21 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   },
 
   exportBackup: async () => {
-    const meta = await getAllPreferences();
-    return createBackupPayload(get().habits, get().checkins, meta);
+    const [allCheckins, meta] = await Promise.all([
+      fetchAllCheckins(),
+      getAllPreferences(),
+    ]);
+    return createBackupPayload(get().habits, allCheckins, meta);
+  },
+
+  exportFullReportCsv: async () => {
+    const allCheckins = await fetchAllCheckins();
+    return exportFullReportToCsv(get().habits, allCheckins);
+  },
+
+  exportSingleHabitCsv: async (habit: Habit) => {
+    const habitCheckins = await fetchCheckinsForHabit(habit.id);
+    return exportSingleHabitToCsv(habit, habitCheckins);
   },
 
   importBackup: async (backup: BackupPayload, mode: 'replace' | 'merge') => {

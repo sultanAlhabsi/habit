@@ -598,6 +598,45 @@ export const fetchAllCheckins = async (): Promise<HabitCheckin[]> => {
   );
 };
 
+export const fetchCheckinsForHabit = async (habitId: string): Promise<HabitCheckin[]> => {
+  return runSerialized(
+    async (db) => {
+      const rows = await db.getAllAsync<{
+        id: string;
+        habit_id: string;
+        date: string;
+        count: number;
+        completed: number;
+        updated_at: string;
+        note?: string | null;
+      }>('SELECT * FROM checkins WHERE habit_id = ? ORDER BY date DESC', [habitId]);
+
+      return rows.map((r) => ({
+        id: r.id,
+        habitId: r.habit_id,
+        date: r.date,
+        count: r.count,
+        completed: r.completed === 1,
+        updatedAt: r.updated_at,
+        note: r.note || undefined,
+      }));
+    },
+    () => memoryCheckins.filter((c) => c.habitId === habitId).sort((a, b) => b.date.localeCompare(a.date))
+  );
+};
+
+export const countAllCompletedCheckins = async (): Promise<number> => {
+  return runSerialized(
+    async (db) => {
+      const row = await db.getFirstAsync<{ cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM checkins WHERE completed = 1'
+      );
+      return row?.cnt ?? 0;
+    },
+    () => memoryCheckins.filter((c) => c.completed).length
+  );
+};
+
 export const saveCheckinRecord = async (checkin: HabitCheckin): Promise<void> => {
   const idx = memoryCheckins.findIndex(
     (c) => c.habitId === checkin.habitId && c.date === checkin.date

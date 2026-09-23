@@ -1,11 +1,11 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { Habit } from '../types/habit';
+import { Habit } from '../types/habit.ts';
 import {
   generateHabitReminderTriggers,
   generateEveningReviewTrigger,
   EVENING_REVIEW_REMINDER_ID,
-} from '../utils/notificationUtils';
+} from '../utils/notificationUtils.ts';
 
 let isNotificationsConfigured = false;
 

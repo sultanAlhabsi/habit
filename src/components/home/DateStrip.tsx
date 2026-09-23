@@ -15,7 +15,7 @@ import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import dayjs from 'dayjs';
 import { useTheme } from '../../theme/ThemeContext';
-import { formatArabicDate } from '../../utils/habitUtils';
+import { formatArabicDate, toArabicNumerals } from '../../utils/habitUtils';
 
 interface DateStripProps {
   selectedDate: string; // YYYY-MM-DD
@@ -232,7 +232,7 @@ const DateStripComponent: React.FC<DateStripProps> = ({
             <Pressable
               key={item.dateStr}
               accessibilityRole="button"
-              accessibilityLabel={`${item.dayShort} ${item.dayNum}`}
+              accessibilityLabel={`${item.dayShort} ${toArabicNumerals(item.dayNum)}`}
               accessibilityState={{ selected: isSelected }}
               android_disableSound={false}
               onPress={() => handleDayPress(item.dateStr)}
@@ -286,7 +286,7 @@ const DateStripComponent: React.FC<DateStripProps> = ({
                   },
                 ]}
               >
-                {item.dayNum}
+                {toArabicNumerals(item.dayNum)}
               </Text>
 
               {item.isToday ? (

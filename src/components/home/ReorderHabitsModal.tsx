@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { useHabitStore } from '../../store/useHabitStore';
-import { reorderArray, sortHabits, isQuantitativeHabit, formatHabitFrequencyLabel } from '../../utils/habitUtils';
+import { reorderArray, sortHabits, isQuantitativeHabit, formatHabitFrequencyLabel, toArabicNumerals } from '../../utils/habitUtils';
 
 interface ReorderHabitsModalProps {
   visible: boolean;
@@ -307,7 +307,7 @@ export const ReorderHabitsModal: React.FC<ReorderHabitsModalProps> = ({
             ]}
           >
             {isQuantitativeHabit(habit)
-              ? `الهدف: ${habit.targetCount} ${habit.unit} يومياً`
+              ? `الهدف: ${toArabicNumerals(habit.targetCount)} ${habit.unit} يومياً`
               : formatHabitFrequencyLabel(habit)}
           </Text>
         </View>
@@ -444,7 +444,7 @@ export const ReorderHabitsModal: React.FC<ReorderHabitsModalProps> = ({
                   <View style={styles.sectionBadge}>
                     <Ionicons name="pin" size={11} color={theme.primary} style={{ marginLeft: 4 }} />
                     <Text style={[typography.caption, { color: theme.primary, fontWeight: '700', fontSize: 11 }]}>
-                      العادات المثبتة ({pinnedList.length})
+                      العادات المثبتة ({toArabicNumerals(pinnedList.length)})
                     </Text>
                   </View>
                   <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10 }]}>
@@ -463,7 +463,7 @@ export const ReorderHabitsModal: React.FC<ReorderHabitsModalProps> = ({
               {pinnedList.length > 0 && (
                 <View style={[styles.sectionHeaderRow, { marginTop: 8 }]}>
                   <Text style={[typography.subMedium, { color: theme.text, fontWeight: '700' }]}>
-                    العادات اليومية ({regularList.length})
+                    العادات اليومية ({toArabicNumerals(regularList.length)})
                   </Text>
                 </View>
               )}

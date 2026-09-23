@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,6 +14,8 @@ import dayjs from 'dayjs';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
 import { useShallow } from 'zustand/react/shallow';
+import { fetchCheckinsForHabit } from '../services/database';
+import type { HabitCheckin } from '../types/habit';
 import { Header } from '../components/common/Header';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -117,31 +119,61 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   const activeCount = activeCheckin ? activeCheckin.count : 0;
   const isCompletedOnDate = Boolean(activeCheckin?.completed);
 
+  const [habitHistoricalCheckins, setHabitHistoricalCheckins] = useState<HabitCheckin[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchCheckinsForHabit(habit.id).then((records) => {
+      if (isMounted) {
+        setHabitHistoricalCheckins(records);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [habit.id]);
+
+  // Merge full historical database checkins with live store checkins for instant reactivity
+  const effectiveHabitCheckins = useMemo(() => {
+    const map = new Map<string, HabitCheckin>();
+    for (let i = 0; i < habitHistoricalCheckins.length; i++) {
+      const c = habitHistoricalCheckins[i];
+      map.set(c.date, c);
+    }
+    for (let i = 0; i < checkins.length; i++) {
+      const c = checkins[i];
+      if (c.habitId === habit.id) {
+        map.set(c.date, c);
+      }
+    }
+    return Array.from(map.values());
+  }, [habitHistoricalCheckins, checkins, habit.id]);
+
   const completedDates = useMemo(
     () =>
       new Set(
-        checkins
-          .filter((c) => c.habitId === habit.id && c.completed)
+        effectiveHabitCheckins
+          .filter((c) => c.completed)
           .map((c) => c.date)
       ),
-    [checkins, habit.id]
+    [effectiveHabitCheckins]
   );
 
   const stats = useMemo(
-    () => calculateHabitStats(habit, checkins),
-    [habit, checkins]
+    () => calculateHabitStats(habit, effectiveHabitCheckins),
+    [habit, effectiveHabitCheckins]
   );
 
   const totalLoggedUnits = useMemo(
-    () => calculateTotalLoggedUnits(habit.id, checkins),
-    [habit.id, checkins]
+    () => calculateTotalLoggedUnits(habit.id, effectiveHabitCheckins),
+    [habit.id, effectiveHabitCheckins]
   );
 
   const category = useMemo(() => getHabitCategory(habit.icon), [habit.icon]);
 
   const streakStatus = useMemo(
-    () => getHabitStreakStatus(habit, checkins, selectedDate),
-    [habit, checkins, selectedDate]
+    () => getHabitStreakStatus(habit, effectiveHabitCheckins, selectedDate),
+    [habit, effectiveHabitCheckins, selectedDate]
   );
 
   const milestoneInfo = useMemo(
@@ -150,13 +182,13 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
   );
 
   const consistencyPattern = useMemo(
-    () => calculateHabitConsistencyPattern(habit, checkins, todayStr),
-    [habit, checkins, todayStr]
+    () => calculateHabitConsistencyPattern(habit, effectiveHabitCheckins, todayStr),
+    [habit, effectiveHabitCheckins, todayStr]
   );
 
   const allHabitNotes = useMemo(
-    () => getHabitCheckinNotes(checkins, habit.id),
-    [checkins, habit.id]
+    () => getHabitCheckinNotes(effectiveHabitCheckins, habit.id),
+    [effectiveHabitCheckins, habit.id]
   );
 
   const handleShare = useCallback(async () => {
@@ -171,7 +203,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
 
   const handleExportCsv = useCallback(async () => {
     try {
-      const csv = exportSingleHabitToCsv(habit, checkins);
+      const csv = exportSingleHabitToCsv(habit, effectiveHabitCheckins);
       const success = await exportCsvViaShare(csv, `سجل عادة - ${habit.name}`);
       if (!success) {
         appAlert('تنبيه', 'تعذر فتح نافذة مشاركة الملف، يرجى المحاولة لاحقًا.');
@@ -179,7 +211,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
     } catch {
       appAlert('خطأ', 'حدث خطأ أثناء إعداد ملف التصدير.');
     }
-  }, [habit, checkins]);
+  }, [habit, effectiveHabitCheckins]);
 
   const handleArchiveConfirm = () => {
     appAlert(

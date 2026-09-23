@@ -32,7 +32,7 @@ import {
   exportCsvViaShare,
   pickAndReadBackupFile,
 } from '../services/backupService';
-import { exportFullReportToCsv } from '../utils/habitUtils';
+import { exportFullReportToCsv, toArabicNumerals, formatArabicCount } from '../utils/habitUtils';
 import {
   inspectAndParseLoopDatabase,
   ConvertedLoopData,
@@ -56,6 +56,7 @@ export const SettingsScreen: React.FC = () => {
     eveningReminderTime,
     setEveningReminder,
     exportBackup,
+    exportFullReportCsv,
     importBackup,
     importLoopData,
     seedData,
@@ -211,7 +212,7 @@ export const SettingsScreen: React.FC = () => {
         appAlert('تنبيه', 'لا توجد عادات مسجلة لتصدير تقرير CSV.');
         return;
       }
-      const csvData = exportFullReportToCsv(habits, checkins);
+      const csvData = await exportFullReportCsv();
       await exportCsvViaShare(csvData, 'تقرير عادات وسجلات إنجاز');
     } catch (err) {
       appAlert('خطأ', 'حدث خطأ أثناء تصدير ملف CSV.');
@@ -251,7 +252,7 @@ export const SettingsScreen: React.FC = () => {
 
     appAlert(
       'تأكيد الاستعادة',
-      `تم العثور على ${bHabits.length} عادة و ${bCheckins.length} سجل إنجاز.\n\nطريقة الاستعادة: ${modeLabel}.\nهل تود المتابعة؟`,
+      `تم العثور على ${formatArabicCount(bHabits.length, 'عادة واحدة', 'عادتان', 'عادات', 'عادة')} و ${formatArabicCount(bCheckins.length, 'سجل إنجاز واحد', 'سجلا إنجاز', 'سجلات إنجاز', 'سجل إنجاز')}.\n\nطريقة الاستعادة: ${modeLabel}.\nهل تود المتابعة؟`,
       [
         { text: 'إلغاء', style: 'cancel' },
         {
@@ -561,7 +562,7 @@ export const SettingsScreen: React.FC = () => {
           {loopHabitsCount > 0 && (
             <SettingRow
               iconName="trash-outline"
-              title={`حذف عادات Loop المستوردة (${loopHabitsCount})`}
+              title={`حذف عادات Loop المستوردة (${toArabicNumerals(loopHabitsCount)})`}
               description="إزالة العادات المستوردة وسجلاتها التاريخية فقط"
               type="link"
               isDestructive
@@ -578,7 +579,7 @@ export const SettingsScreen: React.FC = () => {
             title="العادات المؤرشفة"
             description="استعراض أو استعادة أو حذف العادات المؤرشفة"
             type="link"
-            badgeText={archivedHabitsCount > 0 ? archivedHabitsCount : undefined}
+            badgeText={archivedHabitsCount > 0 ? toArabicNumerals(archivedHabitsCount) : undefined}
             onPress={() => navigation.navigate('ArchivedHabits')}
           />
 
@@ -916,7 +917,7 @@ export const SettingsScreen: React.FC = () => {
               <View style={styles.loopStatsGrid}>
                 <View style={[styles.loopStatCard, { backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary }]}>
                   <Text style={[typography.h3, { color: theme.primary, textAlign: 'center' }]}>
-                    {loopDataPreview?.inspection.totalHabits ?? 0}
+                    {toArabicNumerals(loopDataPreview?.inspection.totalHabits ?? 0)}
                   </Text>
                   <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
                     إجمالي العادات
@@ -925,7 +926,7 @@ export const SettingsScreen: React.FC = () => {
 
                 <View style={[styles.loopStatCard, { backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary }]}>
                   <Text style={[typography.h3, { color: '#15803D', textAlign: 'center' }]}>
-                    {loopDataPreview?.inspection.activeHabitsCount ?? 0}
+                    {toArabicNumerals(loopDataPreview?.inspection.activeHabitsCount ?? 0)}
                   </Text>
                   <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
                     عادات نشطة
@@ -934,7 +935,7 @@ export const SettingsScreen: React.FC = () => {
 
                 <View style={[styles.loopStatCard, { backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary }]}>
                   <Text style={[typography.h3, { color: theme.textMuted, textAlign: 'center' }]}>
-                    {loopDataPreview?.inspection.archivedHabitsCount ?? 0}
+                    {toArabicNumerals(loopDataPreview?.inspection.archivedHabitsCount ?? 0)}
                   </Text>
                   <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
                     عادات مؤرشفة
@@ -945,7 +946,7 @@ export const SettingsScreen: React.FC = () => {
               <View style={[styles.loopStatsGrid, { marginTop: 8 }]}>
                 <View style={[styles.loopStatCard, { backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary }]}>
                   <Text style={[typography.h3, { color: theme.primary, textAlign: 'center' }]}>
-                    {loopDataPreview?.inspection.totalCheckinsCount.toLocaleString('ar-EG') ?? 0}
+                    {toArabicNumerals(loopDataPreview?.inspection.totalCheckinsCount ?? 0)}
                   </Text>
                   <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
                     سجلات إنجاز
@@ -954,7 +955,7 @@ export const SettingsScreen: React.FC = () => {
 
                 <View style={[styles.loopStatCard, { backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary }]}>
                   <Text style={[typography.h3, { color: '#B45309', textAlign: 'center' }]}>
-                    {loopDataPreview?.inspection.notesCount ?? 0}
+                    {toArabicNumerals(loopDataPreview?.inspection.notesCount ?? 0)}
                   </Text>
                   <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'center' }]}>
                     ملاحظات يومية

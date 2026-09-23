@@ -19,7 +19,7 @@ import {
   searchHabitTemplates,
   getHabitTemplates,
 } from '../../utils/habitTemplates';
-import { formatArabicCount } from '../../utils/habitUtils';
+import { formatArabicCount, toArabicNumerals } from '../../utils/habitUtils';
 
 interface HabitTemplateModalProps {
   visible: boolean;
@@ -182,7 +182,7 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
                       },
                     ]}
                   >
-                    {cat} ({count})
+                    {cat} ({toArabicNumerals(count)})
                   </Text>
                 </Pressable>
               );
@@ -287,7 +287,7 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
                     <View style={styles.metaItem}>
                       <Ionicons name="flag-outline" size={13} color={theme.textMuted} style={{ marginLeft: 4 }} />
                       <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>
-                        الهدف: {item.targetCount} {item.unit}
+                        الهدف: {toArabicNumerals(item.targetCount)} {item.unit}
                       </Text>
                     </View>
 
@@ -304,7 +304,7 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
                       <View style={styles.metaItem}>
                         <Ionicons name="alarm-outline" size={13} color={theme.textMuted} style={{ marginLeft: 4 }} />
                         <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>
-                          {item.reminderTime}
+                          {toArabicNumerals(item.reminderTime!)}
                         </Text>
                       </View>
                     )}

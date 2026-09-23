@@ -8,6 +8,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Text } from '../common/AppText';
 import { useTheme } from '../../theme/ThemeContext';
+import { toArabicNumerals } from '../../utils/habitUtils';
 
 export type HabitFilter = 'all' | 'pending' | 'completed';
 
@@ -91,9 +92,9 @@ export const FilterTabsBar: React.FC<FilterTabsBarProps> = React.memo(({
   });
 
   const labels: Record<HabitFilter, string> = {
-    all: `الكل (${allCount})`,
-    pending: `المتبقية (${pendingCount})`,
-    completed: `المكتملة (${completedCount})`,
+    all: `الكل (${toArabicNumerals(allCount)})`,
+    pending: `المتبقية (${toArabicNumerals(pendingCount)})`,
+    completed: `المكتملة (${toArabicNumerals(completedCount)})`,
   };
 
   return (

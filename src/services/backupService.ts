@@ -7,9 +7,9 @@ import {
   createBackupPayload,
   validateBackupJson,
   mergeBackupData,
-} from '../utils/backupUtils';
+} from '../utils/backupUtils.ts';
 
-export * from '../utils/backupUtils';
+export * from '../utils/backupUtils.ts';
 
 /**
  * Triggers native system share dialog with the backup JSON file.

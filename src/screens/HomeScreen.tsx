@@ -702,7 +702,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 <View style={styles.offScheduleHeaderTitle}>
                   <Ionicons name="repeat-outline" size={16} color={theme.textSecondary} />
                   <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
-                    أهداف مرنة أسبوعية وشهرية ({filteredPeriodicHabits.length})
+                    أهداف مرنة أسبوعية وشهرية ({toArabicNumerals(filteredPeriodicHabits.length)})
                   </Text>
                 </View>
                 <Ionicons
@@ -794,7 +794,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 <View style={styles.offScheduleHeaderTitle}>
                   <Ionicons name="bed-outline" size={16} color={theme.textSecondary} />
                   <Text style={[typography.subMedium, { color: theme.text, marginRight: 8 }]}>
-                    عادات في استراحة اليوم ({filteredOffScheduleHabits.length})
+                    عادات في استراحة اليوم ({toArabicNumerals(filteredOffScheduleHabits.length)})
                   </Text>
                 </View>
                 <Ionicons
