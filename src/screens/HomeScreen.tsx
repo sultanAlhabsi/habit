@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -101,6 +101,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     );
   }
 
+  // Pre-calculate O(1) lookups for checkins and habit stats to avoid O(N) ops in render map
+  const { checkinsForDate, habitStatsMap } = useMemo(() => {
+    const todayCheckins = new Map();
+    checkins.forEach((c) => {
+      if (c.date === selectedDate) {
+        todayCheckins.set(c.habitId, c);
+      }
+    });
+
+    const statsMap = new Map();
+    habits.forEach((h) => {
+      statsMap.set(h.id, calculateHabitStats(h, checkins));
+    });
+
+    return { checkinsForDate: todayCheckins, habitStatsMap: statsMap };
+  }, [habits, checkins, selectedDate]);
+
   // Calculate overall stats for selected date
   const overallStats = calculateOverallStats(habits, checkins, selectedDate);
 
@@ -122,13 +139,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     : baseHabits.filter((h) => getHabitCategory(h.icon) === selectedCategory);
 
   const categoryCompletedCount = categoryFilteredHabits.filter((h) =>
-    checkins.some((c) => c.habitId === h.id && c.date === selectedDate && c.completed)
+    checkinsForDate.get(h.id)?.completed
   ).length;
 
   const filteredHabits = categoryFilteredHabits.filter((h) => {
-    const isCompleted = checkins.some(
-      (c) => c.habitId === h.id && c.date === selectedDate && c.completed
-    );
+    const isCompleted = checkinsForDate.get(h.id)?.completed;
     if (filter === 'completed') return isCompleted;
     if (filter === 'pending') return !isCompleted;
     return true; // 'all'
@@ -552,12 +567,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           )
         ) : (
           sortedFilteredHabits.map((habit) => {
-            const checkin = checkins.find(
-              (c) => c.habitId === habit.id && c.date === selectedDate
-            );
+            const checkin = checkinsForDate.get(habit.id);
             const isCompleted = Boolean(checkin?.completed);
             const currentCount = checkin ? checkin.count : 0;
-            const stats = calculateHabitStats(habit, checkins);
+            const stats = habitStatsMap.get(habit.id) || { currentStreak: 0, bestStreak: 0, totalCompletions: 0 };
             const isDue = isHabitDueOnDate(habit, selectedDate, true);
 
             return (
@@ -625,12 +638,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
             {isOffScheduleExpanded &&
               sortedOffScheduleHabits.map((habit) => {
-                const checkin = checkins.find(
-                  (c) => c.habitId === habit.id && c.date === selectedDate
-                );
+                const checkin = checkinsForDate.get(habit.id);
                 const isCompleted = Boolean(checkin?.completed);
                 const currentCount = checkin ? checkin.count : 0;
-                const stats = calculateHabitStats(habit, checkins);
+                const stats = habitStatsMap.get(habit.id) || { currentStreak: 0, bestStreak: 0, totalCompletions: 0 };
 
                 return (
                   <HabitCard
@@ -690,26 +701,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         isCompleted={
           Boolean(
             activeQuickActionHabit &&
-            checkins.some(
-              (c) =>
-                c.habitId === activeQuickActionHabit.id &&
-                c.date === selectedDate &&
-                c.completed
-            )
+            checkinsForDate.get(activeQuickActionHabit.id)?.completed
           )
         }
         streak={
           activeQuickActionHabit
-            ? calculateHabitStats(activeQuickActionHabit, checkins).currentStreak
+            ? (habitStatsMap.get(activeQuickActionHabit.id)?.currentStreak || 0)
             : 0
         }
         hasNote={
           Boolean(
             activeQuickActionHabit &&
-            checkins.find(
-              (c) =>
-                c.habitId === activeQuickActionHabit.id && c.date === selectedDate
-            )?.note?.trim()
+            checkinsForDate.get(activeQuickActionHabit.id)?.note?.trim()
           )
         }
         isFutureDate={isFutureDate}
@@ -731,11 +734,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         }}
         onOpenNote={() => {
           if (activeQuickActionHabit) {
-            const chk = checkins.find(
-              (c) =>
-                c.habitId === activeQuickActionHabit.id &&
-                c.date === selectedDate
-            );
+            const chk = checkinsForDate.get(activeQuickActionHabit.id);
             setActiveNoteModal({
               habit: activeQuickActionHabit,
               date: selectedDate,
@@ -746,7 +745,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         onShare={async () => {
           if (activeQuickActionHabit) {
             try {
-              const stats = calculateHabitStats(activeQuickActionHabit, checkins);
+              const stats = habitStatsMap.get(activeQuickActionHabit.id) || { currentStreak: 0, bestStreak: 0, totalCompletions: 0 };
               const milestone = calculateStreakMilestone(stats.currentStreak);
               const text = formatHabitStatsForShare(
                 activeQuickActionHabit,
