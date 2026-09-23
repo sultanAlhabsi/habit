@@ -25,6 +25,7 @@ import {
   formatHabitStreakArabic,
   formatHabitScheduleShort,
   isQuantitativeHabit,
+  toArabicNumerals,
 } from '../../utils/habitUtils';
 import { MicroParticleBurst, MicroParticleBurstRef } from '../common/MicroParticleBurst';
 import { ProgressBar } from '../common/ProgressBar';
@@ -518,7 +519,7 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
                     },
                   ]}
                 >
-                  {`${safeCount} من ${habit.targetCount} ${habit.unit}${safeCount >= habit.targetCount ? ' ✓' : ''}`}
+                  {`${toArabicNumerals(safeCount)} من ${toArabicNumerals(habit.targetCount)} ${habit.unit}${safeCount >= habit.targetCount ? ' ✓' : ''}`}
                 </Text>
               </Pressable>
             )}

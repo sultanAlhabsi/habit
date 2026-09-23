@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
 import type { StreakMilestoneInfo, HabitFrequency } from '../../types/habit';
-import { formatHabitStreakArabic } from '../../utils/habitUtils';
+import { formatHabitStreakArabic, formatArabicDaysCount, toArabicNumerals } from '../../utils/habitUtils';
 
 interface StreakMilestoneCardProps {
   milestoneInfo: StreakMilestoneInfo;
@@ -92,10 +92,10 @@ export const StreakMilestoneCard: React.FC<StreakMilestoneCardProps> = React.mem
         <View style={styles.progressSection}>
           <View style={styles.progressLabels}>
             <Text style={[typography.caption, { color: theme.text, fontWeight: '600' }]}>
-              المحطة القادمة: {nextMilestone.tier.name} ({nextMilestone.tier.days} يوم)
+              المحطة القادمة: {nextMilestone.tier.name} ({toArabicNumerals(nextMilestone.tier.days)} يوم)
             </Text>
             <Text style={[typography.caption, { color: accentColor, fontWeight: '700' }]}>
-              {progressPercent}%
+              {toArabicNumerals(progressPercent)}٪
             </Text>
           </View>
 
@@ -132,13 +132,7 @@ export const StreakMilestoneCard: React.FC<StreakMilestoneCardProps> = React.mem
               },
             ]}
           >
-            باقي {nextMilestone.remainingDays}{' '}
-            {nextMilestone.remainingDays === 1
-              ? 'يوم واحد'
-              : nextMilestone.remainingDays <= 10
-              ? 'أيام'
-              : 'يوم'}{' '}
-            من الاستمرار المتتالي للوصول إلى المحطة التالية.
+            باقي {formatArabicDaysCount(nextMilestone.remainingDays)} من الاستمرار المتتالي للوصول إلى المحطة التالية.
           </Text>
         </View>
       ) : (

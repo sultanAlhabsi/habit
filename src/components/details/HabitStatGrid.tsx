@@ -4,7 +4,7 @@ import { Text } from '../common/AppText';
 import { HabitStats, HabitFrequency } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
-import { formatHabitStreakArabic } from '../../utils/habitUtils';
+import { formatHabitStreakArabic, toArabicNumerals } from '../../utils/habitUtils';
 
 interface HabitStatGridProps {
   stats: HabitStats;
@@ -24,10 +24,10 @@ export const HabitStatGrid: React.FC<HabitStatGridProps> = React.memo(({ stats, 
       title: totalLoggedUnits !== undefined && totalLoggedUnits > 0 ? 'إجمالي المنجز' : 'إجمالي المرات',
       value:
         totalLoggedUnits !== undefined && totalLoggedUnits > 0
-          ? `${totalLoggedUnits} ${unit || ''}`
-          : `${stats.totalCompletions} ${unit || 'مرة'}`,
+          ? `${toArabicNumerals(totalLoggedUnits)} ${unit || ''}`
+          : `${toArabicNumerals(stats.totalCompletions)} ${unit || 'مرة'}`,
     },
-    { title: 'نسبة الالتزام', value: `${stats.completionRate}%` },
+    { title: 'نسبة الالتزام', value: `${toArabicNumerals(stats.completionRate)}٪` },
   ];
 
   return (

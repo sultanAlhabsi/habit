@@ -37,6 +37,7 @@ import {
   calculateTotalLoggedUnits,
   formatHabitFrequencyLabel,
   isQuantitativeHabit,
+  toArabicNumerals,
 } from '../utils/habitUtils';
 import { exportCsvViaShare } from '../services/backupService';
 
@@ -358,7 +359,7 @@ export const HabitDetailsScreen: React.FC<HabitDetailsScreenProps> = ({
               >
                 {formatHabitFrequencyLabel(habit)}
                 {' • '}
-                الهدف: {habit.targetCount} {habit.unit}
+                الهدف: {toArabicNumerals(habit.targetCount)} {habit.unit}
                 {isArchived ? ' • مؤرشفة' : !habit.isActive ? ' • متوقفة مؤقتًا' : ''}
               </Text>
             </View>

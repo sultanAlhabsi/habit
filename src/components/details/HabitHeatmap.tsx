@@ -15,7 +15,7 @@ import dayjs from 'dayjs';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
 import { Habit, HabitCheckin } from '../../types/habit';
-import { isQuantitativeHabit } from '../../utils/habitUtils';
+import { isQuantitativeHabit, toArabicNumerals } from '../../utils/habitUtils';
 
 interface HabitHeatmapProps {
   completedDates: Set<string>;
@@ -138,7 +138,7 @@ const AnimatedHeatmapCell: React.FC<AnimatedHeatmapCellProps> = React.memo(({
     ? `تاريخ مستقبلي (${dateStr})`
     : isSelected
     ? `اليوم المختار (${dateStr})${intensity.isCompleted ? '، مكتمل' : ''}`
-    : `${dateStr}${intensity.isCompleted ? '، مكتمل' : intensity.ratio > 0 ? `، إنجاز ${Math.round(intensity.ratio * 100)}%` : '، غير مكتمل'}`;
+    : `${dateStr}${intensity.isCompleted ? '، مكتمل' : intensity.ratio > 0 ? `، إنجاز ${toArabicNumerals(Math.round(intensity.ratio * 100))}٪` : '، غير مكتمل'}`;
 
   const borderColor = isSelected
     ? intensity.isCompleted

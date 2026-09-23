@@ -114,6 +114,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     togglePinHabit,
     toggleHabitActive,
     deleteHabit,
+    archiveHabit,
     incrementCheckin,
     decrementCheckin,
     setHabitCount,
@@ -139,6 +140,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       togglePinHabit: state.togglePinHabit,
       toggleHabitActive: state.toggleHabitActive,
       deleteHabit: state.deleteHabit,
+      archiveHabit: state.archiveHabit,
       incrementCheckin: state.incrementCheckin,
       decrementCheckin: state.decrementCheckin,
       setHabitCount: state.setHabitCount,
@@ -1246,6 +1248,31 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               habitId: activeQuickActionHabit.id,
               date: selectedDate,
             });
+          }
+        }}
+        onDuplicateHabit={() => {
+          if (activeQuickActionHabit) {
+            navigation.navigate('AddEditHabit', {
+              duplicateFromId: activeQuickActionHabit.id,
+            });
+          }
+        }}
+        onArchiveHabit={() => {
+          if (activeQuickActionHabit) {
+            const habitToArchive = activeQuickActionHabit;
+            appAlert(
+              'أرشفة العادة',
+              `هل تريد نقل عادة "${habitToArchive.name}" إلى الأرشيف؟ سيتم إيقاف التذكيرات مع الاحتفاظ بكافة السجلات والإحصائيات.`,
+              [
+                { text: 'إلغاء', style: 'cancel' },
+                {
+                  text: 'أرشفة',
+                  onPress: async () => {
+                    await archiveHabit(habitToArchive.id, true);
+                  },
+                },
+              ]
+            );
           }
         }}
         onReorderHabit={() => {

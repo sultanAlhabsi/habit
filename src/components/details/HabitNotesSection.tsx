@@ -13,7 +13,7 @@ import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import type { Habit, HabitCheckin } from '../../types/habit';
-import { formatArabicDate, formatHabitNotesForShare } from '../../utils/habitUtils';
+import { formatArabicDate, formatHabitNotesForShare, toArabicNumerals } from '../../utils/habitUtils';
 import { getNoteDraft, saveNoteDraft, deleteNoteDraft } from '../../services/draftService';
 
 interface HabitNotesSectionProps {
@@ -355,7 +355,7 @@ export const HabitNotesSection: React.FC<HabitNotesSectionProps> = React.memo(({
                 color={theme.textSecondary}
               />
               <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600' }]}>
-                سجل الخواطر السابقة ({pastNotes.length})
+                سجل الخواطر السابقة ({toArabicNumerals(pastNotes.length)})
               </Text>
             </View>
           </Pressable>

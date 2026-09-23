@@ -145,7 +145,7 @@ export const DailyCelebrationBanner: React.FC = () => {
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="إنجاز اليوم مكتمل 100%"
+        accessibilityLabel="إنجاز اليوم مكتمل ١٠٠٪"
         onPress={triggerConfettiCycle}
         style={({ pressed }) => [
           styles.container,

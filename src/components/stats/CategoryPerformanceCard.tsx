@@ -6,7 +6,7 @@ import { Habit, HabitCheckin } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
 import { ProgressBar } from '../common/ProgressBar';
-import { calculateCategoryAnalytics, formatArabicCount } from '../../utils/habitUtils';
+import { calculateCategoryAnalytics, formatArabicCount, toArabicNumerals } from '../../utils/habitUtils';
 
 interface CategoryPerformanceCardProps {
   habits: Habit[];
@@ -54,7 +54,7 @@ export const CategoryPerformanceCard: React.FC<CategoryPerformanceCardProps> = R
           >
             <Ionicons name="scale-outline" size={13} color={theme.primary} style={{ marginLeft: 4 }} />
             <Text style={[typography.caption, { color: theme.text, fontWeight: '600' }]}>
-              توازن: {analytics.balanceScore}%
+              توازن: {toArabicNumerals(analytics.balanceScore)}٪
             </Text>
           </View>
         )}
@@ -151,10 +151,10 @@ export const CategoryPerformanceCard: React.FC<CategoryPerformanceCardProps> = R
                   {hasHabits ? (
                     <View style={styles.rateGroup}>
                       <Text style={[typography.subMedium, { color: item.color, fontWeight: '700' }]}>
-                        {item.completionRate}%
+                        {toArabicNumerals(item.completionRate)}٪
                       </Text>
                       <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10, marginTop: 1 }]}>
-                        ({item.totalCheckins} إنجاز)
+                        ({toArabicNumerals(item.totalCheckins)} إنجاز)
                       </Text>
                     </View>
                   ) : (

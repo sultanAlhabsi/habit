@@ -11,6 +11,7 @@ import {
   calculateMonthAdherence,
   formatMonthlySummaryForShare,
   formatArabicCount,
+  toArabicNumerals,
 } from '../../utils/habitUtils';
 
 interface MonthlyAdherenceCardProps {
@@ -112,7 +113,7 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = React.m
             معدل إنجاز العادات المجدولة
           </Text>
           <Text style={[typography.h3, { color: theme.text, fontWeight: '700' }]}>
-            {stats.completionRate}%
+            {toArabicNumerals(stats.completionRate)}٪
           </Text>
         </View>
         <ProgressBar
@@ -129,7 +130,7 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = React.m
             الإنجازات
           </Text>
           <Text style={[typography.h3, { color: theme.text, marginTop: 4, textAlign: 'center' }]}>
-            {stats.totalCompletions}
+            {toArabicNumerals(stats.totalCompletions)}
           </Text>
           <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' }]}>
             من {formatArabicCount(stats.totalDueOpportunities, 'فرصة', 'فرصتان', 'فرص', 'فرصة')}
@@ -138,10 +139,10 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = React.m
 
         <View style={[styles.metricItem, { borderLeftWidth: 1, borderColor: theme.border }]}>
           <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'center' }]}>
-            أيام مكتملة 100%
+            أيام مكتملة ١٠٠٪
           </Text>
           <Text style={[typography.h3, { color: theme.primary, marginTop: 4, textAlign: 'center' }]}>
-            {stats.perfectDaysCount}
+            {toArabicNumerals(stats.perfectDaysCount)}
           </Text>
           <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' }]}>
             {stats.perfectDaysCount === 1
@@ -159,10 +160,10 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = React.m
             أيام التقييم
           </Text>
           <Text style={[typography.h3, { color: theme.text, marginTop: 4, textAlign: 'center' }]}>
-            {stats.daysPassedInMonth}
+            {toArabicNumerals(stats.daysPassedInMonth)}
           </Text>
           <Text style={[typography.caption, { color: theme.textMuted, fontSize: 10, marginTop: 2, textAlign: 'center' }]}>
-            من أصل {stats.totalDaysInMonth} يوم
+            من أصل {toArabicNumerals(stats.totalDaysInMonth)} يوم
           </Text>
         </View>
       </View>

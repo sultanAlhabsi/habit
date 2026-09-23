@@ -4,6 +4,7 @@ import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../theme/ThemeContext';
 import { Card } from '../common/Card';
+import { toArabicNumerals } from '../../utils/habitUtils';
 import type { HabitConsistencyPattern } from '../../types/habit';
 
 interface HabitConsistencyCardProps {
@@ -58,7 +59,7 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
           >
             <Ionicons name="ribbon-outline" size={12} color={accentColor} style={{ marginLeft: 3 }} />
             <Text style={[typography.caption, { color: accentColor, fontWeight: '700', fontSize: 11 }]}>
-              {bestDay.dayName} {bestDay.rate}%
+              {bestDay.dayName} {toArabicNumerals(bestDay.rate)}٪
             </Text>
           </View>
         )}
@@ -86,7 +87,7 @@ export const HabitConsistencyCard: React.FC<HabitConsistencyCardProps> = React.m
                   },
                 ]}
               >
-                {hasData ? `${d.rate}%` : '-'}
+                {hasData ? `${toArabicNumerals(d.rate)}٪` : '-'}
               </Text>
 
               {/* Vertical Bar Track */}

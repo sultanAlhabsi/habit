@@ -29,6 +29,8 @@ export interface HabitQuickActionsModalProps {
   onShare: () => void;
   onEditHabit: () => void;
   onViewDetails: () => void;
+  onDuplicateHabit?: () => void;
+  onArchiveHabit?: () => void;
   onDeleteHabit: () => void;
   onReorderHabit?: () => void;
 }
@@ -49,6 +51,8 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
   onShare,
   onEditHabit,
   onViewDetails,
+  onDuplicateHabit,
+  onArchiveHabit,
   onDeleteHabit,
   onReorderHabit,
 }) => {
@@ -156,6 +160,36 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
         setTimeout(onViewDetails, 150);
       },
     },
+    ...(onDuplicateHabit
+      ? [
+          {
+            id: 'duplicate',
+            icon: 'copy-outline',
+            title: 'تكرار وإنشاء نسخة جديدة',
+            subtitle: 'إنشاء عادة جديدة بنفس إعدادات الهدف والتكرار',
+            color: theme.text,
+            onPress: () => {
+              onClose();
+              setTimeout(onDuplicateHabit, 150);
+            },
+          },
+        ]
+      : []),
+    ...(onArchiveHabit
+      ? [
+          {
+            id: 'archive',
+            icon: 'archive-outline',
+            title: 'أرشفة العادة',
+            subtitle: 'نقل إلى الأرشيف وإيقاف التنبيهات مع حفظ السجلات',
+            color: theme.textSecondary,
+            onPress: () => {
+              onClose();
+              setTimeout(onArchiveHabit, 150);
+            },
+          },
+        ]
+      : []),
     {
       id: 'delete',
       icon: 'trash-outline',

@@ -24,6 +24,7 @@ import {
   formatArabicCount,
   filterHabitsByQuery,
   getHabitCategory,
+  toArabicNumerals,
 } from '../utils/habitUtils';
 import { Habit, HABIT_CATEGORIES, HabitCategory } from '../types/habit';
 
@@ -192,7 +193,7 @@ export const ArchivedHabitsScreen: React.FC<ArchivedHabitsScreenProps> = ({
                 إجمالي الإنجازات
               </Text>
               <Text style={[typography.subMedium, { color: theme.text }]}>
-                {stats.totalCompletions} {habit.unit}
+                {toArabicNumerals(stats.totalCompletions)} {habit.unit}
               </Text>
             </View>
 

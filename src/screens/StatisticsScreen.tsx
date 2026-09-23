@@ -242,7 +242,7 @@ export const StatisticsScreen: React.FC = () => {
                         {item.habit.name}
                       </Text>
                       <Text style={[typography.caption, { color: theme.textMuted, textAlign: 'right', marginTop: 2 }]}>
-                        نسبة الالتزام: {item.stats.completionRate}%
+                        نسبة الالتزام: {toArabicNumerals(item.stats.completionRate)}٪
                       </Text>
                     </View>
                   </View>
