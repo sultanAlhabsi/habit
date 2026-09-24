@@ -81,6 +81,7 @@ export const SettingsScreen: React.FC = () => {
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [isDeduplicating, setIsDeduplicating] = useState(false);
   const [isAdvancedDevOpen, setIsAdvancedDevOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
   const eveningReminderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -589,6 +590,17 @@ export const SettingsScreen: React.FC = () => {
             description="إعادة استعراض جولة التعريف بمزايا إنجاز"
             type="link"
             onPress={() => navigation.navigate('Onboarding', { isRevisit: true })}
+          />
+
+          <SettingRow
+            iconName="shield-checkmark-outline"
+            title="سياسة الخصوصية وأمان البيانات"
+            description="بياناتك مشفرة ومحفوظة محلياً دون أي إعلانات أو تتبع"
+            type="link"
+            onPress={() => {
+              triggerLightHaptic();
+              setIsPrivacyModalOpen(true);
+            }}
             hideDivider
           />
         </SettingGroup>
@@ -1032,6 +1044,111 @@ export const SettingsScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Privacy Policy & Data Safety Modal */}
+      <Modal
+        visible={isPrivacyModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsPrivacyModalOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.card, maxHeight: '88%' }]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row-reverse', alignItems: 'center' }}>
+                <View style={[styles.privacyIconBadge, { backgroundColor: theme.primaryLight }]}>
+                  <Ionicons name="shield-checkmark" size={18} color={theme.primary} />
+                </View>
+                <Text style={[typography.h3, { color: theme.text, marginRight: 8 }]}>
+                  سياسة الخصوصية وأمان البيانات
+                </Text>
+              </View>
+              <Pressable
+                onPress={() => setIsPrivacyModalOpen(false)}
+                hitSlop={10}
+              >
+                <Ionicons name="close-circle-outline" size={24} color={theme.textMuted} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 10 }}>
+              <View style={[styles.privacyCallout, { backgroundColor: isDark ? '#1C1F24' : theme.cardSecondary, borderColor: theme.border }]}>
+                <Text style={[typography.bodyMedium, { color: theme.text, textAlign: 'right', fontWeight: '700', marginBottom: 4 }]}>
+                  🛡️ خصوصيتك هي أولويتنا المطلقة
+                </Text>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
+                  تطبيق "إنجاز" مصمم بمبدأ التخزين المحلي أولاً (Local-First). جميع عاداتك وملاحظاتك وإنجازاتك ملك لك وحدك ومحفوظة داخل جهازك بأمان تام.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '700', textAlign: 'right', marginBottom: 4 }]}>
+                  ١. التخزين المحلي والبيانات
+                </Text>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
+                  تُخزن جميع البيانات في قاعدة بيانات SQLite معزولة داخل مجلد التطبيق الآمن على هاتفك. لا نشترط أي تسجيل دخول أو بريد إلكتروني أو رقم هاتف لاستخدام التطبيق.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '700', textAlign: 'right', marginBottom: 4 }]}>
+                  ٢. خالٍ من الإعلانات والتتبع
+                </Text>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
+                  التطبيق خالٍ تماماً ١٠٠٪ من أي برمجيات إعلانية (No Ads) أو أدوات تتبع السلوك (No Analytics Tracking) أو SDKs خارجية تسجل نشاطك.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '700', textAlign: 'right', marginBottom: 4 }]}>
+                  ٣. المزامنة السحابية (اختيارية)
+                </Text>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
+                  خاصية المزامنة السحابية اختيارية تماماً، وتتم الاتصالات لنقل بياناتك عبر بروتوكول مشفر بالكامل (HTTPS/TLS). لا يتم بيع أو مشاركة بياناتك مع أي طرف ثالث.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '700', textAlign: 'right', marginBottom: 4 }]}>
+                  ٤. الأذونات والصلاحيات
+                </Text>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
+                  • الإشعارات (POST_NOTIFICATIONS): لتذكيرك بمواعيد عاداتك محلياً.{'\n'}
+                  • الاهتزاز (VIBRATE): للتغذية اللمسية عند الإنجاز.{'\n'}
+                  • لا يطلب التطبيق إذن الميكروفون أو الكاميرا أو الموقع الجغرافي.
+                </Text>
+              </View>
+
+              <View style={styles.privacySection}>
+                <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '700', textAlign: 'right', marginBottom: 4 }]}>
+                  ٥. تحكم كامل وحذف فوري
+                </Text>
+                <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
+                  يمكنك تصدير كافة بياناتك في أي وقت كملف JSON أو جداول CSV، كما يمكنك مسح كافة بياناتك نهائياً بضغطة زر واحدة من شاشة الإعدادات.
+                </Text>
+              </View>
+            </ScrollView>
+
+            <View style={{ gap: 8, marginTop: 14 }}>
+              <Button
+                title="فتح الوثيقة الكاملة على الويب"
+                iconName="open-outline"
+                variant="outline"
+                size="sm"
+                onPress={() => {
+                  Linking.openURL('https://github.com/sultanAlhabsi/habit/blob/main/PRIVACY_POLICY.md').catch(() => {});
+                }}
+              />
+              <Button
+                title="إغلاق"
+                variant="primary"
+                size="md"
+                onPress={() => setIsPrivacyModalOpen(false)}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1187,5 +1304,21 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  privacyIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privacyCallout: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  privacySection: {
+    marginBottom: 14,
   },
 });
