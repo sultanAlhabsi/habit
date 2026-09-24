@@ -8,7 +8,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { useHabitStore } from './src/store/useHabitStore';
-import { CustomAlertModal } from './src/components/common';
+import { CustomAlertModal, ErrorBoundary } from './src/components/common';
 import { AnimatedSplashScreen } from './src/components/splash/AnimatedSplashScreen';
 
 // Prevent native splash screen from auto-hiding before React tree renders
@@ -52,7 +52,9 @@ export default function App() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

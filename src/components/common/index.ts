@@ -11,3 +11,4 @@ export * from './AnimatedLogoRing';
 export * from './Skeleton';
 export * from './ClockTimePicker';
 export * from './AppSwitch';
+export * from './ErrorBoundary';

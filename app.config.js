@@ -29,6 +29,8 @@ const withProductionHardening = (config) => {
           'EX_DEV_CLIENT_NETWORK_INSPECTOR',
           'android.enableMinifyInReleaseBuilds',
           'android.enableShrinkResourcesInReleaseBuilds',
+          'android.compileSdkVersion',
+          'android.targetSdkVersion',
         ].includes(item.key)
     );
     modConfig.modResults.push(
@@ -46,6 +48,16 @@ const withProductionHardening = (config) => {
         type: 'property',
         key: 'android.enableShrinkResourcesInReleaseBuilds',
         value: 'true',
+      },
+      {
+        type: 'property',
+        key: 'android.compileSdkVersion',
+        value: '35',
+      },
+      {
+        type: 'property',
+        key: 'android.targetSdkVersion',
+        value: '35',
       }
     );
     return modConfig;
@@ -107,6 +119,7 @@ module.exports = ({ config }) => {
       favicon: './assets/favicon.png',
     },
     plugins: [
+      'expo-asset',
       'expo-sqlite',
       'expo-notifications',
       'expo-font',

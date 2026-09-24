@@ -289,15 +289,11 @@ export const SettingsScreen: React.FC = () => {
     }
   };
 
-  const openPreloadedLoopBackup = async () => {
-    try {
-      const preloadedModule = await import('../services/loopBackupPreloaded.json');
-      const preloaded = preloadedModule.default || preloadedModule;
-      setLoopDataPreview(preloaded as unknown as ConvertedLoopData);
-      setIsLoopModalOpen(true);
-    } catch {
-      appAlert('خطأ', 'تعذر تحميل بيانات النسخة الاحتياطية.');
-    }
+  const openPreloadedLoopBackup = () => {
+    appAlert(
+      'استيراد قاعدة بيانات Loop',
+      'لاستيراد عاداتك السابقة، يرجى اختيار ملف النسخة الاحتياطية بصيغة (.db) الخاص بتطبيق Loop Habit Tracker من ذاكرة جهازك.'
+    );
   };
 
   const handlePickLoopBackup = async () => {
