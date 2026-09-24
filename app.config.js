@@ -10,9 +10,77 @@
  * @see https://docs.expo.dev/build-reference/variables/
  */
 
+const path = require('path');
+const fs = require('fs');
+const { withGradleProperties, withDangerousMod } = require('@expo/config-plugins');
+
+/**
+ * Custom Expo Config Plugin to harden release builds:
+ * 1. Disables dev network inspector in production.
+ * 2. Enables R8 minifyEnabled and shrinkResources in release.
+ * 3. Appends safe Proguard keep rules for Expo modules and React Native.
+ */
+const withProductionHardening = (config) => {
+  config = withGradleProperties(config, (modConfig) => {
+    modConfig.modResults = modConfig.modResults.filter(
+      (item) =>
+        item.type !== 'property' ||
+        ![
+          'EX_DEV_CLIENT_NETWORK_INSPECTOR',
+          'android.enableMinifyInReleaseBuilds',
+          'android.enableShrinkResourcesInReleaseBuilds',
+        ].includes(item.key)
+    );
+    modConfig.modResults.push(
+      {
+        type: 'property',
+        key: 'EX_DEV_CLIENT_NETWORK_INSPECTOR',
+        value: 'false',
+      },
+      {
+        type: 'property',
+        key: 'android.enableMinifyInReleaseBuilds',
+        value: 'true',
+      },
+      {
+        type: 'property',
+        key: 'android.enableShrinkResourcesInReleaseBuilds',
+        value: 'true',
+      }
+    );
+    return modConfig;
+  });
+
+  config = withDangerousMod(config, [
+    'android',
+    async (modConfig) => {
+      const proguardPath = path.join(modConfig.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
+      if (fs.existsSync(proguardPath)) {
+        const rules = `
+# React Native & Expo production keep rules
+-keep class com.swmansion.reanimated.** { *; }
+-keep class com.facebook.react.turbomodule.** { *; }
+-keep class com.swmansion.rnscreens.** { *; }
+-keep class com.swmansion.gesturehandler.** { *; }
+-keep class com.horcrux.svg.** { *; }
+-keep class expo.modules.sqlite.** { *; }
+-keep class io.requery.android.database.sqlite.** { *; }
+`;
+        const existing = fs.readFileSync(proguardPath, 'utf8');
+        if (!existing.includes('com.swmansion.rnscreens')) {
+          fs.appendFileSync(proguardPath, rules);
+        }
+      }
+      return modConfig;
+    },
+  ]);
+
+  return config;
+};
+
 /** @type {import('@expo/config').ExpoConfig} */
 module.exports = ({ config }) => {
-  return {
+  const baseConfig = {
     ...config,
     name: 'إنجاز - تتبع العادات',
     slug: 'enjaz-habit-tracker',
@@ -71,4 +139,6 @@ module.exports = ({ config }) => {
     },
     owner: 'sultanalhabsi',
   };
+
+  return withProductionHardening(baseConfig);
 };
