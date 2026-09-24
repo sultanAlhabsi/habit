@@ -31,9 +31,8 @@ module.exports = ({ config }) => {
       },
       permissions: [
         'android.permission.MODIFY_AUDIO_SETTINGS',
-        'android.permission.FOREGROUND_SERVICE',
-        'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
         'android.permission.VIBRATE',
+        'android.permission.POST_NOTIFICATIONS',
       ],
     },
     web: {
@@ -53,7 +52,14 @@ module.exports = ({ config }) => {
           backgroundColor: '#F6F5F0',
         },
       ],
-      'expo-audio',
+      [
+        'expo-audio',
+        {
+          recordAudioAndroid: false,
+          enableBackgroundPlayback: false,
+          enableBackgroundRecording: false,
+        },
+      ],
     ],
     extra: {
       eas: {
