@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import {
   toArabicNumerals,
   formatArabicDaysCount,
-  formatArabicStreakDays,
   calculateStreakMilestone,
 } from '../src/utils/habitUtils.ts';
 

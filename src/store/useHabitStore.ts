@@ -16,7 +16,6 @@ import {
   fetchAllHabits,
   fetchAllCheckins,
   fetchCheckinsForHabit,
-  countAllCompletedCheckins,
   fetchRecentCheckins,
   saveHabitRecord,
   deleteHabitRecord,
@@ -24,7 +23,6 @@ import {
   removeCheckinRecord,
   resetDatabase,
   seedDatabase,
-  getPreference,
   setPreference,
   archiveHabitRecord,
   getAllPreferences,
@@ -39,7 +37,6 @@ import {
   StorageMetrics,
   updateHabitsOrder,
   deduplicateLocalHabits,
-  hasCompletedOnboarding as dbHasCompletedOnboarding,
   setCompletedOnboarding as dbSetCompletedOnboarding,
 } from '../services/database.ts';
 import type { ConvertedLoopData } from '../services/loopImportService.ts';
@@ -57,7 +54,6 @@ import {
   mergeBackupData,
 } from '../services/backupService.ts';
 import {
-  isHabitDueOnDate,
   reorderArray,
   getPendingDueHabitsForDate,
   getCompletedDueHabitsForDate,
@@ -75,6 +71,7 @@ import {
   getLastSyncTime,
   SyncState,
 } from '../services/syncService.ts';
+import { isCloudSyncConfigured } from '../services/neonService.ts';
 import { playCompletionSound, initSound } from '../services/soundService.ts';
 
 interface HabitState {
@@ -266,8 +263,10 @@ export const useHabitStore = create<HabitState>((set, get) => ({
           eveningReminderTime
         ).catch((err) => console.warn('[Store] Deferred notification reschedule error:', err));
 
-        // Trigger automatic background sync with Cloud
-        get().syncWithCloud().catch(() => {});
+        // Trigger automatic background sync with Cloud only if configured (Owner build)
+        if (isCloudSyncConfigured()) {
+          get().syncWithCloud().catch(() => {});
+        }
 
         // Periodic automatic database optimization (every 7 days) in background without user intervention
         const lastMaintenance = allPrefs['last_auto_db_maintenance'];
@@ -296,6 +295,11 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   },
 
   syncWithCloud: async () => {
+    if (!isCloudSyncConfigured()) {
+      set({ cloudSyncState: 'idle' });
+      return false;
+    }
+
     set({ cloudSyncState: 'syncing' });
     const res = await syncWithNeon();
     if (res.success) {
@@ -328,8 +332,10 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       ]);
       set({ habits, checkins, isRefreshing: false });
 
-      // 2. Run cloud sync in background non-blockingly
-      get().syncWithCloud().catch(() => {});
+      // 2. Run cloud sync in background non-blockingly if configured
+      if (isCloudSyncConfigured()) {
+        get().syncWithCloud().catch(() => {});
+      }
     } catch (error) {
       console.warn('[Store] refreshHabits error:', error);
       set({ isRefreshing: false });

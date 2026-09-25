@@ -33,7 +33,7 @@ export const HabitTemplateModal: React.FC<HabitTemplateModalProps> = ({
   onSelectTemplate,
 }) => {
   const insets = useSafeAreaInsets();
-  const { theme, spacing, radius, typography, touchTarget } = useTheme();
+  const { theme, spacing, radius, typography } = useTheme();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
   const [searchQuery, setSearchQuery] = useState<string>('');

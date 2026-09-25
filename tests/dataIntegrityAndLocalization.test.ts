@@ -18,7 +18,6 @@ import {
 import {
   toArabicNumerals,
   formatArabicCount,
-  calculateHabitStats,
   exportFullReportToCsv,
   exportSingleHabitToCsv,
 } from '../src/utils/habitUtils.ts';

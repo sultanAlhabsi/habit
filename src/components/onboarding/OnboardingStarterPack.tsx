@@ -198,7 +198,7 @@ export const OnboardingStarterPack: React.FC<OnboardingStarterPackProps> = ({
   onComplete,
   isRevisit,
 }) => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const [selectedIds, setSelectedIds] = useState<string[]>(
     STARTER_HABITS.filter((h) => h.isDefaultSelected).map((h) => h.id)
   );

@@ -8,7 +8,6 @@ import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   LinearTransition,
-  ZoomIn,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
@@ -21,7 +20,6 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Habit } from '../../types/habit';
 import { useTheme } from '../../theme/ThemeContext';
 import {
-  formatArabicStreakDays,
   formatHabitStreakArabic,
   formatHabitScheduleShort,
   isQuantitativeHabit,
@@ -211,7 +209,8 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
     });
 
   return (
-    <View
+    <Animated.View
+      layout={LinearTransition.springify().damping(22).stiffness(85)}
       style={[
         styles.swipeRoot,
         {
@@ -644,7 +643,7 @@ const HabitCardBase: React.FC<HabitCardProps> = ({
           </Pressable>
         </Animated.View>
       </GestureDetector>
-    </View>
+    </Animated.View>
   );
 };
 

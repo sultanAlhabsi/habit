@@ -14,7 +14,6 @@ interface DailyProgressCardProps {
   completionRate: number;
   isToday?: boolean;
   onPressToday?: () => void;
-  onCompleteAll?: () => void;
   onResetAll?: () => void;
 }
 
@@ -25,7 +24,6 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
   completionRate,
   isToday = true,
   onPressToday,
-  onCompleteAll,
   onResetAll,
 }) => {
   const { theme, radius, spacing, typography } = useTheme();
@@ -125,50 +123,27 @@ export const DailyProgressCard: React.FC<DailyProgressCardProps> = React.memo(({
         </View>
       )}
 
-      {/* Quick Bulk Completion / Reset Row */}
-      {totalCount > 0 && !isFutureDate && (
+      {/* Quick Bulk Reset Row (when 100% completed) */}
+      {totalCount > 0 && !isFutureDate && completionRate === 100 && onResetAll && (
         <View style={styles.actionRow}>
-          {completedCount < totalCount && onCompleteAll && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`إكمال جميع العادات المتبقية (${toArabicNumerals(totalCount - completedCount)})`}
-              onPress={onCompleteAll}
-              style={({ pressed }) => [
-                styles.actionButton,
-                {
-                  backgroundColor: theme.isDark ? `${theme.primary}18` : `${theme.primary}10`,
-                  borderColor: theme.isDark ? `${theme.primary}40` : `${theme.primary}25`,
-                  opacity: pressed ? 0.75 : 1,
-                },
-              ]}
-            >
-              <Ionicons name="checkmark-done-outline" size={14} color={theme.primary} style={{ marginLeft: 5 }} />
-              <Text style={[typography.caption, { color: theme.primary, fontWeight: '600', fontSize: 11 }]}>
-                إكمال المتبقي ({toArabicNumerals(totalCount - completedCount)})
-              </Text>
-            </Pressable>
-          )}
-
-          {completionRate === 100 && onResetAll && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إعادة تعيين عادات اليوم"
-              onPress={onResetAll}
-              style={({ pressed }) => [
-                styles.actionButton,
-                {
-                  backgroundColor: 'transparent',
-                  borderColor: 'transparent',
-                  opacity: pressed ? 0.6 : 0.85,
-                },
-              ]}
-            >
-              <Ionicons name="refresh-outline" size={13} color={theme.textMuted} style={{ marginLeft: 4 }} />
-              <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>
-                إلغاء تحديد الكل
-              </Text>
-            </Pressable>
-          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إعادة تعيين عادات اليوم"
+            onPress={onResetAll}
+            style={({ pressed }) => [
+              styles.actionButton,
+              {
+                backgroundColor: 'transparent',
+                borderColor: 'transparent',
+                opacity: pressed ? 0.6 : 0.85,
+              },
+            ]}
+          >
+            <Ionicons name="refresh-outline" size={13} color={theme.textMuted} style={{ marginLeft: 4 }} />
+            <Text style={[typography.caption, { color: theme.textMuted, fontSize: 11 }]}>
+              إلغاء تحديد الكل
+            </Text>
+          </Pressable>
         </View>
       )}
     </View>

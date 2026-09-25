@@ -52,6 +52,11 @@ export class ErrorBoundary extends Component<Props, State> {
             <Text style={styles.description}>
               نعتذر عن هذا الخطأ المؤقت. بيانات عاداتك وإنجازاتك محفوظة بأمان تام في الذاكرة المحلية لجهازك.
             </Text>
+            {__DEV__ && this.state.error ? (
+              <Text style={{ fontSize: 11, color: '#888', marginTop: 4, marginBottom: 8, textAlign: 'center' }}>
+                {this.state.error.message}
+              </Text>
+            ) : null}
 
             <Pressable
               style={({ pressed }) => [

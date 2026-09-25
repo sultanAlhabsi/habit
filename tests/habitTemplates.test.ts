@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   HABIT_TEMPLATES,
-  HABIT_TEMPLATE_CATEGORIES,
   getHabitTemplates,
   getHabitTemplateById,
   searchHabitTemplates,

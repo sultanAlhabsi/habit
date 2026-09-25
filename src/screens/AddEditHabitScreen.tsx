@@ -5,7 +5,6 @@ import {
   ScrollView,
   TextInput,
   Pressable,
-  Platform,
 } from 'react-native';
 import { appAlert } from '../services/alertService';
 import { Text } from '../components/common/AppText';

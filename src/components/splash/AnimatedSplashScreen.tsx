@@ -23,7 +23,7 @@ export const AnimatedSplashScreen: React.FC<AnimatedSplashScreenProps> = ({
   onFinish,
   maxTimeoutMs = 3000,
 }) => {
-  const { theme, isDark } = useTheme();
+  const { isDark } = useTheme();
   const [timedOut, setTimedOut] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
 

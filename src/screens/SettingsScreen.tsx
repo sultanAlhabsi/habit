@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import dayjs from 'dayjs';
 import {
   View,
   StyleSheet,
@@ -10,7 +9,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
-  ActivityIndicator,
 } from 'react-native';
 import { appAlert } from '../services/alertService';
 import { Text } from '../components/common/AppText';
@@ -24,6 +22,7 @@ import { SegmentedThemeControl } from '../components/settings/SegmentedThemeCont
 import { SettingGroup } from '../components/settings/SettingGroup';
 import { SettingRow } from '../components/settings/SettingRow';
 import { CloudSyncStatusCard } from '../components/settings/CloudSyncStatusCard';
+import { isCloudSyncConfigured } from '../services/neonService';
 import { ClockTimePicker } from '../components/common/ClockTimePicker';
 import { sendTestNotification } from '../services/notificationService';
 import {
@@ -32,7 +31,7 @@ import {
   exportCsvViaShare,
   pickAndReadBackupFile,
 } from '../services/backupService';
-import { exportFullReportToCsv, toArabicNumerals, formatArabicCount } from '../utils/habitUtils';
+import { toArabicNumerals, formatArabicCount } from '../utils/habitUtils';
 import {
   inspectAndParseLoopDatabase,
   ConvertedLoopData,
@@ -45,7 +44,6 @@ export const SettingsScreen: React.FC = () => {
   const { isDark, theme, spacing, radius, typography, themeMode, setThemeMode } = useTheme();
   const {
     habits,
-    checkins,
     hapticsEnabled,
     toggleHaptics,
     soundEnabled,
@@ -82,6 +80,7 @@ export const SettingsScreen: React.FC = () => {
   const [isDeduplicating, setIsDeduplicating] = useState(false);
   const [isAdvancedDevOpen, setIsAdvancedDevOpen] = useState(false);
   const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const isCloudEnabled = isCloudSyncConfigured();
   const eveningReminderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -508,13 +507,15 @@ export const SettingsScreen: React.FC = () => {
         </SettingGroup>
 
         {/* Group 3: Cloud Sync & Data Management */}
-        <SettingGroup title="البيانات والمزامنة السحابية">
-          <CloudSyncStatusCard
-            cloudSyncState={cloudSyncState}
-            lastCloudSyncTime={lastCloudSyncTime}
-            isManualSyncing={isManualSyncing}
-            onSyncPress={handleManualSync}
-          />
+        <SettingGroup title={isCloudEnabled ? 'البيانات والمزامنة السحابية' : 'إدارة البيانات والنسخ الاحتياطي'}>
+          {isCloudEnabled && (
+            <CloudSyncStatusCard
+              cloudSyncState={cloudSyncState}
+              lastCloudSyncTime={lastCloudSyncTime}
+              isManualSyncing={isManualSyncing}
+              onSyncPress={handleManualSync}
+            />
+          )}
 
           <SettingRow
             iconName="cloud-upload-outline"
@@ -589,6 +590,17 @@ export const SettingsScreen: React.FC = () => {
           />
 
           <SettingRow
+            iconName="mail-outline"
+            title="تواصل معنا والملاحظات"
+            description="شاركنا أفكارك، اقتراحاتك، أو أبلغ عن أي مشكلة"
+            type="link"
+            onPress={() => {
+              triggerLightHaptic();
+              navigation.navigate('Contact');
+            }}
+          />
+
+          <SettingRow
             iconName="shield-checkmark-outline"
             title="سياسة الخصوصية وأمان البيانات"
             description="بياناتك مشفرة ومحفوظة محلياً دون أي إعلانات أو تتبع"
@@ -602,7 +614,7 @@ export const SettingsScreen: React.FC = () => {
         </SettingGroup>
 
         {/* Group 5: Storage & Danger Zone */}
-        <SettingGroup title="إدارة التخزين والصيانة">
+        <SettingGroup title={isCloudEnabled ? 'إدارة التخزين والصيانة' : 'إدارة التخزين'}>
           <SettingRow
             iconName="trash-bin-outline"
             title="مسح كافة البيانات نهائياً"
@@ -610,66 +622,70 @@ export const SettingsScreen: React.FC = () => {
             type="link"
             isDestructive
             onPress={handleReset}
-            hideDivider={!isAdvancedDevOpen}
+            hideDivider={!isCloudEnabled || !isAdvancedDevOpen}
           />
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="أدوات الصيانة وقاعدة البيانات المتقدمة"
-            onPress={() => {
-              triggerLightHaptic();
-              setIsAdvancedDevOpen(!isAdvancedDevOpen);
-            }}
-            style={({ pressed }) => [
-              styles.devToolsToggle,
-              { opacity: pressed ? 0.7 : 1 },
-            ]}
-          >
-            <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600', marginLeft: 6 }]}>
-              أدوات الصيانة وقاعدة البيانات (متقدم)
-            </Text>
-            <Ionicons
-              name={isAdvancedDevOpen ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={theme.textMuted}
-            />
-          </Pressable>
-
-          {isAdvancedDevOpen && (
+          {isCloudEnabled && (
             <>
-              <View style={[styles.inlineDivider, { backgroundColor: isDark ? '#23272E' : theme.borderSubtle }]} />
-
-              <SettingRow
-                iconName="shield-checkmark-outline"
-                title="تنظيف وتوحيد العادات المكررة"
-                description="فحص قاعدة البيانات محلياً وسحابياً لدمج التكرارات"
-                type="button"
-                loading={isDeduplicating}
-                disabled={isDeduplicating || isManualSyncing}
-                onPress={handleDeduplicate}
-              />
-
-              <SettingRow
-                iconName="sparkles-outline"
-                title="إضافة بيانات نموذجية تجريبية"
-                description="توليد عادات وسجلات افتراضية لتجربة الإحصائيات فوراً"
-                type="button"
-                onPress={handleSeed}
-              />
-
-              <SettingRow
-                iconName="speedometer-outline"
-                title="مراقب الأداء وقائمة المطورين (Perf Monitor)"
-                description="إظهار معدل الإطارات (FPS) والذاكرة واختبارات الأداء"
-                type="button"
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="أدوات الصيانة وقاعدة البيانات المتقدمة"
                 onPress={() => {
-                  try {
-                    const { DevSettings } = require('react-native');
-                    DevSettings?.openMenu?.();
-                  } catch {}
+                  triggerLightHaptic();
+                  setIsAdvancedDevOpen(!isAdvancedDevOpen);
                 }}
-                hideDivider
-              />
+                style={({ pressed }) => [
+                  styles.devToolsToggle,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Text style={[typography.caption, { color: theme.textSecondary, fontWeight: '600', marginLeft: 6 }]}>
+                  أدوات الصيانة وقاعدة البيانات (متقدم)
+                </Text>
+                <Ionicons
+                  name={isAdvancedDevOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={theme.textMuted}
+                />
+              </Pressable>
+
+              {isAdvancedDevOpen && (
+                <>
+                  <View style={[styles.inlineDivider, { backgroundColor: isDark ? '#23272E' : theme.borderSubtle }]} />
+
+                  <SettingRow
+                    iconName="shield-checkmark-outline"
+                    title="تنظيف وتوحيد العادات المكررة"
+                    description="فحص قاعدة البيانات محلياً وسحابياً لدمج التكرارات"
+                    type="button"
+                    loading={isDeduplicating}
+                    disabled={isDeduplicating || isManualSyncing}
+                    onPress={handleDeduplicate}
+                  />
+
+                  <SettingRow
+                    iconName="sparkles-outline"
+                    title="إضافة بيانات نموذجية تجريبية"
+                    description="توليد عادات وسجلات افتراضية لتجربة الإحصائيات فوراً"
+                    type="button"
+                    onPress={handleSeed}
+                  />
+
+                  <SettingRow
+                    iconName="speedometer-outline"
+                    title="مراقب الأداء وقائمة المطورين (Perf Monitor)"
+                    description="إظهار معدل الإطارات (FPS) والذاكرة واختبارات الأداء"
+                    type="button"
+                    onPress={() => {
+                      try {
+                        const { DevSettings } = require('react-native');
+                        DevSettings?.openMenu?.();
+                      } catch {}
+                    }}
+                    hideDivider
+                  />
+                </>
+              )}
             </>
           )}
         </SettingGroup>
@@ -678,6 +694,20 @@ export const SettingsScreen: React.FC = () => {
         <View style={styles.footer}>
           <Text style={[typography.caption, { color: isDark ? '#94A3B8' : theme.textSecondary, textAlign: 'center', fontWeight: '500' }]}>
             إنجاز • الإصدار ١.٠.٠
+          </Text>
+          <Text
+            style={[
+              typography.caption,
+              {
+                color: isDark ? '#7E8B9B' : theme.textMuted,
+                textAlign: 'center',
+                marginTop: 6,
+                lineHeight: 19,
+                fontSize: 12,
+              },
+            ]}
+          >
+            صُنع بواسطة أعظم مبرمج في العالم{'\n'}الأسطورة سُلطان الحبسي
           </Text>
         </View>
       </ScrollView>
@@ -1097,10 +1127,10 @@ export const SettingsScreen: React.FC = () => {
 
               <View style={styles.privacySection}>
                 <Text style={[typography.bodyMedium, { color: theme.text, fontWeight: '700', textAlign: 'right', marginBottom: 4 }]}>
-                  ٣. المزامنة السحابية (اختيارية)
+                  ٣. لا توجد خوادم ولا مزامنة سحابية (Offline-First)
                 </Text>
                 <Text style={[typography.caption, { color: theme.textSecondary, textAlign: 'right', lineHeight: 20 }]}>
-                  خاصية المزامنة السحابية اختيارية تماماً، وتتم الاتصالات لنقل بياناتك عبر بروتوكول مشفر بالكامل (HTTPS/TLS). لا يتم بيع أو مشاركة بياناتك مع أي طرف ثالث.
+                  يعمل التطبيق بشكل محلي ومستقل بنسبة ١٠٠٪ دون أي خوادم أو قواعد بيانات سحابية. عاداتك، سجلاتك، وملاحظاتك الشخصية لا تغادر هاتفك إطلاقاً.
                 </Text>
               </View>
 
@@ -1132,7 +1162,9 @@ export const SettingsScreen: React.FC = () => {
                 variant="outline"
                 size="sm"
                 onPress={() => {
-                  Linking.openURL('https://github.com/sultanAlhabsi/habit/blob/main/PRIVACY_POLICY.md').catch(() => {});
+                  Linking.openURL('https://sultanalhabsi.github.io/habit/privacy.html').catch(() => {
+                    Linking.openURL('https://github.com/sultanAlhabsi/habit/blob/main/PRIVACY_POLICY.md').catch(() => {});
+                  });
                 }}
               />
               <Button

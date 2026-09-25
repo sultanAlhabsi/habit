@@ -52,7 +52,7 @@ const withProductionHardening = (config) => {
       {
         type: 'property',
         key: 'android.compileSdkVersion',
-        value: '35',
+        value: '36',
       },
       {
         type: 'property',
@@ -67,7 +67,7 @@ const withProductionHardening = (config) => {
     'android',
     async (modConfig) => {
       const proguardPath = path.join(modConfig.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
-      if (fs.existsSync(proguardPath)) {
+      try {
         const rules = `
 # React Native & Expo production keep rules
 -keep class com.swmansion.reanimated.** { *; }
@@ -82,7 +82,49 @@ const withProductionHardening = (config) => {
         if (!existing.includes('com.swmansion.rnscreens')) {
           fs.appendFileSync(proguardPath, rules);
         }
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
       }
+
+      // Ensure release signingConfig is present in app/build.gradle
+      const buildGradlePath = path.join(modConfig.modRequest.platformProjectRoot, 'app', 'build.gradle');
+      try {
+        let content = fs.readFileSync(buildGradlePath, 'utf8');
+        if (!content.includes('MYAPP_UPLOAD_STORE_FILE')) {
+          content = content.replace(
+            /signingConfigs\s*\{[\s\S]*?debug\s*\{[\s\S]*?\}\s*\}/,
+            `signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
+            if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+            } else if (System.getenv('ANDROID_KEYSTORE_PATH') != null) {
+                storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }`
+          );
+          content = content.replace(
+            /signingConfig\s+signingConfigs\.debug/,
+            'signingConfig (signingConfigs.release.storeFile != null && signingConfigs.release.storeFile.exists()) ? signingConfigs.release : signingConfigs.debug'
+          );
+          fs.writeFileSync(buildGradlePath, content, 'utf8');
+        }
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+
       return modConfig;
     },
   ]);
@@ -105,12 +147,12 @@ module.exports = ({ config }) => {
     },
     android: {
       package: 'com.enjaz.habittracker',
+      versionCode: 1,
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#F6F5F0',
       },
       permissions: [
-        'android.permission.MODIFY_AUDIO_SETTINGS',
         'android.permission.VIBRATE',
         'android.permission.POST_NOTIFICATIONS',
       ],
@@ -148,7 +190,10 @@ module.exports = ({ config }) => {
       },
       // DATABASE_URL is injected from EAS Secrets at build time.
       // Never hardcode credentials here — use `eas env:set` to manage them.
-      databaseUrl: process.env.DATABASE_URL ?? null,
+      databaseUrl:
+        process.env.DATABASE_URL && process.env.DATABASE_URL.trim().length > 0
+          ? process.env.DATABASE_URL.trim()
+          : null,
     },
     owner: 'sultanalhabsi',
   };

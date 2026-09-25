@@ -4,7 +4,6 @@ import {
   initDatabase,
   resetDatabase,
   saveHabitRecord,
-  saveCheckinRecord,
   fetchAllCheckins,
   batchSaveCheckinRecords,
 } from '../src/services/database.ts';

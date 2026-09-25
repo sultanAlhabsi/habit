@@ -17,5 +17,6 @@ export type RootStackParamList = {
   HabitDetails: { habitId: string; date?: string };
   ArchivedHabits: undefined;
   Onboarding: { isRevisit?: boolean } | undefined;
+  Contact: undefined;
 };
 

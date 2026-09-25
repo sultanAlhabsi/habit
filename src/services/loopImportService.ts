@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import type { Habit, HabitCheckin, HabitFrequency } from '../types/habit.ts';
 import { HABIT_PALETTES } from '../theme/colors.ts';
 
@@ -287,8 +286,8 @@ export const convertLoopRawRecords = (
     const color = mapLoopColor(h.color);
 
     // Map frequency
-    let frequency: HabitFrequency = 'daily';
-    let frequencyDays: number[] = [0, 1, 2, 3, 4, 5, 6];
+    let frequency: HabitFrequency;
+    let frequencyDays: number[];
 
     if (h.freq_num === 1 && h.freq_den === 1) {
       frequency = 'daily';
@@ -300,8 +299,8 @@ export const convertLoopRawRecords = (
     }
 
     // Map target count & unit
-    let targetCount = 1;
-    let unit = 'مرة';
+    let targetCount: number;
+    let unit: string;
 
     if (h.type === 1) {
       // Numerical habit

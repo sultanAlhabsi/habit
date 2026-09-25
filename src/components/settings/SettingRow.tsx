@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../common/AppText';
 import { AppSwitch } from '../common/AppSwitch';
@@ -41,7 +41,7 @@ export const SettingRow: React.FC<SettingRowProps> = ({
   loading = false,
   hideDivider = false,
 }) => {
-  const { isDark, theme, typography, radius } = useTheme();
+  const { isDark, theme, typography } = useTheme();
 
   const handleToggle = (newVal: boolean) => {
     if (disabled || loading) return;

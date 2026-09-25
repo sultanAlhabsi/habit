@@ -501,15 +501,10 @@ export const calculateCurrentStreakFromDates = (
   const createdDate = dayjs(habit.createdAt).startOf('day');
 
   let currentStreak = 0;
-  const isTodayCompleted = completedDates.has(todayStr);
-
-  let checkDate = today;
-  if (isTodayCompleted) {
+  if (completedDates.has(todayStr)) {
     currentStreak = 1;
-    checkDate = today.subtract(1, 'day');
-  } else {
-    checkDate = today.subtract(1, 'day');
   }
+  let checkDate = today.subtract(1, 'day');
 
   // Look back consecutive days until streak is broken or creation date is reached
   const maxDays = Math.min(3650, Math.max(1, today.diff(createdDate, 'day') + 1));

@@ -28,7 +28,19 @@ import type { Habit, HabitCheckin } from '../types/habit';
  */
 export const getNeonConnectionString = (): string | null => {
   const constants = getExpoConstants();
-  return (constants?.expoConfig?.extra?.databaseUrl as string | undefined) ?? null;
+  const url = (constants?.expoConfig?.extra?.databaseUrl as string | undefined) ?? null;
+  if (!url || typeof url !== 'string' || url.trim().length === 0) {
+    return null;
+  }
+  return url.trim();
+};
+
+/**
+ * Checks whether cloud synchronization is active and configured for this build.
+ * Returns false on public Google Play builds where DATABASE_URL is omitted.
+ */
+export const isCloudSyncConfigured = (): boolean => {
+  return Boolean(getNeonConnectionString());
 };
 
 export const NEON_CONNECTION_STRING: string | null = getNeonConnectionString();

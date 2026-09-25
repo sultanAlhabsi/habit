@@ -8,7 +8,6 @@ import {
   TextInput,
   Share,
   Modal,
-  RefreshControl,
   Platform,
   LayoutAnimation,
   UIManager,
@@ -22,7 +21,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { useHabitStore } from '../store/useHabitStore';
 import { useShallow } from 'zustand/react/shallow';
-import { Header } from '../components/common/Header';
 import { DateStrip } from '../components/home/DateStrip';
 import { DailyProgressCard } from '../components/home/DailyProgressCard';
 import { DailyCelebrationBanner } from '../components/home/DailyCelebrationBanner';
@@ -41,7 +39,6 @@ import {
   HABIT_CATEGORIES,
   HabitCategory,
   HABIT_SORT_OPTIONS,
-  HabitSortOption,
   Habit,
 } from '../types/habit';
 import {
@@ -56,12 +53,15 @@ import {
   formatHabitStatsForShare,
   calculateStreakMilestone,
   isPeriodicFlexibleHabit,
-  getWeeklyTargetProgress,
-  getMonthlyTargetProgress,
   getPeriodicBadgeText,
   toArabicNumerals,
 } from '../utils/habitUtils';
 
+
+const isFabric = !!(globalThis as any).nativeFabricUIManager;
+if (Platform.OS === 'android' && !isFabric && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface HomeScreenProps {
   navigation: any;
@@ -74,7 +74,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const triggerSmoothLayoutTransition = useCallback(() => {
     try {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      flashListRef.current?.prepareForLayoutAnimationRender();
+      LayoutAnimation.configureNext({
+        duration: 450,
+        create: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+        update: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+        },
+        delete: {
+          type: LayoutAnimation.Types.easeInEaseOut,
+          property: LayoutAnimation.Properties.opacity,
+        },
+      });
     } catch (_) {}
   }, []);
 
@@ -121,7 +135,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     updateCheckinNote,
     deleteCheckinNote,
     cloudSyncState,
-    completeAllDueHabits,
     resetAllDueHabits,
   } = useHabitStore(
     useShallow((state) => ({
@@ -147,7 +160,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       updateCheckinNote: state.updateCheckinNote,
       deleteCheckinNote: state.deleteCheckinNote,
       cloudSyncState: state.cloudSyncState,
-      completeAllDueHabits: state.completeAllDueHabits,
       resetAllDueHabits: state.resetAllDueHabits,
     }))
   );
@@ -402,25 +414,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     [selectedDate]
   );
 
-  const handleCompleteAll = useCallback(() => {
-    const pendingCount = dailyStats.todayTotalCount - dailyStats.todayCompletedCount;
-    if (pendingCount <= 0) return;
-
-    appAlert(
-      'إكمال عادات اليوم',
-      `هل تريد تسجيل إنجاز كافة العادات المتبقية (${toArabicNumerals(pendingCount)}) لهذا اليوم؟`,
-      [
-        { text: 'إلغاء', style: 'cancel' },
-        {
-          text: 'إكمال الكل',
-          onPress: async () => {
-            await completeAllDueHabits(selectedDate);
-          },
-        },
-      ]
-    );
-  }, [dailyStats.todayTotalCount, dailyStats.todayCompletedCount, completeAllDueHabits, selectedDate]);
-
   const handleResetAll = useCallback(() => {
     if (dailyStats.todayCompletedCount <= 0) return;
 
@@ -457,7 +450,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           completionRate={dailyStats.todayCompletionRate}
           isToday={isToday}
           onPressToday={() => setSelectedDate(todayStr)}
-          onCompleteAll={handleCompleteAll}
           onResetAll={handleResetAll}
         />
 
@@ -568,7 +560,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       categoryCompletedCount,
       activeSortItem,
       sortOption,
-      handleCompleteAll,
       handleResetAll,
     ]
   );

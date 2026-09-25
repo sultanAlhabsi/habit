@@ -56,7 +56,7 @@ export const HabitQuickActionsModal: React.FC<HabitQuickActionsModalProps> = ({
   onDeleteHabit,
   onReorderHabit,
 }) => {
-  const { theme, radius, spacing, typography, touchTarget } = useTheme();
+  const { theme, radius, typography, touchTarget } = useTheme();
 
   if (!habit) return null;
 

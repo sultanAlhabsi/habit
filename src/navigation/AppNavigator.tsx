@@ -14,6 +14,7 @@ import { AddEditHabitScreen } from '../screens/AddEditHabitScreen';
 import { HabitDetailsScreen } from '../screens/HabitDetailsScreen';
 import { ArchivedHabitsScreen } from '../screens/ArchivedHabitsScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
+import { ContactScreen } from '../screens/ContactScreen';
 import { useHabitStore } from '../store/useHabitStore';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -92,6 +93,13 @@ export const AppNavigator: React.FC = () => {
         <Stack.Screen
           name="ArchivedHabits"
           component={ArchivedHabitsScreen}
+          options={{
+            animation: 'slide_from_right',
+          }}
+        />
+        <Stack.Screen
+          name="Contact"
+          component={ContactScreen}
           options={{
             animation: 'slide_from_right',
           }}

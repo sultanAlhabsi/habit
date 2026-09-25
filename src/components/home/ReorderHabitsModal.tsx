@@ -8,7 +8,6 @@ import {
   PanResponder,
   Animated,
   Vibration,
-  Platform,
 } from 'react-native';
 import { Text } from '../common/AppText';
 import { Ionicons } from '@expo/vector-icons';

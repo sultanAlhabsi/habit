@@ -16,6 +16,7 @@ import {
   deleteNeonHabit,
   fetchNeonDeletedHabits,
   deleteNeonCheckin,
+  isCloudSyncConfigured,
 } from './neonService';
 import {
   fetchAllHabits,
@@ -52,6 +53,9 @@ let _connectionCache: { isOnline: boolean; ts: number } | null = null;
 const CONNECTION_CACHE_MS = 30_000; // 30 seconds
 
 const getCachedConnection = async (): Promise<boolean> => {
+  if (!isCloudSyncConfigured()) {
+    return false;
+  }
   const now = Date.now();
   if (_connectionCache && now - _connectionCache.ts < CONNECTION_CACHE_MS) {
     return _connectionCache.isOnline;
@@ -62,7 +66,7 @@ const getCachedConnection = async (): Promise<boolean> => {
 };
 
 // Invalidate connection cache (called when a sync fails or succeeds)
-const invalidateConnectionCache = () => {
+export const invalidateConnectionCache = () => {
   _connectionCache = null;
 };
 
@@ -72,6 +76,16 @@ const invalidateConnectionCache = () => {
 export const syncWithNeon = async (): Promise<SyncResult> => {
   if (currentSyncPromise) {
     return currentSyncPromise;
+  }
+
+  if (!isCloudSyncConfigured()) {
+    return {
+      success: false,
+      state: 'idle',
+      pulledHabits: 0,
+      pushedHabits: 0,
+      errorMessage: 'المزامنة السحابية غير مفعلة (النسخة المحلية الخاصة بالمتجر)',
+    };
   }
 
   currentSyncPromise = (async () => {

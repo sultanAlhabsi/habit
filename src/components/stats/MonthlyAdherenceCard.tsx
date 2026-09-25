@@ -23,7 +23,7 @@ export const MonthlyAdherenceCard: React.FC<MonthlyAdherenceCardProps> = React.m
   habits,
   checkins,
 }) => {
-  const { theme, radius, spacing, typography, touchTarget } = useTheme();
+  const { theme, spacing, typography, touchTarget } = useTheme();
   const [monthOffset, setMonthOffset] = useState(0);
 
   const referenceDate = useMemo(() => dayjs().add(monthOffset, 'month'), [monthOffset]);

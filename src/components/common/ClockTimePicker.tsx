@@ -76,12 +76,12 @@ export const ClockTimePicker: React.FC<ClockTimePickerProps> = ({
     return parseReminderTime(internalTime) || { hour: 8, minute: 0 };
   }, [internalTime]);
 
-  const { hour24, hour12, minute, isPM } = useMemo(() => {
+  const { hour12, minute, isPM } = useMemo(() => {
     const h = parsed.hour;
     const m = parsed.minute;
     const pm = h >= 12;
     const h12 = h % 12 === 0 ? 12 : h % 12;
-    return { hour24: h, hour12: h12, minute: m, isPM: pm };
+    return { hour12: h12, minute: m, isPM: pm };
   }, [parsed]);
 
   // Keep latest state for gesture responders
@@ -183,22 +183,6 @@ export const ClockTimePicker: React.FC<ClockTimePickerProps> = ({
       }),
     []
   );
-
-  const handleSelectHour = (h: number) => {
-    triggerLightHaptic();
-    updateTime(h, minute, isPM);
-
-    // Auto-advance to minute selection after small natural delay (Material Design style)
-    if (autoSwitchTimer.current) clearTimeout(autoSwitchTimer.current);
-    autoSwitchTimer.current = setTimeout(() => {
-      setClockMode('minute');
-    }, 280);
-  };
-
-  const handleSelectMinute = (m: number) => {
-    triggerLightHaptic();
-    updateTime(hour12, m, isPM);
-  };
 
   const handleTogglePeriod = (targetPM: boolean) => {
     if (targetPM === isPM) return;

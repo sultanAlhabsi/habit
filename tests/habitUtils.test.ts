@@ -27,7 +27,6 @@ import {
   formatHabitStatsForShare,
   getHabitCheckinNotes,
   formatHabitNotesForShare,
-  STREAK_MILESTONES,
   normalizeArabicText,
   formatArabicDaysCount,
   formatArabicStreakDays,
@@ -38,7 +37,6 @@ import {
   exportHabitsSummaryToCsv,
   exportFullReportToCsv,
   exportSingleHabitToCsv,
-  CATEGORY_CONFIG,
   calculateCategoryAnalytics,
   getPeriodicBadgeText,
 } from '../src/utils/habitUtils.ts';

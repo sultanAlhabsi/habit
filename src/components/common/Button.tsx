@@ -87,10 +87,10 @@ export const Button: React.FC<ButtonProps> = ({
       default:
         return {
           container: {
-            backgroundColor: theme.text, // Solid deep dark tone for primary action
+            backgroundColor: theme.primary,
           },
-          text: { color: theme.card },
-          iconColor: theme.card,
+          text: { color: theme.primaryForeground || '#FFFFFF' },
+          iconColor: theme.primaryForeground || '#FFFFFF',
         };
     }
   };
